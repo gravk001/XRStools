@@ -1,0 +1,4 @@
+include *.txt
+recursive-include xrstools/things *
+recursive-include xrstools/docs *
+recursive-include xrstools/bin *
