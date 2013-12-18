@@ -13,7 +13,7 @@ __metaclass__ = type # new style classes
 
 
 class HFspecpredict:
-	def __init__(self,formulas,concentrations,rho_formu,correctasym=None,E0=9.86,eloss=np.arange(0,1,0.0001),alpha=None,beta=None,samthick=None):
+	def __init__(self,formulas,concentrations,rho_formu,correctasym=None,E0=9.68,eloss=np.arange(0,1,0.0001),alpha=None,beta=None,samthick=None):
 		if not isinstance(formulas,list):
 			theformulas = []
 			theformulas.append(formulas)
@@ -69,7 +69,7 @@ class HFspecpredict:
 		pass
 
 class HFspecpredict_series:
-	def __init__(self,formulas,concentrations,rho_formu,correctasym=None,E0=9.86,eloss=np.arange(0,1,0.0001),alpha=0.0,beta=-30.0,samthick=0.1):
+	def __init__(self,formulas,concentrations,rho_formu,correctasym=None,E0=9.68,eloss=np.arange(0,1,0.0001),alpha=0.0,beta=-30.0,samthick=0.1):
 		self.concentrations = concentrations
 		self.eloss          = eloss
 		self.rho_formu      = rho_formu
@@ -242,7 +242,20 @@ class HFspecpredict_series:
 		pylab.show(block=False)
 
 class HFspectrum:
-	def __init__(self,data,formulas,concentrations,correctasym=None):
+	def __init__(self,data,formulas,concentrations,correctasym=None,correctasym_pertth=None):
+		"""
+		class for building S(q,w) from tabulated Hartree-Fock Compton profiles to use in
+		the extraction algorithm.
+		data = instance of one of the classes from the xrs_read module (like read_id20)
+		formulas = single string or list of strings of chemical sum formulas of which the sample is made up
+		concentrations = single value or list of concentrations of how the different chemical formulas are mixed
+				 (sum should be 1)
+		correctasym = single value or list of scaling values for the HR-correction to 
+			      the 1s, 2s, and 2p shells. one value per element in the list of formulas
+		correctasym_pertth = list of additional scaling values for each scattering angle, so that 
+				a momentum transfer dependent asymmetry correction is possible (i.e. no 
+				correction for low q, finite correction for high q data) 
+		"""
 		# from raw data
 		self.eloss = data.eloss
 		self.tth   = data.tth
@@ -262,16 +275,39 @@ class HFspectrum:
 		self.C = np.zeros(np.shape(data.signals))
 		self.V = np.zeros(np.shape(data.signals))
 		self.q = np.zeros(np.shape(data.signals))
+		if not correctasym_pertth:
+			for n in range(len(self.tth)):
+				el,j,c,v,q = makeprofile_compds(formulas,concentrations,E0=self.cenom[n],tth=data.tth[n],correctasym=self.correctasym)
+				f = interpolate.interp1d(el,j, bounds_error=False, fill_value=0.0)
+				self.J[:,n] = f(data.eloss)
+				f = interpolate.interp1d(el,c, bounds_error=False, fill_value=0.0)
+				self.C[:,n] = f(data.eloss)
+				f = interpolate.interp1d(el,v, bounds_error=False, fill_value=0.0)
+				self.V[:,n] = f(data.eloss)
+				f = interpolate.interp1d(el,q, bounds_error=False, fill_value=0.0)
+				self.q[:,n] = f(data.eloss)
+		else:
+			if len(correctasym_pertth) != len(self.tth):
+				print 'Please provide a Python list of one scaling factor [0,1] per scattering angle!'
+				print 'Currently %d scattering angles defined, but %d scaling factors provided!' % (len(self.tth), len(correctasym_pertth))
+				return
+			else:
+				for n in range(len(self.tth)):
+					print self.correctasym, correctasym_pertth[n]
+					el,j,c,v,q = makeprofile_compds(formulas,concentrations,E0=self.cenom[n],tth=data.tth[n],correctasym=np.array(self.correctasym)*correctasym_pertth[n])
+					f = interpolate.interp1d(el,j, bounds_error=False, fill_value=0.0)
+					self.J[:,n] = f(data.eloss)
+					f = interpolate.interp1d(el,c, bounds_error=False, fill_value=0.0)
+					self.C[:,n] = f(data.eloss)
+					f = interpolate.interp1d(el,v, bounds_error=False, fill_value=0.0)
+					self.V[:,n] = f(data.eloss)
+					f = interpolate.interp1d(el,q, bounds_error=False, fill_value=0.0)
+					self.q[:,n] = f(data.eloss)
+
+		# correct interpolation errors in q (first couple of values are 0.0, replace by smallest value) THIS NEEDS TO BE FIXED
 		for n in range(len(self.tth)):
-			el,j,c,v,q = makeprofile_compds(formulas,concentrations,E0=data.E0,tth=data.tth[n],correctasym=self.correctasym)
-			f = interpolate.interp1d(el,j, bounds_error=False, fill_value=0.0)
-			self.J[:,n] = f(data.eloss)
-			f = interpolate.interp1d(el,c, bounds_error=False, fill_value=0.0)
-			self.C[:,n] = f(data.eloss)
-			f = interpolate.interp1d(el,v, bounds_error=False, fill_value=0.0)
-			self.V[:,n] = f(data.eloss)
-			f = interpolate.interp1d(el,q, bounds_error=False, fill_value=0.0)
-			self.q[:,n] = f(data.eloss)
+			inds = np.where(self.q[:,n] == 0)
+			self.q[inds,n] = self.q[np.where(self.q[:,n]>0)[0][0],n]
 
 	def plotHFC(self):
 		pylab.clf()

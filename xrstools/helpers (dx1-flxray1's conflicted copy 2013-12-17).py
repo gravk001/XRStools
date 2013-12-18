@@ -7,9 +7,7 @@ import math
 import numpy as np
 import array as arr
 import matplotlib.pyplot as plt
-import pickle
 
-from matplotlib.widgets import Cursor
 from itertools import groupby
 from scipy.integrate import trapz
 from scipy import interpolate, signal, integrate, constants, optimize
@@ -30,11 +28,11 @@ def fwhm(x,y):
 		y = flipud(y)
 
 	y0 = np.amax(y)
-	i0 = np.where(y == y0)
+	i0 = np.where(y == y0)[0][0] # this is because it returns several values sometimes (always take the first), needs improvement
 	x0 = x[i0]
 
-	i1 = np.where(np.logical_and(y>y/3.0, x<x0))
-	i2 = np.where(np.logical_and(y>y/3.0, x>x0))
+	i1 = np.where(np.logical_and(y>y/3.0, x<x0))[0]
+	i2 = np.where(np.logical_and(y>y/3.0, x>x0))[0]
 
 	f  = interpolate.interp1d(y[i1],x[i1], bounds_error=False, fill_value=0.0)
 	x1 = f(y0/2.0)
@@ -1182,14 +1180,15 @@ def findgroups(scans):
 
 def makegroup(groupofscans,grouptype=None):
 	"""
-	takes a group of scans, sums up the signals and monitors, estimates poisson errors, and returns an instance of the scangroup 		class (turns several instances of the "scan" class into an instance of the "scangroup" class)
+	takes a group of scans, sums up the signals and monitors, estimates poisson errors, and returns an instance of the scangroup class (turns several instances of the "scan" class into an instance of the "scangroup" class)
 	"""
 	if not grouptype:
-		grouptype = groupofscans[0].gettype() # the type of the sum of scans will be the same as the first from the list	
+		grouptype = groupofscans[0].gettype() # the scantype of the sum of scans will be the same as the first from the list	
 	theenergy   = groupofscans[0].energy # all scans are splined onto energy grid of the first scan
 	thesignals  = np.zeros(groupofscans[0].getshape())
 	theerrors   = np.zeros(groupofscans[0].getshape())
 	themonitors = np.zeros(np.shape(groupofscans[0].monitor))
+	# add up signals from each scan for each ROI
 	for scan in groupofscans:
 		f  = interpolate.interp1d(scan.energy,scan.monitor, bounds_error=False, fill_value=0.0)
 		moni = f(theenergy)
@@ -1198,12 +1197,13 @@ def makegroup(groupofscans,grouptype=None):
 			f = interpolate.interp1d(scan.energy,scan.signals[:,n], bounds_error=False, fill_value=0.0)
 			signal = f(theenergy)
 			thesignals[:,n] += signal
+	# Poisson errors
 	for n in range(thesignals.shape[-1]):
 		theerrors[:,n]  = np.sqrt(thesignals[:,n])
-	# and normalize	
+	# and normalize	to the monitor
 	for n in range(thesignals.shape[-1]):
 		thesignals[:,n] = thesignals[:,n]/themonitors
-		theerrors[:,n]  = np.sqrt(thesignals[:,n])/themonitors
+		theerrors[:,n]  = theerrors[:,n]/themonitors
 
 	group = scangroup(theenergy,thesignals,theerrors,grouptype)
 	return group
@@ -1213,23 +1213,85 @@ def makegroup_nointerp(groupofscans,grouptype=None):
 	takes a group of scans, sums up the signals and monitors, estimates poisson errors, and returns an instance of the scangroup class (turns several instances of the "scan" class into an instance of the "scangroup" class), same as makegroup but withouth interpolation to account for encoder differences... may need to add some "linspace" function in case the energy scale is not monotoneous... 
 	"""
 	if not grouptype:
-		grouptype = groupofscans[0].gettype() # the type of the sum of scans will be the same as the first from the list	
+		grouptype = groupofscans[0].gettype() # the scantype of the sum of scans will be the same as the first from the list	
 	theenergy   = groupofscans[0].energy
 	thesignals  = np.zeros(groupofscans[0].getshape())
 	theerrors   = np.zeros(groupofscans[0].getshape())
 	themonitors = np.zeros(np.shape(groupofscans[0].monitor))
-
+	# add up signals from each scan for each ROI
 	for scan in groupofscans:
 		themonitors += scan.monitor
 		for n in range(thesignals.shape[-1]):
 			thesignals[:,n] += scan.signals[:,n]
+	# Poisson errors
 	for n in range(thesignals.shape[-1]):
 		theerrors[:,n]  = np.sqrt(thesignals[:,n])
-	# and normalize
+	# and normalize to the monitor
 	for n in range(thesignals.shape[-1]):
 		thesignals[:,n] = thesignals[:,n]/themonitors
-		theerrors[:,n]  = np.sqrt(thesignals[:,n])/themonitors
+		theerrors[:,n]  = theerrors[:,n]/themonitors
 	group = scangroup(theenergy,thesignals,theerrors,grouptype)
+	return group
+
+def makegroup_test(groupofscans,grouptype=None,elasticnum=None,cenom=None):
+	"""
+	takes a group of scans, sums up the signals and monitors, estimates poisson errors, and returns an instance of the scangroup class (turns several instances of the "scan" class into an instance of the "scangroup" class), uses the center of mass of the elastic scan closest in scannumber (but smaller) to correct each scan in energy loss to it's according elastic 
+	"""
+	if not grouptype:
+		grouptype = groupofscans[0].gettype() # the scantype of the sum of scans will be the same as the first from the list
+
+	theenergy   = groupofscans[0].energy
+	theeloss    = np.zeros_like(groupofscans[0].energy)
+	thesignals  = np.zeros(groupofscans[0].getshape())
+	theerrors   = np.zeros(groupofscans[0].getshape())
+	themonitors = np.zeros(np.shape(groupofscans[0].monitor))
+	theresolution = []
+	# go through all scans
+	for scan in groupofscans:
+		# do scan by scan energy correction if elastic numbers are provided
+		if elasticnum:
+			if grouptype == 'elastic':
+				cenom_all = scan.cenom # elastic scans have their own E0
+				theresolution.append(scan.resolution) # elastic scans have resolution
+			# find the elastic that is closest but smaller in scannumber
+			else:
+				ind = np.where(np.array(elasticnum)<scan.number)[0]
+				if len(ind)>0:
+					elastic_ind = min(range(len(np.array(elasticnum)[ind])), key=lambda i: abs(elasticnum[i]-scan.number))
+					cenom_all   = cenom[elastic_ind]
+		# if no elasticnumber are provided
+		else:
+			cenom_all   = 0 # needs changing
+		# sum up the monitor
+		f  = interpolate.interp1d(scan.energy,scan.monitor, bounds_error=False, fill_value=0.0)
+		moni = f(theenergy)
+		themonitors += moni
+		# master eloss scale
+		theeloss = (groupofscans[0].energy-cenom_all[0])*1.0e3
+		# go through all ROIs and spline onto master eloss scale
+		for n in range(thesignals.shape[-1]):
+			x = (scan.energy-cenom_all[n])*1.0e3 # insert trivial values far below and far above energy to avoid interpolation artefacts
+			x = np.insert(x,0,-1e10,)
+			x = np.insert(x,-1,1e10)
+			y = scan.signals[:,n]
+			y = np.insert(y,0,0)
+			y = np.insert(y,-1,0)
+			f = interpolate.interp1d(x,y,bounds_error=False, fill_value=0.0)
+			signal = f(theeloss)
+			thesignals[:,n] += signal
+	# Poisson errors
+	for n in range(thesignals.shape[-1]):
+		theerrors[:,n]  = np.sqrt(thesignals[:,n])
+	# and normalize	to the monitor
+	for n in range(thesignals.shape[-1]):
+		thesignals[:,n] = thesignals[:,n]/themonitors
+		theerrors[:,n]  = theerrors[:,n]/themonitors
+	#avarage over all resolutions if there were elastic scans involved
+	if theresolution:
+		resolution = np.mean(np.array(theresolution),axis=0)
+	else:
+		resolution = []
+	group = scangroup(theenergy,thesignals,theerrors,grouptype,eloss=theeloss,resolution=resolution)
 	return group
 
 def appendscans(groups):
@@ -1290,6 +1352,76 @@ def appendscans(groups):
 		for n in range(len(allgroups[1:])):
 			theerrors = np.append(theerrors,allgroups[n+1].errors,0)
 	return theenergy, thesignals, theerrors
+
+def appendscans_test(groups):
+	"""
+	append groups of scans ordered by their first energy value. long scans are inserted into gaps that at greater than four times the 		grid of the finer scans
+	"""
+	# find all types of groups	
+	grouptypes = [key for key in groups.keys()]
+	# deal with cases where there is a long scan
+	if 'long' in grouptypes:
+		allgroups = [] # all groups BUT the long one
+		for grouptype in grouptypes:
+			if grouptype != 'long':
+				allgroups.append(groups[grouptype])
+		allgroups.sort(key = lambda x:x.getestart()) # sort all groups but long by their start-energy
+		
+		# go through all groups and see if there is a gap between them, if yes, see if the long scan can be inserted into the gap
+		# first things before the first group
+		theenergy  = allgroups[0].energy
+		theeloss   = allgroups[0].eloss
+		thesignals = allgroups[0].signals
+		theerrors  = allgroups[0].errors
+		inds1       = np.where(groups['long'].energy<theenergy[0])
+		theenergy  = np.append(groups['long'].energy[inds1],theenergy)
+		inds2       = np.where(groups['long'].eloss<theenergy[0])
+		print inds1 == inds2
+		theeloss   = np.append(groups['long'].eloss[inds2],theeloss)
+		thesignals = np.append(np.squeeze(groups['long'].signals[inds,:]),thesignals,0)
+		theerrors  = np.append(np.squeeze(groups['long'].errors[inds,:]),theerrors,0)
+		# now go through the other groups and see if there is a gap and part of the long scan to insert
+		for n in range(len(allgroups[1:])):
+			if allgroups[n+1].getestart()-allgroups[n].geteend() > 2.0*allgroups[n+1].getmeanegridspacing(): # worry only if scan groups are far apart
+				inds = np.where(np.logical_and(groups['long'].energy>allgroups[n].geteend(),groups['long'].energy<allgroups[n+1].getestart()))
+				theenergy  = np.append(theenergy,groups['long'].energy[inds])
+				thesignals = np.append(thesignals,np.squeeze(groups['long'].signals[inds,:]),0)
+				theerrors  = np.append(theerrors,np.squeeze(groups['long'].errors[inds,:]),0)
+			theenergy  = np.append(theenergy,allgroups[n+1].energy)
+			thesignals = np.append(thesignals,allgroups[n+1].signals,0)
+			theerrors  = np.append(theerrors,allgroups[n+1].errors,0)
+		# see if there is more long scan after the last group
+		inds = np.where(groups['long'].energy>theenergy[-1])
+		theenergy  = np.append(theenergy,groups['long'].energy[inds])
+		thesignals = np.append(thesignals,np.squeeze(groups['long'].signals[inds,:]),0)
+		theerrors  = np.append(theerrors,np.squeeze(groups['long'].errors[inds,:]),0)
+
+	# deal with the cases where there is no long scan	
+	if not 'long' in grouptypes:
+		allgroups = []
+		for group in groups:
+			allgroups.append(groups[group])
+		allgroups.sort(key = lambda x:x.getestart()) # sort the groups by their start-energy
+		# energy scale
+		theenergy = allgroups[0].energy
+		theeloss  = allgroups[0].eloss
+		for n in range(len(allgroups[1:])):
+			theenergy = np.append(theenergy,allgroups[n+1].energy,0)
+			theeloss  = np.append(theeloss,allgroups[n+1].eloss,0)
+		# signals
+		thesignals = allgroups[0].signals
+		for n in range(len(allgroups[1:])):
+			thesignals = np.append(thesignals,allgroups[n+1].signals,0)
+		# errors
+		theerrors = allgroups[0].errors
+		for n in range(len(allgroups[1:])):
+			theerrors = np.append(theerrors,allgroups[n+1].errors,0)
+		# resolution (stored in the elastic line group)
+		if allgroups[0].grouptype == 'elastic':
+			theresolution = allgroups[0].resolution
+		else:
+			theresolution = []
+	return theenergy, theeloss, thesignals, theerrors, theresolution
 
 def momtrans_au(e1,e2,tth):
 	"""
@@ -1458,6 +1590,8 @@ class scan:
 		self.eloss    = []
 		self.signals  = []
 		self.errors   = []
+		self.cenom    = [] # center of mass (only filled if scantype is 'elastic')
+		self.resolution = [] # resolution (only filled if scantype is 'elastic')
 		
 	def applyrois(self,rois):
 		"""
@@ -1466,12 +1600,28 @@ class scan:
 		into a matrix of size (len(energy),number of rois)
 		rois are a list of tuples
 		"""
-		data = np.zeros((len(self.edfmats),len(rois)))
+		data       = np.zeros((len(self.edfmats),len(rois)))
+		cenom      = []
+		resolution = []
+		edfmats    = self.edfmats
 		for n in range(len(rois)): # each roi (default is 9)
-			for m in range(len(self.edfmats)): # each energy point along the scan
+			for m in range(len(edfmats)): # each energy point along the scan
 				for l in range(len(rois[n])): # each pixel on the detector
-					data[m,n] += self.edfmats[m,rois[n][l][1],rois[n][l][0]]
-		self.signals = np.array(data)
+					data[m,n] += edfmats[m,rois[n][l][1],rois[n][l][0]]
+		
+		# determine the center of mass adn resolution, if it's an elastic scan
+		if self.scantype == 'elastic':
+			for n in range(len(rois)): # each roi
+				cenom.append(trapz(data[:,n]*self.energy,x=self.energy)/trapz(data[:,n],x=self.energy))
+				try:
+					FWHM,x0 = fwhm((self.energy - cenom[n])*1e3,data[:,n])
+					resolution.append(FWHM)
+				except:
+					resolution.append(0)
+		# pass variables back to the class attributes
+		self.signals    = np.array(data)
+		self.cenom      = cenom
+		self.resolution = resolution
 
 	def applyrois_old(self,rois):
 		"""
@@ -1484,12 +1634,26 @@ class scan:
 		data     = np.zeros((len(self.edfmats),len(rois)))
 		roixinds = []
 		roiyinds = []
+		cenom   = []
+		resolution = []
+		edfmats = self.edfmats
 		for r in range(len(rois)):
 			for n in range(len(rois[r])):
 				roixinds.append(rois[r][n][0])
 				roiyinds.append(rois[r][n][1])
-			data[:,r] = np.sum(np.sum(self.edfmats[:,np.amin(roiyinds):np.amax(roiyinds)+1,np.amin(roixinds):np.amax(roixinds)+1],axis=1),axis=1)
- 		self.signals = data
+			data[:,r] = np.sum(np.sum(edfmats[:,np.amin(roiyinds):np.amax(roiyinds)+1,np.amin(roixinds):np.amax(roixinds)+1],axis=1),axis=1)
+		# determine the center of mass, if it's an elastic scan
+		if self.scantype == 'elastic':
+			for n in range(len(rois)): # each roi
+				cenom.append(trapz(data[:,n]*self.energy,x=self.energy)/trapz(data[:,n],x=self.energy))
+				try:
+					FWHM,x0 = fwhm((self.energy - cenom[n])*1e3,data[:,n])
+					resolution.append(FWHM)
+				except:
+					resolution.append(0.0) # need something more sofisticated to fit FWHM
+		self.signals = np.array(data)
+		self.cenom   = cenom
+		self.resolution = resolution
 
 	def gettype(self):
 		return self.scantype
@@ -1518,12 +1682,13 @@ class scangroup:
 	different goups of scans will then be stitched together based on 
 	their type, starting energy, etc. 
 	"""
-	def __init__(self,energy,signals,errors,grouptype='generic'):
+	def __init__(self,energy,signals,errors,grouptype='generic',eloss=[],resolution=[]):
 		self.energy    = energy
-		self.eloss     = []
+		self.eloss     = eloss
 		self.signals   = signals
 		self.errors    = errors
 		self.grouptype = grouptype
+		self.resolution = resolution
 
 	def gettype(self):
 		return self.grouptype
@@ -1575,509 +1740,4 @@ def estimate_shift(x1,y1,im1,x2,y2,im2):
 	funct = lambda a: np.sum((interpolate_image(x1,y1,im1,x1,y1) - interpolate_image(x2,y2,im2,x2+a[0],y2+a[1]))**2.0)
 	res = fmin(funct,[0.0,0.0],disp=0)
 	return res
-
-#################################
-# ROIs
-#################################
-class rois:
-	"""
-	a class to define ROIs
-	ROIs are saved in self.rois as a list with the same number of entries as ROIs defined. Each entry is a list of (x,y)-coordinate tuples
-	"""
-	def __init__(self,scans,scannumbers):
-		self.scandata = scans # dictionary with instances of the onescan class
-		if not isinstance(scannumbers,list):
-			thescannumbers = []
-			thescannumbers.append(scannumbers)
-		else:
-			thescannumbers = scannumbers  
-		self.scannums = thescannumbers
-		self.rois     = []
-		self.roinums  = []
-		self.roikind  = []
-		self.roiheight = []
-		self.roiwidth  = []
-		self.DET_PIXEL_NUM = 256
-		# adding list of lists with x- and y-indices, useful for 2D things (compare Simos Matlab scripts)
-		self.roisx = [] 
-		self.roisy = []
-
-	def preparemats(self):
-		"""
-		sums and squeezes all edf-files of a scan into one matrix 
-		"""
-		# take shape of the first edf-matrices
-		dim = np.shape(self.scandata['Scan%03d' % self.scannums[0]].edfmats)
-		#edfmatrices = np.zeros((1,self.DET_PIXEL_NUM,self.DET_PIXEL_NUM))
-		edfmatrices = np.zeros((1,dim[1],dim[2]))
-		for number in self.scannums:
-			scanname = 'Scan%03d' % number
-			edfmatrices = np.append(edfmatrices,self.scandata[scanname].edfmats,axis=0)
-		return sumx(edfmatrices)
-	
-	def prepareedgemats(self,index):
-		"""
-		difference between two summed and squeezed edf-files of a scan from below and above energyval 
-		"""
-		# take shape of the first edf-matrices 
-		dim = np.shape(self.scandata['Scan%03d' % self.scannums[0]].edfmats)
-		abovemats = np.zeros((1,dim[1],dim[2]))
-		belowmats = np.zeros((1,dim[1],dim[2]))
-		for number in self.scannums:
-			scanname = 'Scan%03d' % number
-			abovemats = np.append(abovemats,self.scandata[scanname].edfmats[index:,:,:],axis=0)
-			belowmats = np.append(belowmats,self.scandata[scanname].edfmats[:index,:,:],axis=0)
-		return np.absolute(np.squeeze(np.sum(abovemats,axis=0))-np.squeeze(np.sum(belowmats,axis=0)))
-
-	def getlinrois(self,numrois,logscaling=True,height=5,colormap='jet'):
-		"""
-		define ROIs by clicking two points
-		"""
-		plt.clf()
-
-		fig = plt.figure(figsize=(8, 6))
-		ax = fig.add_subplot(111, axisbg='#FFFFCC')
-
-		thematrix = self.preparemats()
-		plt.title('Click start and endpoints of the linear ROIs you whish.',fontsize=14)		
-		if logscaling:
-			theimage = plt.imshow(np.log(np.absolute(thematrix)))
-		else:
-			theimage = plt.imshow(thematrix)
-		# Choose a color palette
-		theimage.set_cmap(colormap)
-		plt.colorbar()
-
-		therois   = [] # list of lists of tuples with (x,y) coordinates
-		theroisx  = [] # list of lists of x-indices
-		theroisy  = [] # list of lists of y-indices
-
-		cursor = Cursor(ax, useblit=True, color='red', linewidth=1 )
-
-		for m in range(numrois):
-			plt.clf()
-			if m>0:
-				if therois[m-1]:
-					for index in therois[m-1]:
-						thematrix[index[1],index[0]] = np.amax(thematrix)
-			print ("chose two points as endpoints for linear ROI No. %s" % (m+1))
-
-			if logscaling:
-				theimage = plt.imshow(np.log(np.absolute(thematrix)))
-			else:
-				theimage = plt.imshow(thematrix)	
-			theimage.set_cmap(colormap)
-			plt.draw()	
-
-			endpoints = []
-			endpts    = plt.ginput(2)
-			for point in endpts:
-				point = [round(element) for element in point]
-				endpoints.append(np.array(point))
-			roix = np.arange(endpoints[0][0],endpoints[1][0])
-			roiy = [round(num) for num in np.polyval(np.polyfit([endpoints[0][0],endpoints[1][0]],[endpoints[0][1],endpoints[1][1]],1),roix)]
-
-			theheight = np.arange(-height,height)
-			
-			eachroi  = []
-			eachroix = []
-			eachroiy = []
-			for n in range(len(roix)):
-				for ind in theheight:
-					eachroi.append((roix[n],roiy[n]+ind))
-					eachroix.append(roix[n])
-					eachroiy.append(roiy[n]+ind)
-			therois.append(eachroi)
-			theroisx.append(eachroix)
-			theroisy.append(eachroiy)
-
-			self.roiheight.append(len(theheight)) # save the hight of each roi (e.g. for imaging)
-			self.roiwidth.append(endpoints[1][0]-endpoints[0][0]) # save the width of each roi
-			del endpoints
-			del eachroi
-			del eachroix
-			del eachroiy
-	
-		plt.show()		
-		self.roikind  = 'linear'
-		self.rois     = therois
-		self.roisx    = theroisx
-		self.roisy    = theroisy
-		self.roinums  = numrois
-
-	def getzoomrois(self,numrois,logscaling=True,colormap='jet'):
-		"""
-		define ROIs by zooming in on plot
-		"""
-		plt.clf()
-		thematrix = self.preparemats()
-		limmax    = np.shape(thematrix)[1]
-		therois   = [] # list of lists of tuples with (x,y) coordinates
-		theroisx  = [] # list of lists of x-indices
-		theroisy  = [] # list of lists of y-indices
-		plt.title('Zoom around ROI, change to shell, and press Return')
-		if logscaling:
-			theimage = plt.imshow(np.log(np.absolute(thematrix)))
-		else:
-			theimage = plt.imshow(thematrix)	
-		theimage.set_cmap(colormap)
-		plt.ion()	
-		for m in range(numrois):
-			plt.clf()
-			if m>0:
-				if therois[m-1]:
-					for index in therois[m-1]:
-						thematrix[index[1],index[0]] = np.amax(thematrix)
-			plt.title('Zoom around ROI, change to shell, and press Return')
-			if logscaling:
-				theimage = plt.imshow(np.log(np.absolute(thematrix)))
-			else:
-				theimage = plt.imshow(thematrix)	
-			theimage.set_cmap(colormap)
-			plt.draw()	
-						
-			thestring = 'Zoom around ROI No. %s and press enter to continue.' % (m+1)
-			wait = raw_input(thestring)
-								
-			limits = np.floor(plt.axis())
-			
-			inds = limits < 1
-			limits[inds] = 1
-			inds = limits > limmax
-			limits[inds] = limmax
-			print 'selected limits are: ', limits
-
-			T = np.zeros(np.shape(thematrix))
-			T[limits[3]:limits[2],:] = 1
-			t = np.zeros(np.shape(thematrix))
-			t[:,limits[0]:limits[1]] = 1
-			indsx,indsy = np.where(t*T == 1)
-			eachroi  = []
-			eachroix = []
-			eachroiy = []
-			for n in range(len(indsx)):
-				eachroi.append((indsy[n],indsx[n]))
-				eachroix.append(indsx[n])
-				eachroiy.append(indsy[n])
-			therois.append(eachroi)
-			theroisx.append(eachroix)
-			theroisy.append(eachroiy)
-		plt.show()
-		self.roikind  = 'zoom'
-		self.rois     = therois
-		self.roisx    = theroisx
-		self.roisy    = theroisy
-		self.roinums  = numrois
-
-	def getzoomrois_frommatrix(self,matrix,numrois,logscaling=True,colormap='jet'):
-		"""
-		define ROIs by zooming in on plot
-		"""
-		plt.clf()
-		thematrix = matrix
-		limmax = np.shape(thematrix)[1]
-		therois = []
-		plt.title('Zoom around ROI, change to shell, and press Return')
-		if logscaling:
-			theimage = plt.imshow(np.log(np.absolute(thematrix)))
-		else:
-			theimage = plt.imshow(thematrix)	
-		theimage.set_cmap(colormap)
-		plt.ion()
-		for m in range(numrois):
-			
-			plt.title('Zoom around ROI, change to shell, and press Return')
-			if logscaling:
-				theimage = plt.imshow(np.log(np.absolute(thematrix)))
-			else:
-				theimage = plt.imshow(thematrix)	
-			theimage.set_cmap(colormap)
-			plt.ion()
-
-			thestring = 'Zoom around ROI No. %s and press enter to continue.' % (m+1)
-			wait = raw_input(thestring)
-
-			limits = np.floor(plt.axis())
-			plt.axis([0.0,self.DET_PIXEL_NUM,self.DET_PIXEL_NUM,0.0])
-
-			inds = limits < 1
-			limits[inds] = 1
-			inds = limits > limmax
-			limits[inds] = limmax
-			print 'selected limits are: ', limits
-
-			T = np.zeros(np.shape(thematrix))
-			T[limits[3]:limits[2],:] = 1
-			t = np.zeros(np.shape(thematrix))
-			t[:,limits[0]:limits[1]] = 1
-			indsx,indsy = np.where(t*T == 1)
-			eachroi = []
-			for n in range(len(indsx)):
-				eachroi.append((indsy[n],indsx[n]))
-			therois.append(eachroi)
-
-		plt.show()
-		self.roikind  = 'zoom'
-		self.rois     = therois
-		self.roinums  = numrois
-
-	def getlinedgerois(self,index,numrois=9,logscaling=True,height=5,colormap='jet'):
-		"""
-		define ROIs by clicking two points in difference picture
-		"""
-		plt.clf()
-		thematrix = self.prepareedgemats(index) # change this to use an index
-		if logscaling:
-			theimage = plt.imshow(np.log(np.absolute(thematrix)))
-		else:
-			theimage = plt.imshow(thematrix)
-
-		# Choose a color palette
-		theimage.set_cmap(colormap)
-		plt.colorbar()
-
-		therois = []
-		for m in range(numrois):
-			print ("chose two points as endpoints for linear ROI No. %s" % (m+1))
-			endpoints = []
-			endpts    = plt.ginput(2)
-			for point in endpts:
-				point = [round(element) for element in point]
-				endpoints.append(np.array(point))
-			roix = np.arange(endpoints[0][0],endpoints[1][0])
-			roiy = [round(num) for num in np.polyval(np.polyfit([endpoints[0][0],endpoints[1][0]],[endpoints[0][1],endpoints[1][1]],1),roix)]
-			del endpoints
-			theheight = np.arange(-height,height)
-			eachroi = []
-			for n in range(len(roix)):
-				for ind in theheight:
-					eachroi.append((roix[n],roiy[n]+ind))
-			therois.append(eachroi)
-			del eachroi			
-		plt.show()
-		self.roikind  = 'linear'
-		self.rois     = therois
-		self.roinums  = numrois
-
-	def getzoomedgerois(self,index,numrois=9,logscaling=True,colormap='jet'):
-		"""
-		define ROIs by zooming in on plot
-		"""
-		plt.clf()
-		thematrix = self.prepareedgemats(index)
-		limmax = np.shape(thematrix)[1]
-		therois = []
-		title('Zoom around ROI, change to shell, and press Return')
-		if logscaling:
-			theimage = plt.imshow(np.log(np.absolute(thematrix)))
-		else:
-			theimage = plt.imshow(thematrix)
-		theimage.set_cmap(colormap)
-		plt.ion()
-		for m in range(numrois):
-
-			plt.title('Zoom around ROI, change to shell, and press Return')
-			if logscaling:
-				theimage = plt.imshow(np.log(np.absolute(thematrix)))
-			else:
-				theimage = plt.imshow(thematrix)
-			theimage.set_cmap(colormap)
-			plt.ion()
-						
-			thestring = 'Zoom around ROI No. %s and press enter to continue.' % (m+1)
-			wait = raw_input(thestring)
-								
-			limits = np.floor(axis())
-			plt.axis([0.0,self.DET_PIXEL_NUM,self.DET_PIXEL_NUM,0.0])
-
-			inds = limits < 1
-			limits[inds] = 1
-			inds = limits > limmax
-			limits[inds] = limmax
-			print 'selected limits are: ', limits
-
-			T = np.zeros(np.shape(thematrix))
-			T[limits[3]:limits[2],:] = 1
-			t = np.zeros(np.shape(thematrix))
-			t[:,limits[0]:limits[1]] = 1
-			indsx,indsy = np.where(t*T == 1)
-			eachroi = []
-			for n in range(len(indsx)):
-				eachroi.append((indsy[n],indsx[n]))
-			therois.append(eachroi)
-		plt.show()
-		self.roikind  = 'zoom'
-		self.rois     = therois
-		self.roinums  = numrois
-
-	def getautorois(self,kernel_size=5,colormap='jet',thresholdfrac=100):
-		"""
-		define ROIs by choosing a threshold through a slider bar on the plot window
-		"""
-		plt.clf()
-		thematrix = self.preparemats() # the starting matrix to plot
-		plt.title('Crank the threshold and close the plotting window, when you are satisfied.',fontsize=14)		
-		ax = plt.subplot(111) 
-		plt.subplots_adjust(left=0.05, bottom=0.2)
-		thres0 = 0 # initial threshold value
-		theimage = plt.imshow(np.log(np.absolute(thematrix)))
-		theimage.set_cmap(colormap)
-		plt.colorbar()
-		thresxcolor = 'lightgoldenrodyellow'
-		thresxamp  = plt.axes([0.2, 0.10, 0.55, 0.03], axisbg=thresxcolor)
-		sthres = plt.Slider(thresxamp, 'Threshold', 0.0, np.floor(np.amax(thematrix)/thresholdfrac), valinit=thres0)
-
-		def update(val):
-			thres = sthres.val
-			newmatrix = signal.medfilt2d(thematrix, kernel_size=kernel_size)
-			belowthres_indices = newmatrix < thres
-			newmatrix[belowthres_indices] = 0			
-			labelarray,numfoundrois = measurements.label(newmatrix)
-			print str(numfoundrois) + ' ROIs found!'	
-			# organize rois
-			therois = []
-			for n in range(numfoundrois):
-				rawindices = np.nonzero(labelarray == n+1)
-				eachroi = []				
-				for m in range(len(rawindices[0])):
-					eachroi.append((rawindices[1][m],rawindices[0][m]))
-				therois.append(eachroi)
-			self.rois = therois
-			self.roinums = numfoundrois
-			theimage.set_data(newmatrix)
-			plt.draw()
-		sthres.on_changed(update)
-		plt.show()
-		self.roikind = 'auto'
-
-	def getautorois_eachdet(self,kernel_size=5,colormap='jet',thresholdfrac=100):
-		"""
-		autoroi, detector for detector for ID20 (6 detector setup) so that different 
-		thresholds can be choosen for the different detectors
-		define ROIs by choosing a threshold through a slider bar on the plot window
-		"""
-		self.rois = []
-		self.roinums = 0
-		wholematrix = np.array(self.preparemats()) # full 6-detector image
-		imagelims = [[0,256,0,256],[0,256,256,512],[0,256,512,768],[256,512,0,256],[256,512,256,512],[256,512,512,768]] 
-
-		for n in range(len(imagelims)):
-			plt.clf()
-			# thematrix now is a single detector image (256x256 pixels)
-			thematrix = wholematrix[imagelims[n][0]:imagelims[n][1],imagelims[n][2]:imagelims[n][3]]
-			plt.title('Crank the threshold and close the plotting window, when you are satisfied.',fontsize=14)		
-			ax = plt.subplot(111) 
-			plt.subplots_adjust(left=0.05, bottom=0.2)
-			thres0 = 0 # initial threshold value
-			theimage = plt.imshow(np.log(np.absolute(thematrix)))
-			theimage.set_cmap(colormap)
-			plt.colorbar()
-			thresxcolor = 'lightgoldenrodyellow'
-			thresxamp  = plt.axes([0.2, 0.10, 0.55, 0.03], axisbg=thresxcolor)
-			sthres = plt.Slider(thresxamp, 'Threshold', 0.0, np.floor(np.amax(thematrix)/thresholdfrac), valinit=thres0)
-
-			# using the "container" class to pass the results of the rois from the nested function
-			roi_result = container()
-
-			def update(val):
-				thres = sthres.val
-				newmatrix = signal.medfilt2d(thematrix, kernel_size=kernel_size)
-				belowthres_indices = newmatrix < thres
-				newmatrix[belowthres_indices] = 0			
-				labelarray,numfoundrois = measurements.label(newmatrix)
-				print str(numfoundrois) + ' ROIs found!'	
-				# organize rois
-				therois = []
-				for n in range(numfoundrois):
-					rawindices = np.nonzero(labelarray == n+1)
-					eachroi = []
-					for m in range(len(rawindices[0])):
-						eachroi.append((rawindices[1][m],rawindices[0][m]))
-					therois.append(eachroi)
-				theimage.set_data(newmatrix)
-				plt.draw()
-				roi_result.therois =  therois
-				roi_result.numfoundrois = numfoundrois
-
-			sthres.on_changed(update)
-			plt.show()
-			thestring = 'Press enter to continue.'
-			wait = raw_input(thestring)
-			self.rois.extend(roi_result.therois)
-			self.roinums += roi_result.numfoundrois
-
-		self.roikind = 'auto'
-
-	def saverois(self,filename):
-		"""
-		save the ROIs in file with name filename
-		"""	
-		f = open(filename, 'wb')
-		theobject = [self.rois, self.roinums, self.roikind]
-		pickle.dump(theobject, f,protocol=-1)
-		f.close()
-
-	def loadrois(self,filename):
-		"""
-		load ROIs from file with name filename
-		"""
-		f = open(filename,'rb')
-		theobject = pickle.load(f)
-		f.close()
-		self.rois    = theobject[0]
-		self.roinums = theobject[1]
-		self.roikind = theobject[2]
-		
-	def deleterois(self):
-		"""
-		delete the existing ROIs
-		"""
-		self.rois    = []
-		self.roinums = []
-		self.roikind = []
-
-	def plotrois(self):
-		"""
-		returns a plot of the ROI shapes
-		"""
-		plt.figure()
-		thematrix = np.zeros((self.DET_PIXEL_NUM,self.DET_PIXEL_NUM))
-		for roi in self.rois:
-			for index in roi:
-				thematrix[index[1],index[0]] = 1
-		theimage = plt.imshow(thematrix)
-		plt.show()
-
-class LRimage:
-	"""
-	container class to hold info of a single LR-image to be put togther in a SR-image by the imageset class
-	"""
-	def __init__(self,matrix,xscale,yscale):
-		self.name	= []
-		self.matrix	= matrix
-		self.xscale	= xscale
-		self.yscale	= yscale
-		self.tth	= []
-
-	def plotimage(self):
-		pass
-
-	def shiftx(self):
-		pass
-
-	def shifty(self):
-		pass
-
-	def save(self):
-		pass
-
-	def load(self):
-		pass
-
-class container:
-	"""
-	random container class to hold values
-	"""
-	def __init__(self):
-		pass
 

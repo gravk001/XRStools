@@ -283,7 +283,13 @@ class erkale:
 			self.sqw += f(self.energy)
 
 	def norm_area(self,emin=None,emax=None):
-		pass
+		if not emin:
+			emin = self.energy[0]
+		if not emax:
+			emax = self.energy[-1]
+
+		inds = np.where(np.logical_and(self.energy>=emin,self.energy<=emax))[0]
+		self.sqw = self.sqw/np.trapz(self.sqw[inds],self.energy[inds])
     
 	def norm_max(self):
 		pass

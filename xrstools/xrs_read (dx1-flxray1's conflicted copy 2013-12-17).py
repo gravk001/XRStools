@@ -8,7 +8,6 @@ from helpers import *
 import os
 import numpy as np
 import array as arr
-import pickle
 from itertools import groupby
 from scipy.integrate import trapz
 from scipy.interpolate import interp1d
@@ -23,9 +22,9 @@ __metaclass__ = type # new style classes
 
 class read_id20:
 	"""
-	a class for loading data form SPEC files and the according edf files
+	a class for loading data form SPEC files and the according edf files from the old id16
 	"""
-	def __init__(self,absfilename,energycolumn='energy',monitorcolumn='kap4dio'):
+	def __init__(self,absfilename,energycolumn='energy_cc',monitorcolumn='monitor'):
 		self.scans         = {} # was a dictionary before
 		if not os.path.isfile(absfilename):
 			raise Exception('IOError! No such file, please check filename.')
@@ -47,7 +46,7 @@ class read_id20:
 		self.signals  = []	# signals for all analyzers
 		self.errors   = []	# poisson errors
 		self.qvalues  = []	# for all analyzers
-		self.groups   = {}  # groups (such as 2 'elastic', or 5 'edge1', etc.)
+		self.groups   = {}      # groups (such as 2 'elastic', or 5 'edge1', etc.)
 		self.cenom    = []
 		self.E0       = []
 		self.tth      = []
@@ -289,12 +288,6 @@ class read_id20:
 		theimage = imshow(thematrix)
 		show()
 
-	def orderrois(self):
-		"""
-		order the rois in an order provided such that e.g. autorois have the correct order 
-		"""
-		pass	
-
 	def getrawdata(self):
 		"""
 		goes through all instances of the scan class and calls it's applyrois method
@@ -388,13 +381,36 @@ class read_id20:
 		groups the instances of the scan class by their scantype attribute, 
 		adds equal scans (each group of equal scans) and appends them 
 		"""
-		# find the groups 
+		# find the groups
 		allgroups = findgroups(self.scans)
 		for group in allgroups:
 			# self.makegroup(group)
 			onegroup = makegroup_nointerp(group)
 			self.groups[onegroup.gettype()] = onegroup
 		self.energy,self.signals,self.errors = appendscans(self.groups)
+
+	def getspectrum_test(self):
+		"""
+		groups the instances of the scan class by their scantype attribute, 
+		adds equal scans (each group of equal scans) and appends them
+		trying to correct each scan on energy scale to elastic closest to it in scnanumber (but smaller) 
+		"""
+		# find the groups
+		allgroups   = findgroups(self.scans)
+		elasticnums = [] # list with scannumbers of all elastic lines taken
+		cenoms      = [] # list of lists with all center of masses for all elastic lines and ROIs
+		# catch the information of all elastic lines (scannumber and center of mass)
+		for group in allgroups:
+			if group[0].gettype() == 'elastic':
+				for n in range(len(group)):
+					elasticnums.append(group[n].number)
+					cenoms.append(group[n].cenom)
+
+		for group in allgroups:
+			# create groups with the info from the elastic line
+			onegroup = makegroup_test(group,elasticnum=elasticnums,cenom=cenoms)
+			self.groups[onegroup.gettype()] = onegroup
+		self.energy,self.eloss,self.signals,self.errors,self.resolution = appendscans_test(self.groups)
 
 	def geteloss(self):
 		"""
@@ -498,7 +514,6 @@ class read_id20:
 		for n in order:
 			self.tth.extend(tth[n])
 
-
 	def getqvals(self,invangstr=False):
 		"""
 		calculates q-values from E0 and tth values in either atomic units (defalt) or
@@ -540,12 +555,11 @@ class read_id20:
 				shutil.copy2(edfnameh, destdir)
 				shutil.copy2(edfnamev, destdir)
 
-	def make_posscan_image(self,scannumber,motorname,filename=None):
+	def make_posscan_image(self,scannumber,motorname):
 		"""
 		loads a scan from a sample position scan (x-scan, y-scan, z-scan), lets you choose a zoomroi and constructs a 2D image from this
 		scannumber = number of the scan
 		motorname  = string that contains the motor name (must be the same as in the SPEC file)
-		filename   = optional parameter with filename to store the image
 		"""
 		plt.clf()
 		# load the scan
@@ -563,23 +577,16 @@ class read_id20:
 			roiyinds.append(roi_object.rois[0][n][1])
 		# go through all edf files of the scan, sum over the height of the roi and stack the resulting lines into a matrix
 		axesrange = [0,roiyinds[-1],position[0],position[-1]]
-		theimage = (np.sum(edfmats[:,np.amin(roiyinds):np.amax(roiyinds)+1,np.amin(roixinds):np.amax(roixinds)+1],axis=1))
+		image = (np.sum(edfmats[:,np.amin(roiyinds):np.amax(roiyinds)+1,np.amin(roixinds):np.amax(roixinds)+1],axis=1))
 		plt.close()
 		fig = plt.figure()
 		ax = fig.add_subplot(111)
-		ax.imshow(np.log(theimage),extent=axesrange)
+		ax.imshow(np.log(image),extent=axesrange)
 		ax.set_aspect('auto')
 		plt.xlabel('pixel along the beam')
 		ylabelstr = motorname.lower() + ' position [mm]'
 		plt.ylabel(ylabelstr)
 		plt.show()
-		# save the image, if a filename is provided
-		if filename:
-			f = open(filename, 'wb')
-			yrange = np.arange(np.amin(roixinds),np.amax(roixinds)+1)
-			theobject = LRimage(theimage,position,yrange)
-			pickle.dump(theobject, f,protocol=-1)
-			f.close()
 
 	def animation(self,scannumber,logscaling=True,timeout=-1,colormap='jet'):
 		"""
@@ -1026,7 +1033,463 @@ class read_id16:
 				edfname   = self.path + self.EDF_PREFIX + self.filename + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
 				shutil.copy2(edfname, destdir)
 
+class rois:
+	"""
+	a class to define ROIs
+	ROIs are saved in self.rois as a list with the same number of entries as ROIs defined. Each entry is a list of (x,y)-coordinate tuples
+	"""
+	def __init__(self,scans,scannumbers):
+		self.scandata = scans # dictionary with instances of the onescan class
+		if not isinstance(scannumbers,list):
+			thescannumbers = []
+			thescannumbers.append(scannumbers)
+		else:
+			thescannumbers = scannumbers  
+		self.scannums = thescannumbers
+		self.rois     = []
+		self.roinums  = []
+		self.roikind  = []
+		self.roiheight = []
+		self.roiwidth  = []
+		self.DET_PIXEL_NUM = 256
+		# adding list of lists with x- and y-indices, useful for 2D things (compare Simos Matlab scripts)
+		self.roisx = [] 
+		self.roisy = []
 
+	def preparemats(self):
+		"""
+		sums and squeezes all edf-files of a scan into one matrix 
+		"""
+		# take shape of the first edf-matrices
+		dim = np.shape(self.scandata['Scan%03d' % self.scannums[0]].edfmats)
+		#edfmatrices = np.zeros((1,self.DET_PIXEL_NUM,self.DET_PIXEL_NUM))
+		edfmatrices = np.zeros((1,dim[1],dim[2]))
+		for number in self.scannums:
+			scanname = 'Scan%03d' % number
+			edfmatrices = np.append(edfmatrices,self.scandata[scanname].edfmats,axis=0)
+		return sumx(edfmatrices)
+	
+	def prepareedgemats(self,index):
+		"""
+		difference between two summed and squeezed edf-files of a scan from below and above energyval 
+		"""
+		# take shape of the first edf-matrices 
+		dim = np.shape(self.scandata['Scan%03d' % self.scannums[0]].edfmats)
+		abovemats = np.zeros((1,dim[1],dim[2]))
+		belowmats = np.zeros((1,dim[1],dim[2]))
+		# abovemats = np.zeros((1,self.DET_PIXEL_NUM,self.DET_PIXEL_NUM))
+		# belowmats = np.zeros((1,self.DET_PIXEL_NUM,self.DET_PIXEL_NUM))
+		for number in self.scannums:
+			scanname = 'Scan%03d' % number
+			# abovemats = np.append(abovemats,self.scandata[scanname].edfmats[self.scandata[scanname].energy >  energyval,:,:],axis=0)
+			# belowmats = np.append(belowmats,self.scandata[scanname].edfmats[self.scandata[scanname].energy <= energyval,:,:],axis=0)
+			abovemats = np.append(abovemats,self.scandata[scanname].edfmats[index:,:,:],axis=0)
+			belowmats = np.append(belowmats,self.scandata[scanname].edfmats[:index,:,:],axis=0)
+		return np.absolute(np.squeeze(np.sum(abovemats,axis=0))-np.squeeze(np.sum(belowmats,axis=0)))
+
+	def getlinrois(self,numrois,logscaling=True,height=5,colormap='jet'):
+		"""
+		define ROIs by clicking two points
+		"""
+
+		fig = plt.figure(figsize=(8, 6))
+		ax = fig.add_subplot(111, axisbg='#FFFFCC')
+
+		thematrix = self.preparemats()
+		plt.title('Click start and endpoints of the linear ROIs you whish.',fontsize=14)		
+		if logscaling:
+			theimage = plt.imshow(np.log(np.absolute(thematrix)))
+		else:
+			theimage = plt.imshow(thematrix)
+		# Choose a color palette
+		theimage.set_cmap(colormap)
+		plt.colorbar()
+
+		therois   = [] # list of lists of tuples with (x,y) coordinates
+		theroisx  = [] # list of lists of x-indices
+		theroisy  = [] # list of lists of y-indices
+
+		cursor = Cursor(ax, useblit=True, color='red', linewidth=1 )
+
+		for m in range(numrois):
+			plt.clf()
+			if m>0:
+				if therois[m-1]:
+					for index in therois[m-1]:
+						thematrix[index[1],index[0]] = np.amax(thematrix)
+			print ("chose two points as endpoints for linear ROI No. %s" % (m+1))
+
+			if logscaling:
+				theimage = imshow(np.log(np.absolute(thematrix)))
+			else:
+				theimage = imshow(thematrix)	
+			theimage.set_cmap(colormap)
+			plt.draw()	
+
+			endpoints = []
+			endpts    = ginput(2)
+			for point in endpts:
+				point = [round(element) for element in point]
+				endpoints.append(np.array(point))
+			roix = np.arange(endpoints[0][0],endpoints[1][0])
+			roiy = [round(num) for num in np.polyval(np.polyfit([endpoints[0][0],endpoints[1][0]],[endpoints[0][1],endpoints[1][1]],1),roix)]
+
+			theheight = np.arange(-height,height)
+			
+			eachroi  = []
+			eachroix = []
+			eachroiy = []
+			for n in range(len(roix)):
+				for ind in theheight:
+					eachroi.append((roix[n],roiy[n]+ind))
+					eachroix.append(roix[n])
+					eachroiy.append(roiy[n]+ind)
+			therois.append(eachroi)
+			theroisx.append(eachroix)
+			theroisy.append(eachroiy)
+
+			self.roiheight.append(len(theheight)) # save the hight of each roi (e.g. for imaging)
+			self.roiwidth.append(endpoints[1][0]-endpoints[0][0]) # save the width of each roi
+			del endpoints
+			del eachroi
+			del eachroix
+			del eachroiy
+	
+		plt.show()		
+		self.roikind  = 'linear'
+		self.rois     = therois
+		self.roisx    = theroisx
+		self.roisy    = theroisy
+		self.roinums  = numrois
+
+	def getzoomrois(self,numrois,logscaling=True,colormap='jet'):
+		"""
+		define ROIs by zooming in on plot
+		"""
+		thematrix = self.preparemats()
+		limmax    = np.shape(thematrix)[1]
+		therois   = [] # list of lists of tuples with (x,y) coordinates
+		theroisx  = [] # list of lists of x-indices
+		theroisy  = [] # list of lists of y-indices
+		title('Zoom around ROI, change to shell, and press Return')
+		if logscaling:
+			theimage = imshow(np.log(np.absolute(thematrix)))
+		else:
+			theimage = imshow(thematrix)	
+		theimage.set_cmap(colormap)
+		ion()	
+		for m in range(numrois):
+			clf()
+			if m>0:
+				if therois[m-1]:
+					for index in therois[m-1]:
+						thematrix[index[1],index[0]] = np.amax(thematrix)
+			title('Zoom around ROI, change to shell, and press Return')
+			if logscaling:
+				theimage = imshow(np.log(np.absolute(thematrix)))
+			else:
+				theimage = imshow(thematrix)	
+			theimage.set_cmap(colormap)
+			draw()	
+						
+			thestring = 'Zoom around ROI No. %s and press enter to continue.' % (m+1)
+			wait = raw_input(thestring)
+								
+			limits = np.floor(axis())
+			#axis([0.0,self.DET_PIXEL_NUM,self.DET_PIXEL_NUM,0.0]) # check this for the larger detector size!
+			
+			inds = limits < 1
+			limits[inds] = 1
+			inds = limits > limmax
+			limits[inds] = limmax
+			print 'selected limits are: ', limits
+
+			T = np.zeros(np.shape(thematrix))
+			T[limits[3]:limits[2],:] = 1
+			t = np.zeros(np.shape(thematrix))
+			t[:,limits[0]:limits[1]] = 1
+			indsx,indsy = np.where(t*T == 1)
+			eachroi  = []
+			eachroix = []
+			eachroiy = []
+			for n in range(len(indsx)):
+				eachroi.append((indsy[n],indsx[n]))
+				eachroix.append(indsx[n])
+				eachroiy.append(indsy[n])
+			therois.append(eachroi)
+			theroisx.append(eachroix)
+			theroisy.append(eachroiy)
+		show()
+		self.roikind  = 'zoom'
+		self.rois     = therois
+		self.roisx    = theroisx
+		self.roisy    = theroisy
+		self.roinums  = numrois
+
+	def getzoomrois_frommatrix(self,matrix,numrois,logscaling=True,colormap='jet'):
+		"""
+		define ROIs by zooming in on plot
+		"""
+		thematrix = matrix
+		limmax = np.shape(thematrix)[1]
+		therois = []
+		title('Zoom around ROI, change to shell, and press Return')
+		if logscaling:
+			theimage = imshow(np.log(np.absolute(thematrix)))
+		else:
+			theimage = imshow(thematrix)	
+		theimage.set_cmap(colormap)
+		ion()	
+		for m in range(numrois):
+			
+			title('Zoom around ROI, change to shell, and press Return')
+			if logscaling:
+				theimage = imshow(np.log(np.absolute(thematrix)))
+			else:
+				theimage = imshow(thematrix)	
+			theimage.set_cmap(colormap)
+			ion()	
+						
+			thestring = 'Zoom around ROI No. %s and press enter to continue.' % (m+1)
+			wait = raw_input(thestring)
+								
+			limits = np.floor(axis())
+			axis([0.0,self.DET_PIXEL_NUM,self.DET_PIXEL_NUM,0.0])
+			
+			inds = limits < 1
+			limits[inds] = 1
+			inds = limits > limmax
+			limits[inds] = limmax
+			print 'selected limits are: ', limits
+
+			T = np.zeros(np.shape(thematrix))
+			T[limits[3]:limits[2],:] = 1
+			t = np.zeros(np.shape(thematrix))
+			t[:,limits[0]:limits[1]] = 1
+			indsx,indsy = np.where(t*T == 1)
+			eachroi = []
+			for n in range(len(indsx)):
+				eachroi.append((indsy[n],indsx[n]))
+			therois.append(eachroi)
+			
+		show()
+		self.roikind  = 'zoom'
+		self.rois     = therois
+		self.roinums  = numrois
+
+	def getlinedgerois(self,index,numrois=9,logscaling=True,height=5,colormap='jet'):
+		"""
+		define ROIs by clicking two points in difference picture
+		"""
+		# thematrix = self.prepareedgemats(energyval) # change this to use an index
+		thematrix = self.prepareedgemats(index) # change this to use an index
+		if logscaling:
+			theimage = imshow(np.log(np.absolute(thematrix)))
+		else:
+			theimage = imshow(thematrix)
+		# Choose a color palette
+		theimage.set_cmap(colormap)
+		colorbar()
+
+		therois = []
+		for m in range(numrois):
+			print ("chose two points as endpoints for linear ROI No. %s" % (m+1))
+			endpoints = []
+			endpts    = ginput(2)
+			for point in endpts:
+				point = [round(element) for element in point]
+				endpoints.append(np.array(point))
+			roix = np.arange(endpoints[0][0],endpoints[1][0])
+			roiy = [round(num) for num in np.polyval(np.polyfit([endpoints[0][0],endpoints[1][0]],[endpoints[0][1],endpoints[1][1]],1),roix)]
+			del endpoints
+			theheight = np.arange(-height,height)
+			eachroi = []
+			for n in range(len(roix)):
+				for ind in theheight:
+					eachroi.append((roix[n],roiy[n]+ind))
+			therois.append(eachroi)
+			del eachroi			
+		show()		
+		self.roikind  = 'linear'
+		self.rois     = therois
+		self.roinums  = numrois
+
+	def getzoomedgerois(self,index,numrois=9,logscaling=True,colormap='jet'):
+		"""
+		define ROIs by zooming in on plot
+		"""
+		# thematrix = self.prepareedgemats(energyval)
+		thematrix = self.prepareedgemats(index)
+		limmax = np.shape(thematrix)[1]
+		therois = []
+		title('Zoom around ROI, change to shell, and press Return')
+		if logscaling:
+			theimage = imshow(np.log(np.absolute(thematrix)))
+		else:
+			theimage = imshow(thematrix)
+		theimage.set_cmap(colormap)
+		ion()
+		for m in range(numrois):
+			
+			title('Zoom around ROI, change to shell, and press Return')
+			if logscaling:
+				theimage = imshow(np.log(np.absolute(thematrix)))
+			else:
+				theimage = imshow(thematrix)
+			theimage.set_cmap(colormap)
+			ion()	
+						
+			thestring = 'Zoom around ROI No. %s and press enter to continue.' % (m+1)
+			wait = raw_input(thestring)
+								
+			limits = np.floor(axis())
+			axis([0.0,self.DET_PIXEL_NUM,self.DET_PIXEL_NUM,0.0])
+			
+			inds = limits < 1
+			limits[inds] = 1
+			inds = limits > limmax
+			limits[inds] = limmax
+			print 'selected limits are: ', limits
+			
+			T = np.zeros(np.shape(thematrix))
+			T[limits[3]:limits[2],:] = 1
+			t = np.zeros(np.shape(thematrix))
+			t[:,limits[0]:limits[1]] = 1
+			indsx,indsy = np.where(t*T == 1)
+			eachroi = []
+			for n in range(len(indsx)):
+				eachroi.append((indsy[n],indsx[n]))
+			therois.append(eachroi)
+		show()
+		self.roikind  = 'zoom'
+		self.rois     = therois
+		self.roinums  = numrois
+
+	def getautorois(self,kernel_size=5,colormap='jet',thresholdfrac=100):
+		"""
+		define ROIs by choosing a threshold through a slider bar on the plot window
+		"""
+		thematrix = self.preparemats() # the starting matrix to plot
+		title('Crank the threshold and close the plotting window, when you are satisfied.',fontsize=14)		
+		ax = subplot(111) 
+		subplots_adjust(left=0.05, bottom=0.2)
+		thres0 = 0 # initial threshold value
+		theimage = imshow(np.log(np.absolute(thematrix)))
+		theimage.set_cmap(colormap)
+		colorbar()		
+		thresxcolor = 'lightgoldenrodyellow'
+		thresxamp  = axes([0.2, 0.10, 0.55, 0.03], axisbg=thresxcolor)
+		sthres = Slider(thresxamp, 'Threshold', 0.0, np.floor(np.amax(thematrix)/thresholdfrac), valinit=thres0)
+		
+		def update(val):
+			thres = sthres.val
+			newmatrix = signal.medfilt2d(thematrix, kernel_size=kernel_size)
+			belowthres_indices = newmatrix < thres
+			newmatrix[belowthres_indices] = 0			
+			labelarray,numfoundrois = measurements.label(newmatrix)
+			print str(numfoundrois) + ' ROIs found!'	
+			# organize rois
+			therois = []
+			for n in range(numfoundrois):
+				rawindices = np.nonzero(labelarray == n+1)
+				eachroi = []				
+				for m in range(len(rawindices[0])):
+					eachroi.append((rawindices[1][m],rawindices[0][m]))
+				therois.append(eachroi)
+			self.rois = therois
+			self.roinums = numfoundrois
+			theimage.set_data(newmatrix)
+			draw()
+		sthres.on_changed(update)
+		show()
+		self.roikind = 'auto'
+
+	def getautorois_eachdet(self,kernel_size=5,colormap='jet',thresholdfrac=100):
+		"""
+		autoroi, detector for detector for ID20 (6 detector setup) so that different 
+		thresholds can be choosen for the different detectors
+		define ROIs by choosing a threshold through a slider bar on the plot window
+		"""
+		self.rois = []
+		self.roinums = 0
+		wholematrix = np.array(self.preparemats()) # full 6-detector image
+		imagelims = [[0,256,0,256],[0,256,256,512],[0,256,512,768],[256,512,0,256],[256,512,256,512],[256,512,512,768]] 
+
+		for n in range(len(imagelims)):
+			thematrix = wholematrix[imagelims[n][0]:imagelims[n][1],imagelims[n][2]:imagelims[n][3]]
+			title('Crank the threshold and close the plotting window, when you are satisfied.',fontsize=14)		
+			ax = subplot(111) 
+			subplots_adjust(left=0.05, bottom=0.2)
+			thres0 = 0 # initial threshold value
+			theimage = imshow(np.log(np.absolute(thematrix)))
+			theimage.set_cmap(colormap)
+			colorbar()		
+			thresxcolor = 'lightgoldenrodyellow'
+			thresxamp  = axes([0.2, 0.10, 0.55, 0.03], axisbg=thresxcolor)
+			sthres = Slider(thresxamp, 'Threshold', 0.0, np.floor(np.amax(thematrix)/thresholdfrac), valinit=thres0)
+		
+			def update(val):
+				thres = sthres.val
+				newmatrix = signal.medfilt2d(thematrix, kernel_size=kernel_size)
+				belowthres_indices = newmatrix < thres
+				newmatrix[belowthres_indices] = 0			
+				labelarray,numfoundrois = measurements.label(newmatrix)
+				print str(numfoundrois) + ' ROIs found!'	
+				# organize rois
+				therois = []
+				for n in range(numfoundrois):
+					rawindices = np.nonzero(labelarray == n+1)
+					eachroi = []				
+					for m in range(len(rawindices[0])):
+						eachroi.append((rawindices[1][m],rawindices[0][m]))
+					therois.append(eachroi)
+				self.rois.append(therois[-1])
+				theimage.set_data(newmatrix)
+				draw()
+
+			sthres.on_changed(update)
+			show()
+		self.roikind = 'auto'
+
+	def saverois(self,filename):
+		"""
+		save the ROIs in file with name filename
+		"""	
+		f = open(filename, 'wb')
+		theobject = [self.rois, self.roinums, self.roikind]
+		pickle.dump(theobject, f,protocol=-1)
+		f.close()
+
+	def loadrois(self,filename):
+		"""
+		load ROIs from file with name filename
+		"""
+		f = open(filename,'rb')
+		theobject = pickle.load(f)
+		f.close()
+		self.rois    = theobject[0]
+		self.roinums = theobject[1]
+		self.roikind = theobject[2]
+		
+	def deleterois(self):
+		"""
+		delete the existing ROIs
+		"""
+		self.rois    = []
+		self.roinums = []
+		self.roikind = []
+
+	def plotrois(self):
+		"""
+		returns a plot of the ROI shapes
+		"""
+		figure()
+		thematrix = np.zeros((self.DET_PIXEL_NUM,self.DET_PIXEL_NUM))
+		for roi in self.rois:
+			for index in roi:
+				thematrix[index[1],index[0]] = 1
+		theimage = imshow(thematrix)
+		show()
 
 # horizontal zoom selector
 """
