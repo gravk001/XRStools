@@ -276,7 +276,7 @@ class HFspectrum:
 		self.V = np.zeros(np.shape(data.signals))
 		self.q = np.zeros(np.shape(data.signals))
 		if not correctasym_pertth:
-			for n in range(len(self.tth)):
+			for n in range(len(data.signals[0,:])):
 				el,j,c,v,q = makeprofile_compds(formulas,concentrations,E0=self.cenom[n],tth=data.tth[n],correctasym=self.correctasym)
 				f = interpolate.interp1d(el,j, bounds_error=False, fill_value=0.0)
 				self.J[:,n] = f(data.eloss)
@@ -292,7 +292,7 @@ class HFspectrum:
 				print 'Currently %d scattering angles defined, but %d scaling factors provided!' % (len(self.tth), len(correctasym_pertth))
 				return
 			else:
-				for n in range(len(self.tth)):
+				for n in range(len(data.signals[0,:])):
 					print self.correctasym, correctasym_pertth[n]
 					el,j,c,v,q = makeprofile_compds(formulas,concentrations,E0=self.cenom[n],tth=data.tth[n],correctasym=np.array(self.correctasym)*correctasym_pertth[n])
 					f = interpolate.interp1d(el,j, bounds_error=False, fill_value=0.0)
@@ -305,7 +305,7 @@ class HFspectrum:
 					self.q[:,n] = f(data.eloss)
 
 		# correct interpolation errors in q (first couple of values are 0.0, replace by smallest value) THIS NEEDS TO BE FIXED
-		for n in range(len(self.tth)):
+		for n in range(len(data.signals[0,:])):
 			inds = np.where(self.q[:,n] == 0)
 			self.q[inds,n] = self.q[np.where(self.q[:,n]>0)[0][0],n]
 

@@ -38,6 +38,7 @@ class extraction:
 		self.valasymmetry = np.zeros((len(self.eloss),len(self.signals[0,:])))
 		self.sqwav      = np.zeros(np.shape(data.eloss))
 		self.sqwaverr   = np.zeros(np.shape(data.eloss))
+
 		# rough normalization over range given by prenormrange
 		for n in range(len(self.signals[0,:])):
 			HFnorm = np.trapz(self.J[:,n],self.eloss)
@@ -165,7 +166,7 @@ class extraction:
 				self.signals[:,col] = self.signals[:,col] - yres
 		plt.ioff()
 
-	def removeconst(self,whichq,emin,emax,ewindow=100.0):
+	def removeconst(self,whichq,emin,emax,ewindow=100.0,stoploop=True):
 		"""
 		fits a constant as background in the range emin-emax and 
 		saves the constant in self.back and the background subtracted self.signals in self.sqw
@@ -194,8 +195,10 @@ class extraction:
 
 			self.background[:,col] = yres
 			self.sqw[:,col]        = self.signals[:,col] - yres
-			_ = raw_input("Press [enter] to continue.") # wait for input from the user
+			if stoploop:
+				_ = raw_input("Press [enter] to continue.") # wait for input from the user
 			plt.close()    # close the figure to show the next one
+			# close the figure to show the next one
 		plt.ioff()
 
 	def removelinear(self,whichq,emin,emax,ewindow=100.0,stoploop=True):
@@ -416,6 +419,50 @@ class extraction:
 			plt.close()    # close the figure to show the next one
 		plt.ioff()
 
+	def removepearson2(self,whichq,emin,emax,guess=None,stoploop=True):
+		"""
+		guess values: 
+		a[0] = Peak position
+		a[1] = FWHM
+		a[2] = Shape, 1 = Lorentzian, infinite = Gaussian
+		a[3] = Peak intensity
+		a[4] = background
+		"""
+		if not isinstance(whichq,list):
+			columns = []
+			columns.append(whichq)
+		else:
+			columns = whichq
+
+		region = np.where(np.logical_and(self.eloss>=emin,self.eloss<=emax))[0]
+		guessregion = np.where(np.logical_and(self.eloss>=self.prenormrange[0],self.eloss<=self.prenormrange[1]))[0]
+
+		plt.ion()
+		for col in columns:
+			if not guess: 
+				guess = []
+				ind = np.where( self.signals[guessregion,col] == np.max(self.signals[guessregion,col]) )[0][0]
+				guess.append(self.eloss[ind]) # max of signal (in range of prenorm from __init__)
+				guess.append(guess[0]*2.0) # twice the position of the peason maximum
+				guess.append(1000.0) # pearson shape, 1 = Lorentzian, infinite = Gaussian
+				guess.append(1.0) # Peak intensity
+				guess.append(0.0) # background
+				print guess
+			
+			popt, pcov = optimize.curve_fit(pearson7_forcurvefit, self.eloss[region], self.signals[region,col],p0=guess)			
+			yres    = pearson7(self.eloss,popt)
+
+			plt.plot(self.eloss,self.signals[:,col],self.eloss,yres,self.eloss,self.signals[:,col]-yres)
+			plt.legend(('data','pearson fit','data - pearson'))
+			plt.draw()
+
+			self.background[:,col] = yres
+			self.sqw[:,col]        = self.signals[:,col] - yres
+			if stoploop:
+				_ = raw_input("Press [enter] to continue.") # wait for input from the user
+			plt.close()    # close the figure to show the next one
+		plt.ioff()
+
 	def removecoreppearson(self,whichq,pearsonrange,postrange,weights=[2,1],guess=None,stoploop=True):
 		"""
 		weights must be integers!
@@ -438,10 +485,12 @@ class extraction:
 		else:
 			columns = whichq		
 
-		region1 = np.where(np.logical_and(self.eloss >= pearsonrange[0], self.eloss <= pearsonrange[1]))[0]
-		region2 = np.where(np.logical_and(self.eloss >= postrange[0], self.eloss <= postrange[1]))[0]
+		region1 = np.where(np.logical_and(self.eloss >= pearsonrange[0], self.eloss <= pearsonrange[1]))
+		region2 = np.where(np.logical_and(self.eloss >= postrange[0], self.eloss <= postrange[1]))
 		region  = np.append(region1*weights[0],region2*weights[1])
 		guessregion = np.where(np.logical_and(self.eloss>=self.prenormrange[0],self.eloss<=self.prenormrange[1]))[0]
+
+		print len(self.eloss[region])
 
 		plt.ion()
 		for col in columns:
@@ -463,9 +512,10 @@ class extraction:
 			c4 = lambda a: np.absolute(5e-1 - a[4]) # slope for linear background should be small
 			c5 = lambda a: a[3] - a[5] # offset for linear should be smaller than maximum of pearson
 			c6 = lambda a: a[6]*np.absolute(1e10 - a[6]) # scaling factor for the data should not be negative
-			
-			fitfct  = lambda a: np.sum( (a[6]*self.signals[region,col] - pearson7_zeroback(self.eloss[region],a[0:4]) - np.polyval(a[4:6],self.eloss[region]) - self.C[region,col])**8.0 )
-			cons = [c1] #, c2, c3, c4, c5, c6
+			c7 = lambda a: np.sum( (a[5]*self.signals[region2,col] - pearson7_zeroback(self.eloss[region2],a[0:5]) - self.C[region2,col])**2.0 )
+
+			fitfct  = lambda a: np.sum( (a[6]*self.signals[region,col] - pearson7_zeroback(self.eloss[region],a[0:4]) - np.polyval(a[4:6],self.eloss[region]) - self.C[region,col])**2.0 )
+			cons = [c7] #[c1, c2, c3, c4, c5, c6, c7]
 			res     = optimize.fmin_cobyla(fitfct,guess,cons)
 			print res
 			yres    = pearson7_zeroback(self.eloss,res[0:4]) + np.polyval(res[4:6],self.eloss) + self.C[:,col]
@@ -482,6 +532,74 @@ class extraction:
 		plt.ioff()
 
 	def removecoreppearson2(self,whichq,pearsonrange,postrange,guess=None,stoploop=True):
+		"""
+		guess values: 
+		pearson (always zero background):
+		a[0] = Peak position
+		a[1] = FWHM
+		a[2] = Shape, 1 = Lorentzian, infinite = Gaussian
+		a[3] = Peak intensity
+		linear:
+		a[4] = linear slope
+		a[5] = linear background/offset
+		data: 
+		a[6] = scaling factor
+		"""
+		if not isinstance(whichq,list):
+			columns = []
+			columns.append(whichq)
+		else:
+			columns = whichq		
+
+		region1 = np.where(np.logical_and(self.eloss >= pearsonrange[0], self.eloss <= pearsonrange[1]))[0]
+		region2 = np.where(np.logical_and(self.eloss >= postrange[0], self.eloss <= postrange[1]))[0]
+		region = np.append(region1,region2)
+		
+		guessregion = np.where(np.logical_and(self.eloss>=self.prenormrange[0],self.eloss<=self.prenormrange[1]))[0]
+
+		plt.ion()
+		for col in columns:
+			if not guess: 
+				guess = []
+				ind = self.signals[guessregion,col].argmax(axis=0) # find index of maximum of signal in "prenormrange" (defalt [5,inf])
+				guess.append(self.eloss[guessregion][ind]) # max of signal (in range of prenorm from __init__)
+				guess.append(guess[0]*1.0) # once the position of the peason maximum
+				guess.append(1.0) # pearson shape, 1 = Lorentzian, infinite = Gaussian
+				guess.append(self.signals[guessregion,col][ind]) # Peak intensity
+				guess.append(0.0) # ax
+				guess.append(0.0) # b
+				guess.append(1.0) # scaling factor for exp. data
+				print guess
+
+			# boundary conditions for the fit: let the post-edge region oscilate around the HF core profile
+			c1 = lambda a: np.sum( (a[6]*self.signals[region2,col] - pearson7_zeroback(self.eloss[region2],a[0:4]) - self.C[region2,col])**2.0 )
+			c2 = lambda a: a[3]
+			c3 = lambda a: a[1]
+			c4 = lambda a: a[5]
+
+			#fitfct  = lambda a: np.sum( (a[5]*self.signals[region1,col] - pearson7_zeroback(self.eloss[region1],a[0:4]) - self.C[region1,col])**2.0 )
+			fitfct  = lambda a: np.sum( ( a[6]*self.signals[region,col] - pearson7_zeroback(self.eloss[region],a[0:4]) - np.polyval(a[4:6],self.eloss[region]) - self.C[region,col])**2.0 )
+			cons = [c2,c3,c4] #, c2, c3, c4, c5, c6
+			res     = optimize.fmin_cobyla(fitfct,guess,cons)
+			#res     = optimize.fmin(fitfct,guess)
+
+			yres    = pearson7_zeroback(self.eloss,res[0:4])
+
+			plt.plot(self.eloss,res[6]*self.signals[:,col], self.eloss,pearson7_zeroback(self.eloss[:],res[0:4]), self.eloss,np.polyval(res[4:6],self.eloss[:]) )
+
+			#plt.plot(self.eloss,self.signals[:,col]*res[6],self.eloss,yres,self.eloss,self.signals[:,col]*res[6]-yres ,self.eloss,self.C[:,col])
+
+			#plt.legend(('scaled data','pearson','data - pearson','core'))
+			plt.draw()
+
+			self.background[:,col] = yres
+			self.sqw[:,col]        = self.signals[:,col] - yres
+			if stoploop:
+				_ = raw_input("Press [enter] to continue.") # wait for input from the user
+			plt.close()    # close the figure to show the next one
+		plt.ioff()
+
+	def removecoreppearson3(self,whichq,pearsonrange,postrange,guess=None,stoploop=True):
 		"""
 		guess values: 
 		pearson (always zero background):
@@ -517,28 +635,38 @@ class extraction:
 				guess.append(1.0) # pearson shape, 1 = Lorentzian, infinite = Gaussian
 				guess.append(self.signals[guessregion,col][ind]) # Peak intensity
 				guess.append(0.0) # pearson offset
-				guess.append(1.0) # scaling factor for exp. data
-			#  - np.polyval(a[5:7],self.eloss[region1])
-			# boundary conditions for the fit: let the post-edge region oscilate around the HF core profile
-			c1 = lambda a: np.sum( (a[5]*self.signals[region2,col] - pearson7_zeroback(self.eloss[region2],a[0:5]) - self.C[region2,col])**2.0 )
-			
-			fitfct  = lambda a: np.sum( (a[5]*self.signals[region1,col] - pearson7_zeroback(self.eloss[region1],a[0:5]) - self.C[region1,col])**2.0 )
-			cons = [c1] #, c2, c3, c4, c5, c6
-			res     = optimize.fmin_cobyla(fitfct,guess,cons)
+				guess.append(0.0) # scaling factor for exp. data
+				guess.append(0.0)
+				guess.append(1.0)
+				print 'guessing start values: ', guess
+
+			# formulate some contraints:
+			def constr1(a):
+				return a[1] # let FWHM be positive
+			def constr2(a):
+				return a[3] # let the peak intensity be positive
+			def constr3(a):
+				return a[7] # scaling should be positive
+
+			# initial fit:
+			fitfct  = lambda a: np.sum( (a[5]*self.signals[region1,col] - pearson7_zeroback(self.eloss[region1],a[0:5]))**2.0 )
+			res     = optimize.fmin_cobyla(fitfct,guess,[constr1, constr2, constr3])
+
+			# try again and again to optimize until post-edge region oscilates around the HF core profile
+			etol = 1e-4
+			while np.sum( (res[5]*self.signals[region2,col] - pearson7_zeroback(self.eloss[region2],res[0:5]) - self.C[region2,col])**2.0 )>etol:
+				res = optimize.fmin_cobyla(fitfct,res,[constr1, constr2, constr3])
 
 			yres    = pearson7_zeroback(self.eloss,res[0:5])
-
-			plt.plot(self.eloss,self.signals[:,col]*res[5],self.eloss,yres,self.eloss,self.signals[:,col]*res[5]-yres ,self.eloss,self.C[:,col])
-
-			plt.legend(('scaled data','pearson','data - pearson','core'))
-			plt.draw()
+			if stoploop:
+				plt.plot(self.eloss,self.signals[:,col]*res[7],self.eloss,yres,self.eloss,self.signals[:,col]*res[7]-yres ,self.eloss,self.C[:,col])
+				plt.legend(('scaled data','pearson','data - pearson','core'))
+				plt.draw()
+				_ = raw_input("Press [enter] to continue.") # wait for input from the user
+				plt.close()    # close the figure to show the next one
 
 			self.background[:,col] = yres
 			self.sqw[:,col]        = self.signals[:,col] - yres
-			if stoploop:
-				_ = raw_input("Press [enter] to continue.") # wait for input from the user
-			plt.close()    # close the figure to show the next one
-		plt.ioff()
 
 	def remquickval(self,whichq,corefitrange,interpolrange,convwidth,stoploop=True):
 		"""
@@ -717,6 +845,7 @@ class extraction:
 			# simple minimization to subtract a linear from the data to fit ontop of the HF Compton profile:
 			fitfct = lambda a: (self.signals[linrange,col] - np.polyval([a[0],a[1]],self.eloss[linrange]) ) - a[2]*self.J[linrange,col]
 			res    = optimize.leastsq(fitfct,[0.0,0.0,1.0])[0]
+			self.background[:,col] = np.polyval(res[0:2],self.eloss) # save the linear 
 
 			# raw valence (when later extracted from the data, also a linear shoud be accounted for)
 			val = self.signals[:,col] - np.polyval(res[0:2],self.eloss) - res[2]*self.C[:,col]
@@ -766,7 +895,7 @@ class extraction:
 				fitfct = lambda a: jvalp-jvalm - a[0]*(np.tanh(pzp/a[1])*np.exp(-(pzp/np.absolute(a[2]))**4.0))
 				res    = optimize.leastsq(fitfct,[0.0,1.0,1.0])[0]
 				print res
-				asym   = (res[0]*(np.tanh(pz_dmy/res[1])*np.exp(-(pz_dmy/np.absolute(res[2]))**4.0)))/2.0
+				asym   = -(res[0]*(np.tanh(pz_dmy/res[1])*np.exp(-(pz_dmy/np.absolute(res[2]))**4.0)))/2.0
 				plt.plot(pz_dmy,extractedval,pz_dmy,asym,pz_dmy,extractedval+asym)
 				#plt.plot(pz_dmy[pz_dmy<0],extractedval[pz_dmy<0]+asym[pz_dmy<0],-pz_dmy[pz_dmy>=0],extractedval[pz_dmy>=0]+asym[pz_dmy>=0])
 				plt.legend(['extracted valence profile','fitted valence asymmetry','asymmetry corrected valence profile'])
@@ -882,6 +1011,9 @@ class extraction:
 			plt.plot(self.eloss,self.signals[:,col]-res[0]*np.interp(self.eloss,self.eloss+res[1],thevalence)-np.polyval([res[2],res[3]],self.eloss),self.eloss,self.C[:,col])
 			plt.draw()
 			self.sqw[:,col] = self.signals[:,col]-res[0]*np.interp(self.eloss,self.eloss+res[1],thevalence)-np.polyval([res[2],res[3]],self.eloss)
+			self.valence[:,col] = res[0]*np.interp(self.eloss,self.eloss+res[1],thevalence) # reassign shifted and scaled valence profile
+			#self.valasymmetry *= res[0] # reassign scaled valence asymmetry for plotting
+			self.background[:,col] = np.polyval(res[2:4],self.eloss)
 			# save some ascii files for paper
 			thedata = np.zeros((len(self.eloss),6))
 			thedata[:,0] = self.eloss
@@ -890,8 +1022,8 @@ class extraction:
 			thedata[:,3] = np.polyval(res[2:4],self.eloss)
 			thedata[:,4] = self.signals[:,col]-res[0]*np.interp(self.eloss,self.eloss+res[1],thevalence)-np.polyval([res[2],res[3]],self.eloss)
 			thedata[:,5] = self.C[:,col]
-			filename = '/home/csahle/Dropbox/tool_paper/figures/analysis/val_extraction_det' + '%s' % col + '.dat'
-			np.savetxt(filename,thedata) 
+			filename = '/home/christoph/Dropbox/tool_paper/figures/analysis/val_extraction_det' + '%s' % col + '.dat'
+			#np.savetxt(filename,thedata) 
 		plt.ioff()
 
 	def averageqs(self,whichq,errorweighing=True):
@@ -924,7 +1056,7 @@ class extraction:
 
 		else: 
 			self.sqwav    = np.sum(av,axis=1)
-			self.sqwaverr = np.sqrt(np.absolute(self.sqwav)) # check this again
+			self.sqwaverr = np.sqrt(np.sum(np.absolute(self.errors)**2.0,axis=1)) # check this again
 
 
 

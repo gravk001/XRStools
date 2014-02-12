@@ -18,6 +18,37 @@ from scipy.ndimage import measurements
 from scipy.optimize import leastsq, fmin
 from scipy.interpolate import Rbf, RectBivariateSpline
 
+def addch(xold,yold,n,n0=0,errors=None):
+	# ADDCH     Adds contents of given adjacent channels together
+	#
+	#           [x2,y2] = addch(x,y,n,n0)
+	#           x  = original x-scale  (row or column vector)
+	#           y  = original y-values (row or column vector)
+	#           n  = number of channels to be summed up
+	#	        n0 = offset for adding, default is 0
+	#           x2 = new x-scale 
+	#           y2 = new y-values
+	#
+	#           KH 17.09.1990
+	#	    Modified 29.05.1995 to include offset
+	n0=n0-np.fix(n0/n)*n
+	if n0<0:
+		 n0 = (n + n0)
+	datalen = np.floor( (len(xold) - n0) / n)
+
+	xnew = np.zeros(np.min([datalen,len(xold)]))
+	ynew = np.zeros(np.min([datalen,len(xold)]))
+	errnew = np.zeros(np.min([datalen,len(xold)]))
+	for i in range(int(datalen)):
+		xnew[i] = np.sum(xold[i*n+n0:i*n+n+n0])/n
+		ynew[i] = np.sum(yold[i*n+n0:i*n+n+n0])/n
+		if np.any(errors):
+			errnew[i] = np.sqrt(np.sum(errors[i*n+n0:i*n+n+n0]**2.0))
+			return xnew, ynew, errnew
+	return xnew, ynew
+
+
+
 def fwhm(x,y):
 	"""
 	finds full width at half maximum of the curve y vs. x
@@ -44,7 +75,7 @@ def fwhm(x,y):
 	x0 = np.mean([x2, x1])
 	return 2.0*fwhm, x0
 
-def gauss(x,x0,fwhm):
+def gauss1(x,x0,fwhm):
 	"""
 	area-normalized gaussian
 	x    = x-axis vector
@@ -181,7 +212,7 @@ def broaden_diagram(e,s,params=[1.0, 1.0, 537.5, 540.0],npoints=1000):
 	fwhm[inds] = f_max
 
 	for i in range(len(s)):
-		s2 += s[i]*gauss(e2,e[i],fwhm[i])
+		s2 += s[i]*gauss1(e2,e[i],fwhm[i])
 
 	return e2, s2
 
@@ -576,7 +607,7 @@ def makepzprofile(element,filename='./xrstools/things/ComptonProfiles.dat'):
 	pzprofile[:,0] = pzscale     
 	# mirror, spline onto fine grid
 	for n in range(len(binden)):
-		intf             = interpolate.splrep(roughtheory[:,0],roughtheory[:,n+2],s=0.000000001,k=3) # skip the column with the total J for now #try interp1d with bounds_error=False and fill_value=0.0
+		intf             = interpolate.splrep(roughtheory[:,0],roughtheory[:,n+2],s=0.000000001,k=2) # skip the column with the total J for now #try interp1d with bounds_error=False and fill_value=0.0
 		pzprofile[:,n+1] = interpolate.splev(abs(pzscale),intf,der=0)
 	# normalize to one electron, multiply by number of electrons
 	for n in range(len(binden)):
@@ -1203,7 +1234,7 @@ def makegroup(groupofscans,grouptype=None):
 	# and normalize	
 	for n in range(thesignals.shape[-1]):
 		thesignals[:,n] = thesignals[:,n]/themonitors
-		theerrors[:,n]  = np.sqrt(thesignals[:,n])/themonitors
+		theerrors[:,n]  = theerrors[:,n]/themonitors
 
 	group = scangroup(theenergy,thesignals,theerrors,grouptype)
 	return group
@@ -1228,7 +1259,7 @@ def makegroup_nointerp(groupofscans,grouptype=None):
 	# and normalize
 	for n in range(thesignals.shape[-1]):
 		thesignals[:,n] = thesignals[:,n]/themonitors
-		theerrors[:,n]  = np.sqrt(thesignals[:,n])/themonitors
+		theerrors[:,n]  = theerrors[:,n]/themonitors
 	group = scangroup(theenergy,thesignals,theerrors,grouptype)
 	return group
 
@@ -1290,6 +1321,131 @@ def appendscans(groups):
 		for n in range(len(allgroups[1:])):
 			theerrors = np.append(theerrors,allgroups[n+1].errors,0)
 	return theenergy, thesignals, theerrors
+
+def append2Scan_right(group1,group2,inds=None,grouptype='spectrum'):
+	"""
+	append two instancees of the scangroup class, return instance of scangroup
+	append group2[inds] to the right (higher energies) of group1
+	if inds is not None, only append rows indicated by inds to the first group 
+	"""
+	assert isinstance(group1,scangroup) and isinstance(group2,scangroup)
+	energy  = group1.energy
+	signals = group1.signals
+	errors  = group1.errors
+	gtype   = group1.grouptype
+	if not inds:
+		energy  = np.append(energy,group2.energy)
+		signals = np.append(signals,np.squeeze(group2.signals),0)
+		errors  = np.append(errors,np.squeeze(group2.errors),0)
+		return scangroup(energy,signals,errors,grouptype=gtype)
+	else:
+		energy  = np.append(energy,group2.energy[inds])
+		signals = np.append(signals,np.squeeze(group2.signals[inds,:]),0)
+		errors  = np.append(errors,np.squeeze(group2.errors[inds,:]),0)
+		return scangroup(energy,signals,errors,grouptype=gtype)
+
+def append2Scan_left(group1,group2,inds=None,grouptype='spectrum'):
+	"""
+	append two instancees of the scangroup class, return instance of scangroup
+	append group1[inds] to the left (lower energies) of group2
+	if inds is not None, only append rows indicated by inds to the first group 
+	"""
+	assert isinstance(group1,scangroup) and isinstance(group2,scangroup)
+	if not inds:
+		energy  = group1.energy
+		signals = group1.signals
+		errors  = group1.errors
+		gtype   = group1.grouptype
+		energy  = np.append(energy,group2.energy)
+		signals = np.append(signals,np.squeeze(group2.signals),0)
+		errors  = np.append(errors,np.squeeze(group2.errors),0)
+		return scangroup(energy,signals,errors,grouptype=gtype)
+	else:
+		energy  = group1.energy[inds]
+		signals = group1.signals[inds,:]
+		errors  = group1.errors[inds,:]
+		gtype   = group1.grouptype
+		energy  = np.append(energy,group2.energy)
+		signals = np.append(signals,np.squeeze(group2.signals),0)
+		errors  = np.append(errors,np.squeeze(group2.errors),0)
+		return scangroup(energy,signals,errors,grouptype=gtype)
+
+def insertScan(group1,group2,grouptype='spectrum'):
+	"""
+	inserts group2 into group1
+	NOTE! there is a numpy insert function, maybe it would be better to use that one!
+	"""
+	# find indices for below and above group2
+	lowinds  = np.where(group1.energy<group2.getestart())
+	highinds = np.where(group1.energy>group2.geteend())
+
+	energy  = np.append(group1.energy[lowinds],np.append(group2.energy,group1.energy[highinds]))
+	signals = np.append(np.squeeze(group1.signals[lowinds,:]),np.append(group2.signals,np.squeeze(group1.signals[highinds,:]),0),0)
+	errors  = np.append(np.squeeze(group1.errors[lowinds,:]),np.append(group2.errors,np.squeeze(group1.errors[highinds,:]),0),0)
+
+	return scangroup(energy,signals,errors,grouptype)
+
+def catScansLong(groups):
+	"""
+	takes a longscan and inserts other backgroundscans (scans that have 'long' in their name) and other scans and inserts them into the long scan. 
+	"""
+	# the long scan
+	spectrum = groups['long']
+
+	# groups that don't have 'long' in the grouptype	
+	allgroups  = []
+	for group in groups:
+		if not 'long' in group:
+			allgroups.append(groups[group])
+	allgroups.sort(key = lambda x:x.getestart())
+
+	# groups that have 'long' in the grouptype	
+	longgroups = []
+	for group in groups:
+		if 'long' in group and group != 'long':
+			longgroups.append(groups[group])
+	longgroups.sort(key = lambda x:x.getestart())
+
+	# if there are other longscans: insert those first into the long scan
+	for group in longgroups:
+		spectrum = insertScan(spectrum,group)
+
+	# insert other scans into the long scan
+	for group in allgroups:
+		spectrum = insertScan(spectrum,group)
+		
+	return spectrum.energy, spectrum.signals, spectrum.errors
+
+def catScans(groups):
+	"""
+	concatenate all scans in groups, return the appended energy, signals, and errors
+	"""
+	# sort the groups by their start-energy
+	allgroups  = []
+	for group in groups:
+		allgroups.append(groups[group])
+	allgroups.sort(key = lambda x:x.getestart())
+	# assign first group to the spectrum (which is an instance of the scangroup class as well)
+	spectrum = scangroup(allgroups[0].energy,allgroups[0].signals,allgroups[0].errors,grouptype='spectrum')
+	# go through all other groups and append them to the right of the spectrum
+	if len(allgroups)>1: # check if there are groups to append
+		for group in allgroups[1:]:
+			spectrum = append2Scan_right(spectrum,group)
+
+	return spectrum.energy, spectrum.signals, spectrum.errors
+
+def appendScans(groups):
+	"""
+	try including different background scans... 
+	append groups of scans ordered by their first energy value. long scans are inserted into gaps that at greater than two times the grid of the finer scans
+	"""
+	# find all types of groups	
+	grouptypes = [key for key in groups.keys()]
+	
+	if 'long' in grouptypes:
+		return catScansLong(groups)
+	else: 
+		return catScans(groups)
 
 def momtrans_au(e1,e2,tth):
 	"""
@@ -1458,8 +1614,10 @@ class scan:
 		self.eloss    = []
 		self.signals  = []
 		self.errors   = []
+		self.signals_orig = [] # keep a copy of uninterpolated data
+		# would like to keep uninterpolated signals/eloss/errors, too
 		
-	def applyrois(self,rois):
+	def applyrois(self,rois,scaling=None):
 		"""
 		sums up each 2D matrix of a scan over the indices given in rois,
 		i.e. turns the 3D matrix of a scan (stack of 2D detector images)
@@ -1472,6 +1630,12 @@ class scan:
 				for l in range(len(rois[n])): # each pixel on the detector
 					data[m,n] += self.edfmats[m,rois[n][l][1],rois[n][l][0]]
 		self.signals = np.array(data)
+		self.signals_orig = np.array(data)
+		if np.any(scaling):
+			assert len(scaling) == len(rois) # make sure, there is one scaling factor for each roi
+			for ii in range(len(rois)):
+				self.signals[:,ii] *= scaling[ii]
+				self.signals_orig[:,ii] *= scaling[ii]
 
 	def applyrois_old(self,rois):
 		"""
@@ -1498,7 +1662,7 @@ class scan:
 		return self.number
 
 	def getshape(self):
-		if not self.signals.any():
+		if not np.any(self.signals):
 			print 'please apply the ROIs first.'
 			return
 		else:
@@ -1524,6 +1688,7 @@ class scangroup:
 		self.signals   = signals
 		self.errors    = errors
 		self.grouptype = grouptype
+		self.signals_orig = signals # keep a copy of uninterpolated data
 
 	def gettype(self):
 		return self.grouptype
@@ -1601,6 +1766,7 @@ class rois:
 		# adding list of lists with x- and y-indices, useful for 2D things (compare Simos Matlab scripts)
 		self.roisx = [] 
 		self.roisy = []
+		# in next version, rois should be a container having 3 lists: 1. roi-indices, 2. roi-x-indices, 3. roi-y-indices
 
 	def preparemats(self):
 		"""

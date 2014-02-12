@@ -5,6 +5,9 @@ from helpers import *
 
 # should have classes id20_read, p01_read, lerix_read, etc. 
 
+from numpy import array
+import scipy.io
+
 import os
 import numpy as np
 import array as arr
@@ -25,12 +28,16 @@ class read_id20:
 	"""
 	a class for loading data form SPEC files and the according edf files
 	"""
-	def __init__(self,absfilename,energycolumn='energy',monitorcolumn='kap4dio'):
+	def __init__(self,absfilename,energycolumn='energy',monitorcolumn='kap4dio',edfName=None):
 		self.scans         = {} # was a dictionary before
 		if not os.path.isfile(absfilename):
 			raise Exception('IOError! No such file, please check filename.')
 		self.path          = os.path.split(absfilename)[0] + '/'
-		self.filename      = os.path.split(absfilename)[1]
+		self.filename = os.path.split(absfilename)[1]
+		if not edfName:
+			self.edfName = os.path.split(absfilename)[1]
+		else:
+			self.edfName = edfName
 		self.scannumbers   = []
 		self.EDF_PREFIXh   = 'edf/h_'
 		self.EDF_PREFIXv   = 'edf/v_'
@@ -47,11 +54,12 @@ class read_id20:
 		self.signals  = []	# signals for all analyzers
 		self.errors   = []	# poisson errors
 		self.qvalues  = []	# for all analyzers
-		self.groups   = {}  # groups (such as 2 'elastic', or 5 'edge1', etc.)
+		self.groups   = {}      # dictionary of groups (such as 2 'elastic', or 5 'edge1', etc.)
 		self.cenom    = []
 		self.E0       = []
 		self.tth      = []
 		self.resolution = []    # list of FWHM of the elastic lines for each analyzer
+		self.signals_orig = []  # signals for all analyzers before interpolation
 		# some new attributes, specific to id20
 		# raw data signals sorted by analyzer module:
 		self.VDsignals = []
@@ -87,35 +95,49 @@ class read_id20:
 		# tth offsets in the other direction (horizontal for H-boxes, vertical for V-boxes)
 		self.TTH_OFFSETS2   = np.array([-9.71, -9.75, -9.71, -3.24, -3.25, -3.24, 3.24, 3.25, 3.24, 9.71, 9.75, 9.71]) 
 		# input
-		self.rois     = []	# can be set once the rois are defined to integrate scans directly
+		self.rois  = []	# can be set once the rois are defined to integrate scans directly
+		self.roisx = [] # list of x-indices of the rois
+		self.roisy = [] # list of y-indices of the rois
 
-	def readscan(self,scannumber):
+	def readscan(self,scannumber,fromtofile=False):
 		"""
 		returns the data, motors, counter-names, and edf-files from the calss's specfile of "scannumber"
 		should use PyMca's routines to read the Spec- and edf-files
 		"""
-		if self.path: # if a path was provided upon class construction, use this one
-			path = self.path
-		else: # if no path was provided
-			print 'please provide a path to the SPEC-file'
-			return
-		if not self.filename:
-			print 'please provide a SPEC-file name!'
-			return
-		else:
-			fn = path + self.filename
-		# try loading variables from file
-		print 'parsing edf- and SPEC-files of scan No. %s' % scannumber
+		# first see if scan can be loaded from npz-file
+		if fromtofile:
+			try:
+				print 'try loading scan from file'
+				scanname = 'Scan%03d' % scannumber
+				sub_path = os.path.split(self.path[:-1])[0]
+				fname    = sub_path + '/scans/' + scanname + '.npz'
+				scan     = np.load(fname)
+				data     = list(scan['data'])
+				motors   = list(scan['motors'])
+				counters = scan['counters'].item()
+				edfmats  = scan['edfmats']
+				return data, motors, counters, edfmats
+			except:
+				print 'failed loading scan from file, will read edf- and SPEC-file.'
+				pass
+
+		# proceed with parsing edf- and SPEC-files, if scan could not be loaded from zip-archive
+		if not fromtofile:
+			print 'parsing edf- and SPEC-files of scan No. %s' % scannumber
+
+		# load SPEC-file
+		fn = self.path + self.filename
 		data, motors, counters = specread(fn,scannumber)
+
+		# initiate arrays for the edf-files
 		edfmatsh = np.array(np.zeros((len(counters['ccdno']),self.DET_PIXEL_NUMy,self.DET_PIXEL_NUMx)))
 		edfmatsv = np.array(np.zeros((len(counters['ccdno']),self.DET_PIXEL_NUMy,self.DET_PIXEL_NUMx)))
-
 		edfmats  = np.array(np.zeros((len(counters['ccdno']),self.DET_PIXEL_NUMy*2,self.DET_PIXEL_NUMx)))
-		
+		# load edf-files
 		for m in range(len(counters['ccdno'])):
 			ccdnumber = counters['ccdno'][m]
-			edfnameh   = path + self.EDF_PREFIXh + self.filename + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
-			edfnamev   = path + self.EDF_PREFIXv + self.filename + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
+			edfnameh   = self.path + self.EDF_PREFIXh + self.edfName + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
+			edfnamev   = self.path + self.EDF_PREFIXv + self.edfName + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
 			edfmatsh[m,:,:] = (edfread_test(edfnameh))
 			edfmatsv[m,:,:] = (edfread_test(edfnamev))
 
@@ -125,9 +147,22 @@ class read_id20:
 		# add the scannumber to self.scannumbers, if not already present
 		if not scannumber in self.scannumbers:
 			self.scannumbers.extend([scannumber])
-		return data, motors, counters, edfmats
 
-	def loadscan(self,scannumbers,scantype='generic'):
+		# store scan in numpy zip-archive, if desired
+		if fromtofile:
+			scanname = 'Scan%03d' % scannumber
+			sub_path = os.path.split(self.path[:-1])[0]
+			fname = sub_path + '/scans/' + scanname
+			if os.path.exists(sub_path):
+				print 'trying to save file in numpy-archive.'
+				np.savez(fname, data=data, motors=motors, counters=counters, edfmats=edfmats)
+			else:
+				print 'please create a folder ' + fname + ' first!'
+				pass
+
+		return data, motors, counters, edfmats #<type 'list'> <type 'list'> <type 'dict'> <type 'numpy.ndarray'>
+
+	def loadscan(self,scannumbers,scantype='generic',fromtofile=False):
 		"""
 		loads the files belonging to scan No "scannumber" and puts it into an instance
 		of the container-class scan. the default scantype is 'generic', later the scans
@@ -141,7 +176,7 @@ class read_id20:
 			scannums = scannumbers 
 		for number in scannums:
 			scanname = 'Scan%03d' % number
-			data, motors, counters, edfmats = self.readscan(number)
+			data, motors, counters, edfmats = self.readscan(number,fromtofile)
 			# can assign some things here already (even if maybe redundant)
 			monitor   = counters[self.monicolumn]
 			monoangle = 1 # have to check for this later ... !!! counters['pmonoa']
@@ -151,7 +186,7 @@ class read_id20:
 			# assign one dictionary entry to each scan 
 			self.scans[scanname] = onescan
 
-	def loadloop(self,begnums,numofregions):
+	def loadloop(self,begnums,numofregions,fromtofile=False):
 		"""
 		loads a whole loop of scans based on their starting scannumbers and the number of single
 		scans in a single loop
@@ -169,19 +204,19 @@ class read_id20:
 		for n in range(len(typenames)):
 			thenumber = []
 			thenumber.append(numbers[n]) # make the scannumber into an interable list, sorry it's messy
-			self.loadscan(thenumber,typenames[n])
+			self.loadscan(thenumber,typenames[n],fromtofile)
 
-	def loadelastic(self,scann):
+	def loadelastic(self,scann,fromtofile=False):
 		"""
 		loads a scan using the loadscan function and sets the scantype attribute to 'elastic'
 		"""
-		self.loadscan(scann,'elastic')
+		self.loadscan(scann,'elastic',fromtofile)
 	
-	def loadlong(self,scann):
+	def loadlong(self,scann,fromtofile=False):
 		"""
 		loads a scan using the loadscan function and sets the scantype attribute to 'long'
 		"""
-		self.loadscan(scann,'long')
+		self.loadscan(scann,'long',fromtofile)
 
 	def createrois(self,scannumbers):
 		"""
@@ -289,6 +324,12 @@ class read_id20:
 		theimage = imshow(thematrix)
 		show()
 
+	def findrois_columnwise(self,scannumber):
+		"""
+		constructs a waterfall plot from the columns in a scan, i.e. energy vs. pixel number along the roi
+		"""
+		pass
+
 	def orderrois(self):
 		"""
 		order the rois in an order provided such that e.g. autorois have the correct order 
@@ -308,7 +349,7 @@ class read_id20:
 				print ("integrating "+scan)
 				self.scans[scan].applyrois(self.rois)
 
-	def loadscandirect(self,scannumbers,scantype='generic'):
+	def loadscandirect(self,scannumbers,scantype='generic',fromtofile=False,scaling=None):
 		"""
 		loads a scan without saving the edf files in matrices 
 		needs ROIs as input (this needs testing)
@@ -325,19 +366,19 @@ class read_id20:
 			return
 		for number in scannums:
 			scanname = 'Scan%03d' % number
-			data, motors, counters, edfmats = self.readscan(number)
+			data, motors, counters, edfmats = self.readscan(number,fromtofile)
 			# can assign some things here already (even if maybe redundant)
 			monitor   = counters[self.monicolumn]
 			monoangle = 1 # counters['pmonoa'] # this still needs checking
 			energy    = counters[self.encolumn]
 			# create an instance of "scan" class for every scan
 			onescan = scan(edfmats,number,energy,monoangle,monitor,counters,motors,data,scantype)
-			onescan.applyrois(self.rois)
+			onescan.applyrois(self.rois,scaling=scaling)
 			print 'deleting edf-files of scan No. %03d' % number
 			onescan.edfmats = [] # delete the edfmats
 			self.scans[scanname] = onescan
 
-	def loadloopdirect(self,begnums,numofregions):
+	def loadloopdirect(self,begnums,numofregions,fromtofile=False,scaling=None):
 		"""
 		loads a scan without saving the edf files in matrices and sets
 		the scantype attribute to 'edge1', 'edge2', ...
@@ -353,21 +394,21 @@ class read_id20:
 		for n in range(len(typenames)):
 			thenumber = []
 			thenumber.append(numbers[n]) # make the scannumber into an interable list, sorry it's messy
-			self.loadscandirect(thenumber,typenames[n])
+			self.loadscandirect(thenumber,typenames[n],fromtofile,scaling=scaling)
 
-	def loadelasticdirect(self,scann):
+	def loadelasticdirect(self,scann,fromtofile=False):
 		"""
 		loads a scan without saving the edf files in matrices and sets
 		the scantype attribute to 'elastic'
 		"""
-		self.loadscandirect(scann,'elastic')
+		self.loadscandirect(scann,'elastic',fromtofile)
 
-	def loadlongdirect(self,scann):
+	def loadlongdirect(self,scann,fromtofile=False,scaling=None):
 		"""
 		loads a scan without saving the edf files in matrices and sets
 		the scantype attribute to 'long'
 		"""
-		self.loadscandirect(scann,'long')
+		self.loadscandirect(scann,'long',fromtofile,scaling=scaling)
 
 	def deletescan(self,scannumbers):
 		"""
@@ -394,20 +435,25 @@ class read_id20:
 			# self.makegroup(group)
 			onegroup = makegroup_nointerp(group)
 			self.groups[onegroup.gettype()] = onegroup
-		self.energy,self.signals,self.errors = appendscans(self.groups)
+		self.energy,self.signals,self.errors = appendScans(self.groups)
+		self.signals_orig = self.signals
 
 	def geteloss(self):
 		"""
 		finds the center of mass of each roi and interpolates the signals onto a common grid
-		"""	
+		"""
 		if not 'elastic' in self.groups:
 			print 'please load/integrate at least one elastic scan first!'
 			return
 		else:
+			# reset values, in case this is run several times
+			self.cenom = []
+			self.resolution = []
+			self.E0 = []
 			for n in range(len(self.rois)):
-				self.cenom.append(trapz(self.groups['elastic'].signals[:,n]*self.groups['elastic'].energy,x=self.groups['elastic'].energy)/trapz(self.groups['elastic'].signals[:,n],x=self.groups['elastic'].energy))
+				self.cenom.append(trapz(self.groups['elastic'].signals_orig[:,n]*self.groups['elastic'].energy,x=self.groups['elastic'].energy)/trapz(self.groups['elastic'].signals_orig[:,n],x=self.groups['elastic'].energy))
 				try:
-					FWHM,x0 = fwhm((self.groups['elastic'].energy - self.cenom[n])*1e3,self.groups['elastic'].signals[:,n])
+					FWHM,x0 = fwhm((self.groups['elastic'].energy - self.cenom[n])*1e3,self.groups['elastic'].signals_orig[:,n])
 					self.resolution.append(FWHM)
 				except:
 					self.resolution.append(0) # need a more sofisticated way of finding the FWHM
@@ -418,27 +464,27 @@ class read_id20:
 			for n in range(len(self.rois)):
 				# inserting zeros at beginning and end of the vectors to avoid interpolation errors
 				x = (self.energy-self.cenom[n])*1e3
-				x = np.insert(x,0,-1e10,)
+				x = np.insert(x,0,-1e10)
 				x = np.insert(x,-1,1e10)
-				y = self.signals[:,n]
+				y = self.signals_orig[:,n]
 				y = np.insert(y,0,0)
 				y = np.insert(y,-1,0)
 				f = interp1d(x,y, bounds_error=False,fill_value=0.0)
 				self.signals[:,n] = f(self.eloss)
 			# set the eloss scale for all scans too but do not interpolate (using self.E0 for all)
-			for number in self.scannumbers:
-				scanname = 'Scan%03d' % number
-				self.scans[scanname].eloss = (self.scans[scanname].energy - self.cenom[0])*1e3
-				for n in range(len(self.rois)):
-					# inserting zeros at beginning and end of the vectors to avoid interpolation errors
-					x = (self.scans[scanname].energy-self.cenom[n])*1e3
-					x = np.insert(x,0,-1e10,)
-					x = np.insert(x,-1,1e10)
-					y = self.scans[scanname].signals[:,n]
-					y = np.insert(y,0,0)
-					y = np.insert(y,-1,0)
-					f = interp1d(x,y, bounds_error=False,fill_value=0.0)
-					self.scans[scanname].signals[:,n] = f(self.scans[scanname].eloss)
+			#for number in self.scannumbers:
+			#	scanname = 'Scan%03d' % number
+			#	self.scans[scanname].eloss = (self.scans[scanname].energy - self.cenom[0])*1e3 # here always the same cenom is subtracted: this is WRONG
+			#	for n in range(len(self.rois)):
+			#		# inserting zeros at beginning and end of the vectors to avoid interpolation errors
+			#		x = (self.scans[scanname].energy-self.cenom[n])*1e3
+			#		x = np.insert(x,0,-1e10)
+			#		x = np.insert(x,-1,1e10)
+			#		y = self.scans[scanname].signals_orig[:,n]
+			#		y = np.insert(y,0,0)
+			#		y = np.insert(y,-1,0)
+			#		f = interp1d(x,y, bounds_error=False,fill_value=0.0)
+			#		self.scans[scanname].signals[:,n] = f(self.scans[scanname].eloss)
 
 	def gettths(self,rvd=0.0,rvu=0.0,rvb=0.0,rhl=0.0,rhr=0.0,rhb=0.0,order=[0,1,2,3,4,5]):
 		"""
@@ -458,6 +504,7 @@ class read_id20:
 		self.HRtth = []
 		self.HLtth = []
 		self.HBtth = []
+		self.tth   = []
 		# horizontal modules
 		# HL (motor name rhl)
 		v_angles = self.TTH_OFFSETS1 
@@ -562,7 +609,7 @@ class read_id20:
 			roixinds.append(roi_object.rois[0][n][0])
 			roiyinds.append(roi_object.rois[0][n][1])
 		# go through all edf files of the scan, sum over the height of the roi and stack the resulting lines into a matrix
-		axesrange = [0,roiyinds[-1],position[0],position[-1]]
+		axesrange = [0,roiyinds[-1],position[-1],position[0]]
 		theimage = (np.sum(edfmats[:,np.amin(roiyinds):np.amax(roiyinds)+1,np.amin(roixinds):np.amax(roixinds)+1],axis=1))
 		plt.close()
 		fig = plt.figure()
@@ -605,9 +652,40 @@ class read_id20:
 			plt.ylabel('detector y-axis [pixel]')
 			if timeout<0:
 				titlestring = 'Frame No. %d' % (n+1) + ' of %d' % scanlen + ', press key or mouse botton to continue' 
-				plt.title()
+				plt.title(titlestring)
 			else:
 				titlestring = 'Frame No. %d' % (n+1) + ' of %d' % scanlen + ', updating every %2.2f ' % timeout + ' seconds'
+				plt.title(titlestring)
+			theimage.set_cmap(colormap)
+			plt.draw()
+			plt.waitforbuttonpress(timeout=timeout)
+
+	def animationScans(self,scannumbers,logscaling=True,timeout=-1,colormap='jet'):
+		"""
+		shows a sum of all edf-files from a scan for one or several scans
+		"""
+		
+		numbers = []
+		if not isinstance(scannumbers,list):
+			numbers.append(scannumbers)
+		else:
+			numbers = scannumbers
+
+		for number in numbers:
+			scanname = 'Scan%03d' % number
+			edfmats  = self.scans[scanname].edfmats
+			edfsum   = sumx(edfmats)
+			if logscaling:
+				theimage = plt.imshow(np.log(edfsum))
+			else:
+				theimage = plt.imshow(edfsum)
+			plt.xlabel('detector x-axis [pixel]')
+			plt.ylabel('detector y-axis [pixel]')
+			if timeout<0:
+				titlestring = 'Scan No. %3d' % (number) + ', press key or mouse botton to continue' 
+				plt.title(titlestring)
+			else:
+				titlestring = 'Scan No. %3d' % (number) + ', updating every %2.2f ' % timeout + ' seconds'
 				plt.title(titlestring)
 			theimage.set_cmap(colormap)
 			plt.draw()
@@ -700,6 +778,22 @@ class read_id20:
 			name = 'Scan%03d' % i
 			print 'length of scan %03d ' %i + ' is ' + str(len(self.scans[name].energy))
 
+	def removeBackgroundRoi(self,backroinum,estart=None,estop=None):
+		if not estart:
+			estart = self.eloss[0]
+		if not estop:
+			estop = self.elsos[-1]
+		if not self.tth:
+			print 'Please define the scattering angles first using the gettth method!'
+			return
+
+		for ii in range(len(self.tth)):
+			if ii != backroinum:
+				inds       = np.where(np.logical_and(self.eloss>=estart, mpc96.eloss<=estop))
+				expnorm    = np.trapz(self.signals[inds,ii],self.eloss[inds])
+				backnorm   = np.trapz(self.signals[inds,backroinum],self.eloss[inds])
+				background = self.signals[:,backroinum]/backnorm*expnorm
+				self.signals[:,ii] -= background # subtract background roi
 
 class read_id16:
 	"""

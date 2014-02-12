@@ -164,7 +164,7 @@ class imageset:
 		for ind in inds:
 			X,Y = pylab.meshgrid(self.list_of_images[ind].xscale,self.list_of_images[ind].yscale)
 			pylab.figure(ind)
-			pylab.pcolor(Y,X,np.transpose(self.list_of_images[ind].matrix))
+			pylab.pcolor(X,Y,np.transpose(self.list_of_images[ind].matrix))
 			pylab.show(block=False)
 
 	def save(self):
