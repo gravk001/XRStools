@@ -1,0 +1,778 @@
+%% ****** Start of file template.aps ******%
+%%
+%%
+%%   This file is part of the APS files in the REVTeX 4 distribution.
+%%   Version 4.0 of REVTeX, August 2001
+%%
+%%
+%%   Copyright (c) 2001 The American Physical Society.
+%%
+%%   See the REVTeX 4 README file for restrictions and more information.
+%%
+%
+% This is a template for producing manuscripts for use with REVTEX 4.0
+% Copy this file to another name and then work on that file.
+% That way, you always have this original template file to use.
+%
+% Group addresses by affiliation; use superscriptaddress for long
+% author lists, or if there are many overlapping affiliations.
+% For Phys. Rev. appearance, change preprint to twocolumn.
+% Choose pra, prb, prc, prd, pre, prl, prstab, or rmp for journal
+%  Add 'draft' option to mark overfull boxes with black boxes
+%  Add 'showpacs' option to make PACS codes appear
+%  Add 'showkeys' option to make keywords appear
+\documentclass[aps,prl,groupedaddress]{revtex4}
+%\documentclass[aps,prl,preprint,superscriptaddress]{revtex4}
+%\documentclass[aps,prl,twocolumn,groupedaddress]{revtex4}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{courier}
+\usepackage{listings}
+\usepackage{color}
+\lstdefinestyle{mybash}{
+  belowcaptionskip=1\baselineskip,
+  breaklines=true,
+  frame=L,
+  xleftmargin=\parindent,
+  language=bash,
+  showstringspaces=false,
+  basicstyle=\footnotesize\ttfamily,
+  keywordstyle=\bfseries\color{green!40!black},
+  commentstyle=\itshape\color{purple!40!black},
+  identifierstyle=\color{blue},
+  stringstyle=\color{orange},
+  backgroundcolor=\color{grey}
+}
+
+% You should use BibTeX and apsrev.bst for references
+% Choosing a journal automatically selects the correct APS
+% BibTeX style file (bst file), so only uncomment the line
+% below if necessary.
+%\bibliographystyle{apsrev}
+
+\begin{document}
+
+% Use the \preprint command to place your local institutional report
+% number in the upper righthand corner of the title page in preprint mode.
+% Multiple \preprint commands are allowed.
+% Use the 'preprintnumbers' class option to override journal defaults
+% to display numbers if necessary
+%\preprint{}
+
+%Title of paper
+\title{XRSTools user manual}
+
+% repeat the \author .. \affiliation  etc. as needed
+% \email, \thanks, \homepage, \altaffiliation all apply to the current
+% author. Explanatory text should go in the []'s, actual e-mail
+% address or url should go in the {}'s for \email and \homepage.
+% Please use the appropriate macro foreach each type of information
+
+% \affiliation command applies to all authors since the last
+% \affiliation command. The \affiliation command should follow the
+% other information
+% \affiliation can be followed by \email, \homepage, \thanks as well.
+\author{Ch.J.~Sahle}
+\email[]{christoph.sahle@esrf.fr}
+%\homepage[]{Your web page}
+%\thanks{}
+%\altaffiliation{}
+\affiliation{ESRF - The European Synchrotron Radiation Facility, Grenoble, France.}
+
+%Collaboration name if desired (requires use of superscriptaddress
+%option in \documentclass). \noaffiliation is required (may also be
+%used with the \author command).
+%\collaboration can be followed by \email, \homepage, \thanks as well.
+%\collaboration{}
+%\noaffiliation
+
+\date{\today}
+
+\begin{abstract}
+This is a general and more technical introduction to the Python package XRSTools, a collection of Python modules for non-resonant inelastic x-ray scattering. XRSTools, in its current state, is an experimental code but has now been used during and after a number of experiments to extract publication grade data. 
+\end{abstract}
+
+% insert suggested PACS numbers in braces on next line \pacs{}
+% insert suggested keywords - APS authors don't need to do this
+%\keywords{}
+
+%\maketitle must follow title, authors, abstract, \pacs, and \keywords
+\maketitle
+\tableofcontents
+
+% body of paper here - Use proper section commands
+% References should be done using the \cite, \ref, and \label commands
+% Put \label in argument of \section for cross-referencing
+%\section{\label{}}
+%\subsection{}
+%\subsubsection{}
+
+\section{Introduction}
+Welcome to the XRSTools program package for non-resonant inelastic x-ray scattering. XRSTools is a collection of Python moldules (classes and functions) written to aid the planning and performing of synchrotron based NIXS experiments and analyze data from such experiments. Part of the functions used in the package are based on Matlab cade written at the Helixs-Group of the University of Helsinki, part of it is based on Matlab code written at the ESRF, and some of it is new. The aim of the code is to simplify and standardize experimental procedures, especially when it comes to the use of the new multi-analyzer beamlines equipped with 2D detectors. 
+
+As this is written, the code is adapted solely to the ESRF beamline ID20, but it should be straightforward to extend it to support also data from other beamlines. In fact, there is an experimental version for the PetraIII beamline P01.
+
+The ideas and physics behind this code are summarized in \cite{XRSTools_paper}. If you used the package or functions from it, please cite this paper. Besides this paper on the package, there are a few other published items out there, to which I would refer anyone to who would like to dig deeper into inelastic x-ray scattering: 1. The book of W.~Sch\"ulke is probably the most complete reference guide on this subject \cite{schuelke2007book}. 2. A few review papers \cite{hamalainen2001,sinha2001}. 3. And the papers on which most of the 'background' subtraction by XRSTools is based on \cite{sternemann2008,huotari2012}. I would also like to point out the existing experimental endstations by citing their beamline papers \cite{Cai2004,Fister2006,Verbeni2009,Sokaras2012,hiraoka2013}.
+
+If you are not familiar with the Python programming language at all, maybe it is a good idea to have a look at some of the tutorials there are online (e.g. at \url{https://docs.python.org/2/tutorial/}). A book that has helped me a lot is this this one \cite{mlhetland}.
+
+To finish this introductory section, let's remind ourselves that this code is to be used at your own risk, it is, no doubt, not without bugs. If you find one, please let me know about it so we can try to fix it. So let's dig into the code.
+
+\section{Installation}
+XRSTools comes as a Python package, i.e.~as a \textit{.tar.gz} file called \textit{xrstools-<version>.tar.gz}. Extract this file on your disk and change into the created directory:
+
+\lstset{language=bash}
+\begin{lstlisting}[frame=single]
+tar -xzf xrstools-<version>.tar.gz
+cd xrstools-<version>
+\end{lstlisting}
+
+For a global installation on your system type:
+\begin{lstlisting}[frame=single]
+sudo python setup.py install
+\end{lstlisting}
+
+a local installation into a directory \texttt{<dir>} can be made by
+\begin{lstlisting}[frame=single]
+python setup.py install --home=<dir>
+\end{lstlisting}
+
+You can find more information about how to install Python packages at \url{https://docs.python.org/2/install/}. If you do a local installation, do not forget to set your PYTHONPATH variable
+\begin{lstlisting}[frame=single]
+export PYTHONPATH=$PYTHONPATH:/path/to/XRSTools
+\end{lstlisting}
+or add it to your bashrc.
+
+\section{Planning}
+\subsection{using an input file}
+When planning XRS experiments, there are usually two things to consider: first, which momentum transfer(s) to measure at and, the second question is, if there will be enough counts from the sample such that it you can take statistically meaningful data in a reasonable amount of beam time.
+
+XRSTools has a module, called \texttt{xrs\_prediction}, to do that. Since we need quite a few variables for this prediction of intensities, \texttt{xrs\_prediction} can read an input file and returns a graph of the estimated cross section. An example of an input file is given in appendix (\ref{apx:planning}).
+
+The expected intensity is given by
+\begin{eqnarray}
+I = I_0 \frac{\mathrm{d}^2 \sigma}{\mathrm{d}\Omega \mathrm{d}\omega_2} \Delta\Omega \cdot \Delta\omega_2 \cdot \rho \cdot d \cdot a_{\mathrm{r/t}} \cdot R \cdot D .
+\label{eqn:abscounts}
+\end{eqnarray}
+Here, $I_0$ is the incident photon flux, $\frac{\mathrm{d}^2 \sigma}{\mathrm{d}\Omega \mathrm{d}\omega_2}$ is the DDSCS, $\Delta\Omega$ is the solid angle of detection, $\Delta\omega_2$ is the energy resolution, $\rho$ the number density of scatterers in the interaction volume, $d$ is the sample thickness, $a_{\mathrm{r/t}}$ is the sample absorption factor, and $R$ and $D$ are the finite reflectivity of the analyzer crystals and the detector efficiency, respectively.
+
+In XRSTools, each of the factors in equation (\ref{eqn:abscounts}) is a separate class in the xrs\_prediction module. Thus, there are six classes
+
+\begin{itemize}
+ \item detector,
+ \item analyzer,
+ \item sample,
+ \item polarization,
+ \item x-ray beam,
+ \item some output parameters,
+\end{itemize}
+each of which has a separate block in it's input file. Here is a summary of the variables to be set for each of these blocks.
+
+\subsubsection{Detector}
+The variables in the 'Detector' section are used to calculate the efficiency of the Detector at the energy used via:
+\begin{eqnarray}
+D = 1.0 - \exp(-d*\mu) , 
+\end{eqnarray}
+where D is the efficiency of the detector, $d$ is the thickness of the active detector chip, and $\mu$ is the photoelectric absorption of the detector active material.
+
+
+\begin{ruledtabular}
+\begin{tabular}{lllll}
+variable          & description                 & type   & default  & unit    \\
+\hline
+energy            & analyzer energy             & float  & 9.7      & keV     \\
+thickness         & detector chip thickness     & float  & 500.0    & microns \\
+material          & detector active material    & string & 'Si'     & -       \\
+pixel\_size       & number of pixels (obsolete) & list   & [256,768]& int     \\
+\end{tabular}
+\end{ruledtabular}
+
+\subsubsection{Analyzer}
+The analyzer class is meant to calculate the analyzer reflectivity for the used analyzer material and reflection. For an estimate of the analyzer reflectivity, the Takagi-Taupin equations\cite{tagaki1962,taupin1964,Vartanyants1993} are solved for a spherically bent crystal analyzers. We approximate $R$ in (\ref{eqn:abscounts}) by averaging over the full width at half maximum of the resulting reflectivity curve. Also $\Delta\Omega$ comes from the parameters in this section of the input file.
+
+\begin{ruledtabular}
+\begin{tabular}{lllll}
+variable            & description                          & type          & default  & unit    \\
+\hline
+material            & analyzer material                    & string        & 'Si'     & -       \\
+hkl                 & hkl of reflection used               & list of ints  & [6,6,0]  & -       \\
+mask\_d             & analyzer mask diameter               & float         & 60.0     & mm      \\
+bend\_r             & analyzer curvature radius            & float         & 1.0      & meters  \\
+diced               & keyword analyzer is diced (obsolete) & boolean       & false    & -       \\
+thickness           & analyzer thickness                   & float         & 500.0    & microns \\
+energy\_resolution  & approx. analyzer resolution          & float         & 0.5      & eV      \\
+database\_dir       & path to reflectivity database        & string        & -        & -       \\
+\end{tabular}
+\end{ruledtabular}
+
+
+\subsubsection{Sample}
+Whereas most parameters in the input file have default values, the sample part is the one section that has to be filled with parameters on the details of the sample in question. Here is a list for the necessary ones.
+
+Right now, the program assumes that the sample is spherical. A spherical sample is the ideal shape for the multi analyzer spectrometer at ID20. Future versions will also have options for flat samples (either in transmission or reflection geometry).
+
+Most of the input parameters used in this section of the input file are Python lists. The composition of the sample is passed by a list of chemical sum formulas (e.g. ['SiO2','H2O']), the relative concentration and densities of its constituents as lists in the same order as the sum formulas (e.g. [0.4, 0.6] and [ ... , ... ] for a sample made up of 40 \% SiO2 and 60 \% water). This, however, means that the program assumes the sample to also be a sort of emulsion of its constituents, each of which contribute separately to the total DDSCS.
+
+\begin{ruledtabular}
+\begin{tabular}{lllll}
+variable            & description                          & type            & default  & unit       \\
+\hline
+chem\_formulas      & chemical sum formulas                & list of strings & -        & -          \\
+concentrations      & concentrations for each chem formula & list of ints    & -        & rel. units \\
+densities           & densities of constituents            & list of ints    & -        & g/cm$^3$   \\
+molar\_masses       & molar masses of each constituent     & list of ints    & -        & g/mol      \\
+angle\_tth          & scattering angle [2Th]               & float           & -        & degrees    \\
+sample\_thickness   & sample thickness                     & float           & -        & cm         \\
+\end{tabular}
+\end{ruledtabular}
+
+\subsubsection{Polarization}
+Here, you can put some information about the Thomson part of the DDSCS, in the future (for simplicity) this could also move to the beamline specific paramters.
+
+\begin{ruledtabular}
+\begin{tabular}{lllll}
+variable                & description                                        & type    & default    & unit       \\
+\hline
+scattering\_plane       & scattering plane used ('vertical' or 'horizontal') & keyword & 'vertical' & -          \\
+polarization            & degree of polarization in your beam                & float   & 0.99       & \%         \\
+\end{tabular}
+\end{ruledtabular}
+
+\subsubsection{X-ray beam}
+Here is still some info on the incident beam.
+
+\begin{ruledtabular}
+\begin{tabular}{lllll}
+variable            & description                                  & type  & default    & unit        \\
+\hline
+i0\_intensity       & number of incident photons                   & int   & 1e13       & 1/second    \\
+beam\_heigh         & beam size in the vertical direction          & int   & 10.0       & microns     \\
+beam\_width         & beam size in the horizontal direction        & int   & 20.0       & microns     \\
+\end{tabular}
+\end{ruledtabular}
+
+\subsubsection{Output}
+Finally, there are some parameters to determine the output.
+
+\begin{ruledtabular}
+\begin{tabular}{lllll}
+variable            & description                       & type       & default                   & unit  \\
+\hline
+eloss\_range        & energy loss range for the output  & np.array   & np.arange(0.0,1000.0,0.1) & eV    \\
+E0                  & analyzer energy                   & int        & 9.7                       & keV   \\
+\end{tabular}
+\end{ruledtabular}
+
+\subsubsection{Outlook}
+As mentioned earlier, the samples are assumed to be spherical and inmissible. Rearrangement of some input/output paramters and internal variables should enable also different geometries and maybe also an easier-to-read input file. A GUI should also be straightforward to implement.
+
+
+\subsection{using the command line}
+All functions and classes used when calling the prediction routine via an input file are, of course, also accessible from the Python command line.
+
+\section{Getting started with the command line}
+Start by importing the XRSTools routines and some useful other modules like Pylab for plotting and Numpy for some other Matlab like behavior.
+\lstset{language=Python, breaklines=true}
+\begin{lstlisting}[frame=single]
+from xrstools import xrs_read, ...
+from pylab import *
+import numpy as np
+\end{lstlisting}
+
+I usually like to set the Pylab interactive mode to 'on'. This way, Pylab acts somewhat similar to Matlab plotting.
+\lstset{language=Python, breaklines=true}
+\begin{lstlisting}[frame=single]
+ion()
+\end{lstlisting}
+
+\section{Performing}
+During experiments, there are mainly two things that are important for the XRS user, the sample alignment and some fast online data analysis. XRSTools has some functions to make this easy. 
+
+\subsection{Sample alignment}
+An elegant way to align samples contained in some complicated sample environment is to make use of the imaging properties of bent crystal analyzers in combination with a 2D detector (check out \cite{SHuotari2011} and \cite{XRSTools_paper} to learn more about the details).
+
+Start by importing the main XRSTools data reading routine and some useful other modules like Pylab for plotting and Numpy for some other Matlab like behavior.
+\lstset{language=Python, breaklines=true}
+\begin{lstlisting}[frame=single]
+from xrstools import xrs_read
+from pylab import *
+import numpy as np
+\end{lstlisting}
+
+Now create an instance of the read\_id20 class and give it some sensible name (name of the compound/sample, for simplicity, we will just call the variable 'image').
+\begin{lstlisting}[frame=single]
+image = xrs_read.read_id20(absfilename,energycolumn='energy',monitorcolumn='kap4dio',edfName=None,single_image=True)
+\end{lstlisting}
+
+The input parameters for this class are explained in the following table.
+
+\begin{ruledtabular}
+\begin{tabular}{lllll}
+variable       & description                                        & type     & default     & unit  \\
+\hline
+absfilename    & absolute path to the SPEC file                     & string   & -           & -    \\
+energycolumn   & name of the energy counter in the SPEC file        & string   & 'energy'    & -    \\
+monitorcolumn  & name of the monitor counter in the SPEC file       & string   & 'kap4dio'   & -    \\
+edfName        & prefix of the EDF files                            & string   & None        & -    \\
+single\_image  & keyword, if there is a single detector image       & boolean  & True        & -    \\
+\end{tabular}
+\end{ruledtabular}
+
+To construct an image from an alignment scan (i.e. a sample translation scan), use the \textit{make\_posscan\_image} (for 'make position-scan image') function from the 'image' object you have just created.
+\begin{lstlisting}[frame=single]
+image.make_posscan_image(scannumber,motorname,filename=None)
+\end{lstlisting}
+
+\begin{ruledtabular}
+\begin{tabular}{lllll}
+\toprule
+variable       & description                                          & type     & default  & unit \\
+\hline
+scannumber     & scannumber from the alignment scan you want to image & string   & -        & -    \\
+motorname      & name of the motor scanned ('stx', 'sty', 'stz')      & string   & -        & -    \\
+filename       & (optional) absolute path if image should be saved    & string   & None     & -    \\
+\end{tabular}
+\end{ruledtabular}
+
+This will open a plot window showing a sum of all detector images taken during the translation scan. Using the zoom tool of the plotting window ('little magnifying glass' at the lower left corner of the plotting window) zoom into the spot you like (\textbf{screenshots of this procedure and link to 'setting the ROIs' section.}), go back to your command line and press enter. This will close the ROI window and open a new one with your reconstructed image. On the y-axis you will find the motor and range you scanned, on the x-axis of your plot you will have the pixels along the beam (remember that one pixel is 55 micron, which will give you the conversion into real distances).
+
+And here is how it looks like. \textbf{take examples from the acetic acid data also used in the paper... }
+
+%should maybe change the code, such that you can select as many ROIs as you want (save the ROIs as object in the class), such that the next time you want to plot the same thing or look at it from a different ROI, you do not have to re-select a ROI but just tell it which one of the ones you chose you took. If the 'whichanalyzer' keyword is missing, the procedure would be as usual (from scratch).
+
+\subsection{raw data, quick and dirty}
+Here is a minimal set of functions you will need for a 'quick and dirty' online data analysis.
+
+\begin{lstlisting}[frame=single]
+from xrstools import xrs_read
+from pylab import *
+import numpy as np
+ion()
+sample = xrs_read.read_id20(absfilename,energycolumn='energy',monitorcolumn='kap4dio',edfName=None,single_image=True)
+sample.loadelastic(scannumbers)
+sample.get_zoom_rois(scannumbers)
+sample.getrawdata()
+sample.loadscandirect(scannumbers,name)
+sample.getspectrum()
+sample.geteloss()
+\end{lstlisting}
+
+Let us go through these (and similar functions) in more detail and explain each of them and (most of) the parameters needed. The idea is that you 1.~import modules from the XRSTools package (and others from the standard library such as Numpy and Pylab), 2.~create an instance of the \textit{xrs\_read.read\_id20} class, and 3.~use the class's features to load SPEC- and EDF-files, set regions of interest (ROIs), integrate the detector images, and make simple plots of the data.
+
+\subsubsection{starting up}
+To start up, import some elastic line and create some regions of interest. If you have not imported the XRSTools module (and some other useful build in modules) now is a good time to do it.
+\begin{lstlisting}[frame=single]
+from xrstools import xrs_read
+from pylab import *
+import numpy as np
+\end{lstlisting}
+Let's also use Pylab's interactive mode (this makes Pylab behave a bit more like Matlab/Octave).
+\begin{lstlisting}[frame=single]
+ion()
+\end{lstlisting}
+As within the sample alignment, first create an object of the 'xrs\_read.read\_id20' class.
+\begin{lstlisting}[frame=single]
+sample = xrs_read.read_id20(absfilename,energycolumn='energy',monitorcolumn='kap4dio',edfName=None,single_image=True)
+\end{lstlisting}
+I chose the variable name 'sample', since the idea is to have one object of the \textit{read\_id20} class for each sample. Next, load some SPEC- and according EDF-files.
+\begin{lstlisting}[frame=single]
+sample.loadelastic(scannumbers,fromtofile=False)
+\end{lstlisting}
+
+Here is a description of the parameters this function takes.
+
+\begin{ruledtabular}
+\begin{tabular}{lllll}
+variable        & description                                          & type     & default  & unit \\
+\hline
+scannumbers     & number or list of number of scans to load            & int or list of ints   & -        & -    \\
+fromtofile      & keyword, if scan instance should be saved in a file (experimental)  & boolean   & False     & -    \\
+\end{tabular}
+\end{ruledtabular}
+
+
+Now, we can use this elastic line to define some ROIs.
+
+\subsubsection{selecting the ROIs}
+XRSTool's xrs\_rois module provides a number of ways to define ROIs, so let's go through them one by one. In principle, you will have to follow the instructions printed out in the shell and on the plotting windows.
+
+\paragraph{Zoom ROIs}
+To define ROIs by using Matplotlib's built-in zoom function, use this.
+\begin{lstlisting}[frame=single]
+sample.get_zoom_rois(scannumbers)
+\end{lstlisting}
+
+\begin{itemize}
+ \item activate the zoom function in the plot-window
+ \item click the next button
+ \item zoom into your first ROI
+ \item click the next button
+ \item repeat until you zoomed into the last ROI
+ \item click the finish button
+\end{itemize}
+
+Look at the function's docstr for more help:
+\begin{lstlisting}[frame=single]
+help(sample.get_zoom_rois()) .
+\end{lstlisting}
+
+\paragraph{Line ROIs}
+To define ROIs by clicking two points, use this.
+\begin{lstlisting}[frame=single]
+sample.get_linear_rois(scannumbers)
+\end{lstlisting}
+
+\begin{itemize}
+ \item activate the zoom function in the plot-window
+ \item click the next button
+ \item zoom into your first ROI
+ \item click the next button
+ \item repeat until you zoomed into the last ROI
+ \item click the finish button
+\end{itemize}
+
+Look at the function's docstr for more help:
+\begin{lstlisting}[frame=single]
+help(sample.get_linear_rois()) .
+\end{lstlisting}
+
+\paragraph{Polygon ROIs}
+To define ROIs by clicking multiple points, use this.
+\begin{lstlisting}[frame=single]
+sample.get_plygon_rois(scannumbers)
+\end{lstlisting}
+
+\begin{itemize}
+ \item blabla
+\end{itemize}
+
+Look at the function's docstr for more help:
+\begin{lstlisting}[frame=single]
+help(sample.get_polygon_rois()) .
+\end{lstlisting}
+
+
+\paragraph{Automatic ROIs}
+There are two ways of selecting automatic ROIs. One which uses the entire 6-detector image and one that goes through each detector.
+\begin{lstlisting}[frame=single]
+sample.get_auto_rois(scannumbers)
+\end{lstlisting}
+
+\begin{itemize}
+ \item
+\end{itemize}
+
+Look at the function's docstr for more help:
+\begin{lstlisting}[frame=single]
+help(sample.get_auto_rois()) .
+\end{lstlisting}
+
+\paragraph{Saving and loading ROIs from files}
+Once you have defined some ROIs, it may be a good idea to save the ROIs into a text file so that you will not have to redefine them in a possible later session.
+
+To save ROIs into a file use
+\begin{lstlisting}[frame=single]
+sample.save_rois(filename) ,
+\end{lstlisting}
+where 'filename' is a path and filename for your ROIs.
+
+\subsubsection{loading the data}
+Now, it is time to load some data. 
+
+The general idea of the package is, that you measure different parts of your spectra in different scans. These could e.g. be frequent scans of the quasielastic peak, a rough overview over the whole range to estimate the valence background, and then your spectral region of interest. Also the absorption edge may be devided into several parts, not all of which may be desired with the same statistical accuracy. In the end, all of these scans should be added up, stitched together and shifted with respect to the elastic line energy.
+
+The most general function for loading data is:
+
+\begin{lstlisting}[frame=single]
+sample.loadscan(scannumbers,scantype='generic',fromtofile=False)
+\end{lstlisting}
+
+\begin{ruledtabular}
+\begin{tabular}{lllll}
+variable        & description                                          & type     & default  & unit \\
+\hline
+scannumbers     & number or list of number of scans to load            & int or list of ints   & -        & -    \\
+fromtofile      & keyword, if scan instance should be saved in a file (experimental)  & boolean   & False     & -    \\
+\end{tabular}
+\end{ruledtabular}
+
+The idea is, that all scans that you load into your variable 'sample' will have an attribute 'scantype' by which the program knows which scans belong together (to add them up).
+
+There are a few 'scantypes' which are special in XRSTools. The first one is 'elastic' to define a scan as an elastic line scan. There is a shorthand version of the loadscan function to load elastic lines:
+\begin{lstlisting}[frame=single]
+sample.loadelastic(scannumbers,fromtofile=False) .
+\end{lstlisting}
+
+The second special scantype is 'long' which is used for overview scans. Also here, there is a shorthand version
+\begin{lstlisting}[frame=single]
+sample.loadlong(scannumbers,fromtofile=False) .
+\end{lstlisting}
+
+
+
+Since most XRS spectra are stiched together from several single scans (e.g. an elastic line scan, an overview scan, and several regions across some edge, or even different edges).
+
+
+\subsubsection{plotting}
+
+
+\section{a closer look}
+
+Right now, the most efficient way to measure XRS spectra is by splitting up the spectral regions around an absorption edge and weigh the different regions by counting time and energy increment. On top of these regions, we usually take elastic line scans frequently for energy calibration. Consider the oxygen K-edge of water as an example. For a decent background subtraction, we usually take a long overview scan on a rough energy grid that covers the whole range of the Compton/Valence excitation. The near edge, we usually devide in 3-5 regions, one (10-15 eV) before the edge, one that covers the pre- and main-edge region, one which covers the post-edge region, and one that covers the first big EXAFS-like oscillation around 555 eV energy loss. To easily add up data from different scans and analyzer crystals, we usually keep the same energy grid in all near-edge regions and weigh by chosing different counting times. 
+
+To avoid problems when stitching different scan-regions together during the data analysis, it turns out the best practise is to let the monochromators make constant steps across the edge (i.e.~let one region start exactly one energy increment after the last region's end point) and then loop over the entire range of the edge. To clarify, a possible SPEC makro to do this could look like this: 
+
+\lstset{language=bash}
+\begin{lstlisting}[frame=single]
+# define the elastic line energy
+E0 = 9.76
+
+# elastic line scan
+umv energy E0-0.004
+ascan energy E0-0.003 E0+0.003 60 0.1
+
+# loop over the oxygen K-edge (constant energy step width, weigh by second/point)
+while (ii < 10, ii=1, ii++){
+umv energy E0+0.515
+umv energy E0+0.519
+ascan energy E0+0.520  E0+0.532  60  5
+ascan energy E0+0.5322 E0+0.542  49 10
+ascan energy E0+0.5422 E0+0.5552 60  7
+ascan energy E0+0.5554 E0+0.570  60  4
+}
+
+# overview scan (covering the Compton/valence spectrum)
+umv energy E0-0.011
+ascan energy E0-0.01 E0+0.60 610 2
+\end{lstlisting}
+
+XRSTools 'knows' how to stich scans together is because during loading of scans, each scan is given a scan-type. A scan-type is just a string. However, there are a few special strings to describe scans that are treated specially. The special types are \textbf{elastic} and \textbf{long}. The default type is \textbf{generic}.
+
+For the above example, I would thus choose the following strings as type.
+\lstset{language=Python, breaklines=true}
+\begin{lstlisting}[frame=single]
+h2o = xrs_read.read_id20(absfilename,energycolumn='energy',monitorcolumn='kap4dio',edfName=None,single_image=True)
+h2o.loadelastic(14)   # load elastic scan number 14
+h2o.get_zoom_rois(14) # define some ROIs by zooming
+h2o.getrawdata()      # integrate the elastic line scan data
+h2o.loadscandirect(15,'edge1') # load 1. part of the K-edge
+h2o.loadscandirect(16,'edge2') # load 2. part of the K-edge
+h2o.loadscandirect(17,'edge3') # load 3. part of the K-edge
+h2o.loadscandirect(17,'edge4') # load 4. part of the K-edge
+h2o.loadlongdirect(54) # load an overview scan
+h2o.getspectrum() # stitch all parts together
+h2o.geteloss()    # find the center of mass of the elastic line
+\end{lstlisting}
+
+Note that 
+\begin{lstlisting}[frame=single]
+h2o.loadelastic(14)
+\end{lstlisting}
+and
+\begin{lstlisting}[frame=single]
+h2o.loadlongdirect(54)
+\end{lstlisting}
+are just shorthand commands for 
+\begin{lstlisting}[frame=single]
+h2o.loadscan(14,'elastic')
+\end{lstlisting}
+and
+\begin{lstlisting}[frame=single]
+h2o.loadscandirect(14,'long')
+\end{lstlisting}
+
+Instead of loading the individual parts of the spectrum separately, there is a function that can load an entire loop of spectra (such as in the example given above).
+\begin{lstlisting}[frame=single]
+h2o.loadloopirect([15],4)
+\end{lstlisting}
+For this to work, you have to just pass the starting numbers of all loops as a Python list (here, we only had one loop starting with scan number 14) and the number of scan within the loop (here 4). 
+
+Notice that we are using two different types of functions for loading the spectra. In the case of the elastic line we used the \textit{loadelastic()}-function in case of the other scans we used the \textit{loadscandirect()}-function. Loading scans with functions including the word 'direct' merely tells the program to load both the SPEC- and EDF-file, then use existing ROIs to integrate the EDF-images, and subsequently delete the EDF-files from the memory. The only reason for this is that the EDF-files are somewhat large and quickly take up all of the memory and (in most cases) they are not needed after integration.
+
+\section{Analysis}
+With analysis, I mostly mean data reading as we have done before (see last chapters) and the subtraction of the backgound.
+
+\subsection{raw data}
+There are a few things worth mentioning that I did not cover in the on-line analysis part. 
+
+scaling
+setting scattering angles
+
+
+\subsection{the theory module}
+here some information about the theory module, the HF compton profiles, etc.
+
+
+\subsection{background subtraction}
+The backgroung subtraction is done using the \textit{xrs\_extraction}-module. This is the most underdeveloped module of all the module in the XRSTools package. The reason is simply that it is also the most demanding to make up functions that work for most background subtraction problems that I can think of.
+
+
+\section{Imaging}
+This part of the program is purely experimental so far and thus somewhat a developer version. Functionality should be added in due time.
+
+\section{outlook}
+Here, I would like to keep a list of things to be done to improve the current version and things to add in a possible new version of the code.
+
+
+
+% If in two-column mode, this environment will change to single-column
+% format so that long equations can be displayed. Use
+% sparingly.
+%\begin{widetext}
+% put long equation here
+%\end{widetext}
+
+% figures should be put into the text as floats.
+% Use the graphics or graphicx packages (distributed with LaTeX2e)
+% and the \includegraphics macro defined in those packages.
+% See the LaTeX Graphics Companion by Michel Goosens, Sebastian Rahtz,
+% and Frank Mittelbach for instance.
+%
+% Here is an example of the general form of a figure:
+% Fill in the caption in the braces of the \caption{} command. Put the label
+% that you will use with \ref{} command in the braces of the \label{} command.
+% Use the figure* environment if the figure should span across the
+% entire page. There is no need to do explicit centering.
+
+% \begin{figure}
+% \includegraphics{}%
+% \caption{\label{}}
+% \end{figure}
+
+% Surround figure environment with turnpage environment for landscape
+% figure
+% \begin{turnpage}
+% \begin{figure}
+% \includegraphics{}%
+% \caption{\label{}}
+% \end{figure}
+% \end{turnpage}
+
+% tables should appear as floats within the text
+%
+% Here is an example of the general form of a table:
+% Fill in the caption in the braces of the \caption{} command. Put the label
+% that you will use with \ref{} command in the braces of the \label{} command.
+% Insert the column specifiers (l, r, c, d, etc.) in the empty braces of the
+% \begin{tabular}{} command.
+% The ruledtabular enviroment adds doubled rules to table and sets a
+% reasonable default table settings.
+% Use the table* environment to get a full-width table in two-column
+% Add \usepackage{longtable} and the longtable (or longtable*}
+% environment for nicely formatted long tables. Or use the the [H]
+% placement option to break a long table (with less control than 
+% in longtable).
+% \begin{table}%[H] add [H] placement to break table across pages
+% \caption{\label{}}
+% \begin{ruledtabular}
+% \begin{tabular}{}
+% Lines of table here ending with \\
+% \end{tabular}
+% \end{ruledtabular}
+% \end{table}
+
+% Surround table environment with turnpage environment for landscape
+% table
+% \begin{turnpage}
+% \begin{table}
+% \caption{\label{}}
+% \begin{ruledtabular}
+% \begin{tabular}{}
+% \end{tabular}
+% \end{ruledtabular}
+% \end{table}
+% \end{turnpage}
+
+% Specify following sections are appendices. Use \appendix* if there
+% only one appendix.
+\appendix
+\section{\texttt{xrs\_prediction} template}\label{apx:planning}
+
+\lstset{style=python}
+\begin{lstlisting}[frame=single]
+#### detector
+energy    = 9.7			# working energy, same as analyzer energy (E0)
+thickness  = 500.0		# thickness of analyzer active material (micron)
+material   = 'Si'		# analyzer active material
+pixel_size = [256,768]		# number of pixels (height, width)
+
+#### analyzer
+material  = 'Si'	# analyzer material
+hkl       = [6,6,0] 	# hkl-indices of reflection used
+mask_d    = 60.0    	# mask diameter (in mm)
+bend_r    = 1.0	    	# analyzer crystal bending radius
+diced     = False   	# boolean: False for bent crystals, True for diced crystals 
+thickness = 500.0   	# analyzer crystal thickness (micron)
+energy_resolution = 0.5	# expected overall resolution (eV)
+database_dir = '/dir/to/refl_database/' # directory to where already calculated 
+					# reflectivities are stored
+
+#### sample
+chem_formulas = ['FeC6N6','H2O']	# chemical formulae (python list)
+concentrations = [0.03,0.97]		# concentrations (python list)
+densities = [1.9,1.0]			# densities (python list)
+molar_masses = [211.9494,18.02]		# molar masses of the sample's constituents, 
+					# needed for calculation of the number of 
+					# scatterers (python list)
+angle_tth = 122.0 			# 2 theta scattering angle (degress)
+sample_thickness = 0.030		# sample thickness/diameter (cm)
+
+#### thomson
+scattering_plane = 'vertical'		# keyword, either 'vertical' (no polarization 
+					# dependence) or 'horizontal' (polarization 
+					# dependence)
+polarization     = 0.99			# degree of polarization of incident radiation
+
+#### beam
+i0_intensity = 1e13			# number of incident photons
+beam_height  = 10.0 			# beam dimension in the vertical (microns)
+beam_width   = 20.0 			# beam dimension in the horizontal (microns)
+
+#### compton_profiles
+eloss_range = np.arange(0.0,1000.0,0.1)	# energy loss range for the calculation (eV)
+E0          = 9.7			# analyzer energy (keV)
+\end{lstlisting}
+
+% If you have acknowledgments, this puts in the proper section head.
+%\begin{acknowledgments}
+% put your acknowledgments here.
+%\end{acknowledgments}
+
+% Create the reference section using BibTeX:
+%\bibliography{basename of .bib file}
+
+\begin{thebibliography}{}
+
+\bibitem{XRSTools_paper} Ch.J.~Sahle et al. submitted to J.~Synchrotron Rad.~(2014). 
+
+% reviews
+\bibitem{schuelke2007book} Sch\"ulke, W. (2007). Electron dynamics by inelastic X-ray scattering. Oxford Univ. Press.
+\bibitem{hamalainen2001} H\"am\"al\"ainen, K., \& Manninen, S. (2001). Resonant and non-resonant inelastic x-ray scattering. Journal of Physics: Condensed Matter, 13(34), 7539.
+\bibitem{sinha2001} Sinha, S. K. (2001). Theory of inelastic X-ray scattering from condensed matter. Journal of Physics: Condensed Matter, 13(34), 7511.
+
+\bibitem{mlhetland} Hetland, Magnus Lie. Beginning Python. Apress, 2005.
+
+% previous analysis codes
+\bibitem{sternemann2008} Sternemann, H., Sternemann, C., Seidler, G. T., Fister, T. T., Sakko, A., \& Tolan, M. (2008). An extraction algorithm for core-level excitations in non-resonant inelastic X-ray scattering spectra. Journal of synchrotron radiation, 15(2), 162-169.
+\bibitem{huotari2012} Huotari, S., Pylkk\"anen, T., Soininen, J. A., Kas, J. J., H\"am\"al\"ainen, K., \& Monaco, G. (2011). X-ray-Raman-scattering-based EXAFS beyond the dipole limit. Journal of synchrotron radiation, 19(1), 106-113.
+
+% beamline paper
+\bibitem{Cai2004} Sakurai, Y., Yamaoka, H., Kimura, H., Marechal, X. M., Ohtomo, K., Mochizuki, T., et al. (1995). Design of an elliptic multipole wiggler beamline for high‐energy inelastic scattering at the SPring‐8. Review of scientific instruments, 66(2), 1774-1776.
+\bibitem{Fister2006} Fister, T. T., Seidler, G. T., Wharton, L., Battle, A. R., Ellis, T. B., Cross, J. O., et al. (2006). Multielement spectrometer for efficient measurement of the momentum transfer dependence of inelastic x-ray scattering. Review of scientific instruments, 77(6), 063901-063901.
+\bibitem{Verbeni2009} Verbeni, R., Pylkk\"anen, T., Huotari, S., Simonelli, L., Vanko, G., Martel, K., et al. (2009). Multiple-element spectrometer for non-resonant inelastic X-ray spectroscopy of electronic excitations. Journal of synchrotron radiation, 16(4), 469-476.
+\bibitem{Sokaras2012} Sokaras, D., Nordlund, D., Weng, T. C., Mori, R. A., Velikov, P., Wenger, D., et al. (2012). A high resolution and large solid angle x-ray Raman spectroscopy end-station at the Stanford Synchrotron Radiation Lightsource. Review of Scientific Instruments, 83(4), 043112.
+\bibitem{hiraoka2013} Hiraoka, N., H. Fukui, H. Tanida, H. Toyokawa, Y. Q. Cai, and K. D. Tsuei. "An X-ray Raman spectrometer for EXAFS studies on minerals: bent Laue spectrometer with 20 keV X-rays." Journal of synchrotron radiation 20, no. 2 (2013): 266-271.
+
+% imaging
+\bibitem{SHuotari2011} Huotari, S., Pylkk\"anen, T., Verbeni, R., Monaco, G., \& H\"am\"al\"ainen, K. (2011). Direct tomography with chemical-bond contrast. Nature materials, 10(7), 489-493.
+
+
+
+\end{thebibliography}
+
+\end{document}
+%
+% ****** End of file template.aps ******
+
+
+

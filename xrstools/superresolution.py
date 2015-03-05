@@ -11,6 +11,8 @@ from itertools import groupby
 from scipy.interpolate import Rbf, RectBivariateSpline
 from scipy.optimize import leastsq, fmin
 
+from  xrs_imaging import *
+
 class imageset:
 	"""
 	class to make SR-images from list of LR-images

@@ -1,5 +1,40 @@
 #!/usr/bin/python
-# Filename: extraction.py
+# Filename: xrs_utilities.py
+
+#/*##########################################################################
+#
+# The XRStools software package for XRS spectroscopy
+#
+# Copyright (c) 2013-2014 European Synchrotron Radiation Facility
+#
+# This file is part of the XRStools XRS spectroscopy package developed at
+# the ESRF by the DEC and Software group and contains practical functions, 
+# most of which are translated from Matlab functions from the University of
+# Helsinki Electronic Structure Laboratory.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+#
+#############################################################################*/
+__author__ = "Christoph J. Sahle - ESRF"
+__contact__ = "christoph.sahle@esrf.fr"
+__license__ = "MIT"
+__copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
 
 import os
 import math
@@ -7,7 +42,9 @@ import math
 import numpy as np
 import array as arr
 import matplotlib.pyplot as plt
+import pickle
 
+from matplotlib.widgets import Cursor
 from itertools import groupby
 from scipy.integrate import trapz
 from scipy import interpolate, signal, integrate, constants, optimize
@@ -15,6 +52,146 @@ from re import findall
 from scipy.ndimage import measurements
 from scipy.optimize import leastsq, fmin
 from scipy.interpolate import Rbf, RectBivariateSpline
+from scipy.integrate import odeint
+
+#installation_dir = os.path.dirname(os.path.abspath(__file__))
+installation_dir = os.path.abspath('.')
+
+
+class maxipix_det:
+	"""
+	Class to store some useful values from the detectors used. To be used for arranging the ROIs.
+	"""
+	def __init__(self,name,spot_arrangement):
+		self.name = name
+		assert spot_arrangement in ['3x4','vertical'], 'unknown ROI arrangement, select \'3x4\' or \'vertical\'.'
+		self.spot_arrangement = spot_arrangement
+
+		self.roi_indices   = []
+		self.roi_x_indices = []
+		self.roi_y_indices = []
+		self.roi_x_means   = []
+		self.roi_y_means   = []
+		self.pixel_size    = [256,256]
+		self.PIXEL_RANGE   = {'VD': [0,256,0,256],  'VU': [0,256,256,512],  'VB': [0,256,512,768],
+							'HR': [256,512,0,256],'HL': [256,512,256,512],'HB': [256,512,512,768]}
+	def get_pixel_range(self):
+		return self.PIXEL_RANGE[self.name]
+
+	def get_det_name(self):
+		return self.name
+
+
+def energy(d,ba):
+	"""
+	% ENERGY  Calculates energy corrresponing to Bragg angle for given d-spacing
+	%         function e=energy(dspace,bragg_angle)
+	%
+	%	  dspace for reflection
+	%	  bragg_angle in DEG
+	%
+	%         KH 28.09.93
+	"""
+	hc = 12.3984191 # CODATA 2002 physics.nist.gov/constants
+	return (2.0*d*np.sin(ba/180.0*np.pi)/hc)**(-1)
+
+def dspace(hkl=[6,6,0],xtal='Si'):
+	"""
+	% DSPACE Gives d-spacing for given xtal
+	%	 d=dspace(hkl,xtal)
+	%	 hkl can be a matrix i.e. hkl=[1,0,0 ; 1,1,1];
+	%	 xtal='Si','Ge','LiF','InSb','C','Dia','Li' (case insensitive)
+	%	 if xtal is number this is user as a d0
+	%
+	%	 KH 28.09.93 
+	%        SH 2005
+	%
+	"""
+	# create a database of lattice constants (could be a shelf)
+	xtable = {}
+	xtable['SI'] = 5.43102088
+	xtable['GE'] = 5.657
+	xtable['SIXOP'] = 5.430919
+	xtable['SIKOH'] = 5.430707
+	xtable['LIF'] = 4.027
+	xtable['INSB'] = 6.4784
+	xtable['C'] = 6.708
+	xtable['DIA'] = 3.57
+	xtable['LI'] = 3.41
+	xtable['TCNE'] = 9.736
+	xtable['CU'] = 3.61
+	xtable['PB'] = 4.95
+	xtable['NA'] = 4.2906
+	xtable['AL'] = 4.0495
+
+	if isinstance(xtal,str):
+		try:
+			a0 = xtable[xtal.upper()]
+		except KeyError:
+			print 'Lattice constant is not in database'
+			return
+	else: 
+		a0 = xtal # if number is provided, it's taken as lattice constant
+
+	return a0/np.sqrt(np.sum(np.array(hkl)**2.0))
+
+def bragg(hkl,e,xtal='Si'):
+	"""
+	% BRAGG  Calculates Bragg angle for given reflection in RAD
+	%	  output=bangle(hkl,e,xtal)
+	%  	  hkl can be a matrix i.e. hkl=[1,0,0 ; 1,1,1];
+	%	  e=energy in keV
+	%	  xtal='Si', 'Ge', etc. (check dspace.m) or d0 (Si default)
+	%
+	%	  KH 28.09.93
+	%
+	"""
+	hc = 12.3984191 # CODATA 2002 recommended value, physics.nist.gov/constants
+	return np.real(np.arcsin((2.0*dspace(hkl,xtal)*e/hc)**(-1.0)))
+
+def braggd(hkl,e,xtal='Si'):
+	"""
+	# BRAGGD  Calculates Bragg angle for given reflection in deg
+	#	  Call BRAGG.M
+	#	  output=bangle(hkl,e,xtal)
+	#  	  hkl can be a matrix i.e. hkl=[1,0,0 ; 1,1,1];
+	#	  e=energy in keV
+	#	  xtal='Si', 'Ge', etc. (check dspace.m) or d0 (Si default)
+	#
+	#	  KH 28.09.93
+	"""
+	return bragg(hkl,e,xtal)/np.pi*180.0
+
+def addch(xold,yold,n,n0=0,errors=None):
+	"""
+	# ADDCH     Adds contents of given adjacent channels together
+	#
+	#           [x2,y2] = addch(x,y,n,n0)
+	#           x  = original x-scale  (row or column vector)
+	#           y  = original y-values (row or column vector)
+	#           n  = number of channels to be summed up
+	#	        n0 = offset for adding, default is 0
+	#           x2 = new x-scale 
+	#           y2 = new y-values
+	#
+	#           KH 17.09.1990
+	#	    Modified 29.05.1995 to include offset
+	"""
+	n0=n0-np.fix(n0/n)*n
+	if n0<0:
+		 n0 = (n + n0)
+	datalen = np.floor( (len(xold) - n0) / n)
+
+	xnew = np.zeros(np.min([datalen,len(xold)]))
+	ynew = np.zeros(np.min([datalen,len(xold)]))
+	errnew = np.zeros(np.min([datalen,len(xold)]))
+	for i in range(int(datalen)):
+		xnew[i] = np.sum(xold[i*n+n0:i*n+n+n0])/n
+		ynew[i] = np.sum(yold[i*n+n0:i*n+n+n0])/n
+		if np.any(errors):
+			errnew[i] = np.sqrt(np.sum(errors[i*n+n0:i*n+n+n0]**2.0))
+			return xnew, ynew, errnew
+	return xnew, ynew
 
 def fwhm(x,y):
 	"""
@@ -25,14 +202,14 @@ def fwhm(x,y):
 	"""
 	if x[-1] < x[0]:
 		x = np.flipud(x)
-		y = flipud(y)
+		y = np.flipud(y)
 
 	y0 = np.amax(y)
-	i0 = np.where(y == y0)[0][0] # this is because it returns several values sometimes (always take the first), needs improvement
+	i0 = np.where(y == y0)
 	x0 = x[i0]
 
-	i1 = np.where(np.logical_and(y>y/3.0, x<x0))[0]
-	i2 = np.where(np.logical_and(y>y/3.0, x>x0))[0]
+	i1 = np.where(np.logical_and(y>y/3.0, x<x0))
+	i2 = np.where(np.logical_and(y>y/3.0, x>x0))
 
 	f  = interpolate.interp1d(y[i1],x[i1], bounds_error=False, fill_value=0.0)
 	x1 = f(y0/2.0)
@@ -43,26 +220,10 @@ def fwhm(x,y):
 	return 2.0*fwhm, x0
 
 def gauss(x,x0,fwhm):
-	"""
-	area-normalized gaussian
-	x    = x-axis vector
-	x0   = position 
-	fwhm = full width at half maximum
-	"""
-	sigma = fwhm/(2*np.sqrt(2*np.log(2)));
-	y = np.exp(-(x-x0)**2/2/sigma**2)/sigma/np.sqrt(2*np.pi)
-	return y
-
-def gauss_areanorm(x,x0,fwhm):
-	"""
-	area-normalized gaussian
-	x    = x-axis vector
-	x0   = position 
-	fwhm = full width at half maximum
-	"""
-	sigma = fwhm/(2.0*np.sqrt(2.0*np.log(2.0)))
-	y = np.exp(-(x-x0)**2.0/2.0/sigma**2)/sigma/np.sqrt(2.0*np.pi)
-	return y
+    # area-normalized gaussian
+    sigma = fwhm/(2*np.sqrt(2*np.log(2)));
+    y = np.exp(-(x-x0)**2/2/sigma**2)/sigma/np.sqrt(2*np.pi)
+    return y
 
 def convg(x,y,fwhm):
 	"""
@@ -82,279 +243,6 @@ def convg(x,y,fwhm):
 	c  = c[n:len(c)-n+1] # not sure about the +- 1 here
 	f  = interpolate.interp1d(x2,c)
 	return f(x)
-
-def spline2(x,y,x2):
-	"""
-	Extrapolates the smaller and larger values as a constant
-	x  = old x-axis
-	y  = old y-axis
-	x2 = new x-axis
-	"""
-	xmin = np.min(x)
-	xmax = np.max(x)
-	imin = x == xmin
-	imax = x == xmax
-	f  = interpolate.interp1d(x,y, bounds_error=False, fill_value=0.0)
-	y2 = f(x2)
-	i     = np.where(x2<xmin)
-	y2[i] = y[imin]
-	i     = np.where(x2>xmax)
-	y2[i] = y[imax]
-	return y2
-
-def readxas(filename):
-	"""
-	function output = readxas(filename)%[e,p,s,px,py,pz] = readxas(filename)
-
-	% READSTF   Load StoBe fort.11 (XAS output) data
-	%
-	%   [E,P,S,PX,PY,PZ] = READXAS(FILENAME)
-	%
-	%      E        energy transfer [eV]
-	%      P        dipole transition intensity
-	%      S        r^2 transition intensity 
-	%      PX       dipole transition intensity along x
-	%      PY       dipole transition intensity along y
-	%      PZ       dipole transition intensity along z
-	%
-	%                   as line diagrams.
-	%
-	%                             T Pylkkanen @ 2011-10-17 
-	"""
-	# Open file
-	f = open(filename,'r')
-	lines = f.readlines()
-	f.close()
-	data = []
-	for line in lines[1:]:
-		data.append([float(x) for x in line.replace('D', 'e').strip().split()])
-
-	data      = np.array(data)
-	data[:,0] = data[:,0]*27.211384565719481 # convert from a.u. to eV
-	
-
-	data[:,3] = 2.0/3.0*data[:,3]**2.0*e/27.211384565719481 # osc(x)
-	data[:,4] = 2.0/3.0*data[:,4]**2.0*e/27.211384565719481 # osc(y)
-	data[:,5] = 2.0/3.0*data[:,5]**2.0*e/27.211384565719481 # osc(z)
-
-	return data
-
-def broaden_diagram(e,s,params=[1.0, 1.0, 537.5, 540.0],npoints=1000):
-	"""
-	function [e2,s2] = broaden_diagram2(e,s,params,npoints)
-
-	% BROADEN_DIAGRAM2   Broaden a StoBe line diagram
-	%
-	%  [ENE2,SQW2] = BROADEN_DIAGRAM2(ENE,SQW,PARAMS,NPOINTS)
-	%
-	%   gives the broadened spectrum SQW2(ENE2) of the line-spectrum
-	%   SWQ(ENE). Each line is substituted with a Gaussian peak,
-	%   the FWHM of which is determined by PARAMS. ENE2 is a linear
-	%   scale of length NPOINTS (default 1000).
-	%
-	%    PARAMS = [f_min f_max emin max]
-	%
-	%     For ENE <= e_min, FWHM = f_min.
-	%     For ENE >= e_max, FWHM = f_min.
-	%     FWHM increases linearly from [f_min f_max] between [e_min e_max].
-	%
-	%                               T Pylkkanen @ 2008-04-18 [17:37]
-	"""
-	f_min = params[0]
-	f_max = params[1]
-	e_min = params[2]
-	e_max = params[3]
-
-	e2   = np.linspace(np.min(e)-10.0,np.max(e)+10.0,npoints);
-	s2   = np.zeros_like(e2) 
-	fwhm = np.zeros_like(e)
-
-	# FWHM: Constant  -- Linear -- Constant
-	A    = (f_max-f_min)/(e_max-e_min)
-	B    = f_min - A*e_min
-	fwhm = A*e + B
-	inds = e <= e_min
-	fwhm[inds] = f_min
-	inds = e >= e_max	
-	fwhm[inds] = f_max
-
-	for i in range(len(s)):
-		s2 += s[i]*gauss(e2,e[i],fwhm[i])
-
-	return e2, s2
-
-def broaden_linear(spec,params=[0.8, 8, 537.5, 550],npoints=1000):
-	"""
-	broadens a spectrum with a Gaussian of width params[0] below 
-	params[2] and width params[1] above params[3], width increases 
-	linear in between.
-	returns two-column numpy array of length npoints with energy and the broadened spectrum
-	"""
-	evals = spec[:,0]
-	sticks= spec[:,1]
-	f_min = params[0]
-	f_max = params[1]
-	e_min = params[2]
-	e_max = params[3]
-	e2    = np.linspace(np.min(evals)-10.0,np.max(evals)+10.0,npoints)
-	s2    = np.zeros(len(e2))
-	fwhm  = np.zeros(len(evals))
-	# FWHM: Constant  -- Linear -- Constant
-	A    = (f_max-f_min)/(e_max-e_min)
-	B    = f_min - A*e_min
-	fwhm = A*evals + B
-	fwhm[evals <= e_min] = f_min
-	fwhm[evals >= e_max] = f_max
-	for n in range(len(sticks)):
-		s2 = s2 + sticks[n]*gauss(e2,evals[n],fwhm[n])
-	spectrum = np.zeros((len(e2),2))
-	spectrum[:,0] = e2
-	spectrum[:,1] = s2
-	return spectrum
-
-def load_stobe_specs(prefix,postfix,fromnumber,tonumber,step,stepformat=2):
-	"""
-	load a bunch of StoBe calculations, which filenames are made up of the 
-	prefix, postfix, and the counter in the between the prefix and postfix 
-	runs from 'fromnumber' to 'tonumber' in steps of 'step' (number of digits 
-	is 'stepformat')
-	"""
-	numbers = np.linspace(fromnumber,tonumber,(tonumber-fromnumber + step)/step)
-	filenames = []
-	precision = '%0'+str(stepformat)+'d'
-	for number in numbers:
-		thenumber = precision % number
-		thefilename = prefix+thenumber+postfix
-		filenames.append(thefilename)
-	specs = []
-	for filename in filenames:
-		try:
-			specs.append(readxas(filename))
-		except:
-			print 'found no file: ' + filename
-	return specs
-
-def load_erkale_spec(filename):
-	"""
-	returns an erkale spectrum
-	"""
-	spec = np.loadtxt(filename)
-	return spec
-
-def load_erkale_specs(prefix,postfix,fromnumber,tonumber,step,stepformat=2):
-	"""
-	returns a list of erkale spectra
-	"""
-	numbers = np.linspace(fromnumber,tonumber,(tonumber-fromnumber + step)/step)
-	filenames = []
-	precision = '%0'+str(stepformat)+'d'
-	for number in numbers:
-		thenumber = precision % number
-		thefilename = prefix+thenumber+postfix
-		filenames.append(thefilename)
-	specs = []
-	for filename in filenames:
-		try:
-			specs.append(load_erkale_spec(filename))
-		except:
-			print 'found no file: ' + filename
-	return specs
-
-def cut_spec(spec,emin=None,emax=None):
-	"""
-	deletes lines of matrix with first column smaller than emin and larger than emax 
-	"""
-	if not emin:
-		emin = spec[0,0]
-	if not emax:
-		emax = spec[-1,0]
-	spec = spec[spec[:,0]>emin]
-	spec = spec[spec[:,0]<emax]
-	return spec
-
-# extraction
-def constant(x,a):
-	"""
-	returns a constant
-	x = x-axis
-	a = value of the constant 
-	returns vector with same length as x with entries a
-	"""
-	x = np.array(x)
-	y = np.zeros(len(x)) + a
-	return y
-
-def linear(x,a):
-	"""
-	returns a linear function y = ax + b
-	x = x-axis
-	a = list of parameters, a[0] = slope, a[1] = y-offset
-	it is better to use numpy's polyval
-	"""
-	x = np.array(x)
-	y = a[0]*x + a[1]
-	return y
-
-def lorentz(x,a):
-	"""
-	% LORENTZ  The Lorentzian function
-	%
-	%          y  = lorentz(x,a)
-	%          x      = x-vector
-	%          a[0]   = peak position
-	%          a[1]   = FWHM
-	%          a[2]   = Imax (if not defined, Imax = 1)
-	"""
-	y = a[2]*(((x-a[0])/(a[1]/2.0))**2.0+1.0)**(-1.0)
-	return y
-
-def pearson7(x,a):
-	"""
-	returns a pearson function
-	a[0] = Peak position
-	a[1] = FWHM
-	a[2] = Shape, 1 = Lorentzian, infinite = Gaussian
-	a[3] = Peak intensity
-	a[4] = Background
-	"""
-	x = np.array(x)
-	y = a[3] * (1.0+(2.0**(1.0/a[2])-1.0) * (2.0*(x-a[0])/a[1])**2.0)**(-a[2])+a[4]
-	return y
-
-def pearson7_forcurvefit(x,a0,a1,a2,a3,a4):
-	"""
-	special version of person7 for use in constrained/bound minimizations
-	returns a pearson function
-	a[0] = Peak position
-	a[1] = FWHM
-	a[2] = Shape, 1 = Lorentzian, infinite = Gaussian
-	a[3] = Peak intensity
-	a[4] = Background
-	"""
-	x = np.array(x)
-	y = a3 * (1.0+(2.0**(1.0/a2)-1.0) * (2.0*(x-a0)/a1)**2.0)**(-a2)+a4
-	return y
-
-def pearson7_zeroback(x,a):
-	"""
-	returns a pearson function but without y-offset
-	a[0] = Peak position
-	a[1] = FWHM
-	a[2] = Shape, 1 = Lorentzian, infinite = Gaussian
-	a[3] = Peak intensity
-	"""
-	x = np.array(x)
-	y = a[3] * (1.0+(2.0**(1.0/a[2])-1.0) * (2.0*(x-a[0])/a[1])**2.0)**(-a[2])
-	return y
-
-def gauss(x,a):
-	"""
-	returns a gaussian with peak value normalized to unity
-	a[0] = peak position
-	a[1] = Full Width at Half Maximum
-	"""
-	y = np.exp(-np.log(2.0)*((x-a[0])/a[1]*2.0)**2.0)
-	return y
 
 def spline2(x,y,x2):
 	"""
@@ -424,7 +312,6 @@ def pz2e1(w2,pz,th):
 	w1  = tck(pz)
 	return w1
 
-# theory
 def e2pz(w1,w2,th):
 	"""
 	Calculates the momentum scale and the relativistic Compton cross section 
@@ -458,25 +345,6 @@ def e2pz(w1,w2,th):
 	pz  = pz/(m*alp)                                                 # pz to atomic units (a.u.)
 	return pz, cf
 
-def pz2e1(w2,pz,th):
-	"""
-	Calculates the incident energy value corresponding
-	specific scattered photon and momentum value.
-	from KH 29.05.96
-	input: 
-	w2 = scattered energy [keV]
-	pz = momentum value   [a.u.]
-	th = scattering angle [deg]
-	returns:
-	w1 = incident energy  [keV]
-	"""
-	pz  = np.array(pz)
-	w   = np.array(np.arange(w2/4.0,4.0*w2,w2/5000.0))
-	p   = e2pz(w,w2,th)[0]
-	tck = interpolate.UnivariateSpline(p,w)
-	w1  = tck(pz)
-	return w1
-
 def momtrans_au(e1,e2,tth):
 	"""
 	Calculates the momentum transfer in atomic units
@@ -493,6 +361,7 @@ def momtrans_au(e1,e2,tth):
 	hbarc = 137.03599976
 	q     = 1/hbarc*np.sqrt(e1**2.0+e2**2.0-2.0*e1*e2*np.cos(th));
 	return q
+
 
 def readbiggsdata(filename,element):
 	"""
@@ -547,7 +416,7 @@ def readbiggsdata(filename,element):
 	data = (np.reshape(np.array(data),(length,arraysize)))
 	return data, occupation, bindingen, colnames
 
-def makepzprofile(element,filename='./xrstools/things/ComptonProfiles.dat'):
+def makepzprofile(element,filename=os.path.join(installation_dir,'xrstools/data/ComptonProfiles.dat')):
 	"""
 	constructs compton profiles of element 'element' on pz-scale 
 	(-100:100 a.u.) from the Biggs tables provided in 'filename'
@@ -574,7 +443,7 @@ def makepzprofile(element,filename='./xrstools/things/ComptonProfiles.dat'):
 	pzprofile[:,0] = pzscale     
 	# mirror, spline onto fine grid
 	for n in range(len(binden)):
-		intf             = interpolate.splrep(roughtheory[:,0],roughtheory[:,n+2],s=0.000000001,k=3) # skip the column with the total J for now #try interp1d with bounds_error=False and fill_value=0.0
+		intf             = interpolate.splrep(roughtheory[:,0],roughtheory[:,n+2],s=0.000000001,k=2) # skip the column with the total J for now #try interp1d with bounds_error=False and fill_value=0.0
 		pzprofile[:,n+1] = interpolate.splev(abs(pzscale),intf,der=0)
 	# normalize to one electron, multiply by number of electrons
 	for n in range(len(binden)):
@@ -584,7 +453,7 @@ def makepzprofile(element,filename='./xrstools/things/ComptonProfiles.dat'):
 	occupation = [float(val) for val in occupation]
 	return pzprofile, binden, occupation
 
-def makeprofile(element,filename='./xrstools/things/ComptonProfiles.dat',E0=9.69,tth=35.0,correctasym=None):
+def makeprofile(element,filename=os.path.join(installation_dir,'xrstools/data/ComptonProfiles.dat'),E0=9.69,tth=35.0,correctasym=None):
 	"""
 	takes the profiles from 'makepzprofile()', converts them onto eloss 
 	scale and normalizes them to S(q,w) [1/eV]
@@ -611,8 +480,8 @@ def makeprofile(element,filename='./xrstools/things/ComptonProfiles.dat',E0=9.69
 
 	# discard profiles below zero
 	hfprofile = pzprofile[np.nonzero(enscale.T>=0)[0],:]
-	q         = q[:,np.nonzero(enscale.T>=0)[0]]
-	enscale   = enscale[:,np.nonzero(enscale.T>=0)[0]]
+	q         = q[np.nonzero(enscale.T>=0)[0]] #q[:,np.nonzero(enscale.T>=0)[0]]
+	enscale   = enscale[np.nonzero(enscale.T>=0)[0]] #enscale[:,np.nonzero(enscale.T>=0)[0]]
 	hfprofile[:,0] = enscale
 	# cut at edges
 	for n in range(len(binden)):
@@ -637,24 +506,8 @@ def makeprofile(element,filename='./xrstools/things/ComptonProfiles.dat',E0=9.69
 				V += hfprofile[:,n+1]/hartree
 	C = J - V
 	return enscale,J,C,V,q
-	
-def parseformula(formula):
-	"""
-	parses the constituing elements and stoichiometries from a given formula
-	input:
-	formula = string of a chemical formula (e.g. 'SiO2', 'Ba8Si46', etc.)
-	returns:
-	elements        = list of constituting elemental symbols
-	stoichiometries = list of according stoichiometries in same order as 'elements'
-	"""
-	elements = []
-	stoichiometries = []
-	splitted = findall(r'([A-Z][a-z]*)(\d*)',formula)
-	elements.extend([element[0] for element in splitted])
-	stoichiometries.extend([(int(element[1]) if element[1] else 1) for element in splitted])
-	return elements,stoichiometries
 
-def makeprofile_comp(formula,filename='./xrstools/things/ComptonProfiles.dat',E0=9.69,tth=35,correctasym=None):
+def makeprofile_comp(formula,filename=os.path.join(installation_dir,'xrstools/data/ComptonProfiles.dat'),E0=9.69,tth=35,correctasym=None):
 	"""
 	returns the compton profile of a chemical compound with formula 'formula'
 	input:
@@ -683,7 +536,7 @@ def makeprofile_comp(formula,filename='./xrstools/things/ComptonProfiles.dat',E0
 		V += v
 	return eloss, J,C,V,q
 
-def makeprofile_compds(formulas,concentrations=None,filename='./xrstools/things/ComptonProfiles.dat',E0=9.69,tth=35.0,correctasym=None):
+def makeprofile_compds(formulas,concentrations=None,filename=os.path.join(installation_dir,'xrstools/data/ComptonProfiles.dat'),E0=9.69,tth=35.0,correctasym=None):
 	"""
 	returns sum of compton profiles from a lost of chemical compounds weighted by the given concentration
 	"""
@@ -774,19 +627,35 @@ def HRcorrect(pzprofile,occupation,q):
 			asymmetry[:,2] = j1
 	return asymmetry
 
+def parseformula(formula):
+	"""
+	parses the constituing elements and stoichiometries from a given formula
+	input:
+	formula = string of a chemical formula (e.g. 'SiO2', 'Ba8Si46', etc.)
+	returns:
+	elements        = list of constituting elemental symbols
+	stoichiometries = list of according stoichiometries in same order as 'elements'
+	"""
+	elements = []
+	stoichiometries = []
+	splitted = findall(r'([A-Z][a-z]*)(\d*)',formula)
+	elements.extend([element[0] for element in splitted])
+	stoichiometries.extend([(int(element[1]) if element[1] else 1) for element in splitted])
+	return elements,stoichiometries
+
 def element(z):
 	"""
-	returns atomic number of given element, if z is a string of the 
-	element symbol or string of element symbol of given atomic number z
+	Returns atomic number of given element, if z is a string of the 
+	element symbol or string of element symbol of given atomic number z.
 	"""
 	zs = ['H','He','Li','Be','B','C','N','O','F','Ne','Na','Mg','Al',
-	'Si','P','S','Cl','Ar','K','Ca','Sc','Ti','V','Cr','Mn','Fe','Co','Ni',
-    'Cu','Zn','Ga','Ge','As','Se','Br','Kr','Rb','Sr','Y','Zr','Nb','Mo',
-    'Tc','Ru','Rh','Pd','Ag','Cd','In','Sn','Sb','Te','I','Xe','Cs','Ba',
-    'La','Ce','Pr','Nd','Pm','Sm','Eu','Gd','Tb','Dy','Ho','Er','Tm','Yb',
-    'Lu','Hf','Ta','W','Re','Os','Ir','Pt','Au','Hg','Tl','Pb','Bi','Po',
-    'At','Rn','Fr','Ra','Ac','Th','Pa','U','Np','Pu','Am','Cm','Bk','Cf',
-    'Es','Fm','Md','No','Lr','Ku']
+              'Si','P','S','Cl','Ar','K','Ca','Sc','Ti','V','Cr','Mn','Fe','Co','Ni',
+              'Cu','Zn','Ga','Ge','As','Se','Br','Kr','Rb','Sr','Y','Zr','Nb','Mo',
+              'Tc','Ru','Rh','Pd','Ag','Cd','In','Sn','Sb','Te','I','Xe','Cs','Ba',
+              'La','Ce','Pr','Nd','Pm','Sm','Eu','Gd','Tb','Dy','Ho','Er','Tm','Yb',
+              'Lu','Hf','Ta','W','Re','Os','Ir','Pt','Au','Hg','Tl','Pb','Bi','Po',
+              'At','Rn','Fr','Ra','Ac','Th','Pa','U','Np','Pu','Am','Cm','Bk','Cf',
+              'Es','Fm','Md','No','Lr','Ku']
 	if isinstance(z,str):
 		try:
 			Z = zs.index(z)+1
@@ -802,7 +671,7 @@ def element(z):
 		print 'type '+ type(z) + 'not supported'	
 	return Z
 
-def myprho(energy,Z,logtablefile='./xrstools/things/logtable.dat'):
+def myprho(energy,Z,logtablefile=os.path.join(installation_dir,'xrstools/data/logtable.dat')):
 	"""
 	calculates the photoelectric, elastic, and inelastic absorption of 
 	an element Z (can be atomic number or symbol) on the energyscal e1
@@ -876,8 +745,6 @@ def mpr(energy,compound):
 	mr 	 = np.sum(mr,1)
 	return mr,rhov,mv
 
-#print mpr(1,'SiO2')[0]
-
 def mpr_compds(energy,formulas,concentrations,E0,rho_formu):
 	"""
 	calculates the photoelectric, elastic, and inelastic absorption of 
@@ -901,8 +768,6 @@ def mpr_compds(energy,formulas,concentrations,E0,rho_formu):
 		mu_tot_in += mpr(en,formulas[n])[0]*concentrations[n]*rho_formu[n]
 		mu_tot_out += mpr(e0,formulas[n])[0]*concentrations[n]*rho_formu[n]
 	return mu_tot_in, mu_tot_out
-
-#print mpr_compds([1,2,3],['SiO2','CO2'],[0.5,0.5],9.86,[1 1])
 
 def abscorr2(mu1,mu2,alpha,beta,samthick):
 	"""
@@ -1040,7 +905,6 @@ def plotpenetrationdepth(energy,formulas,concentrations,densities):
 	plt.grid(False)
 	plt.show()
 
-# xrs_read
 def sumx(A):
 	"""
 	Short-hand command to sum over 1st dimension of a N-D matrix (N>2) and to squeeze it to N-1-D matrix.
@@ -1157,272 +1021,6 @@ def edfread_test(filename):
 	f.close()
 	return data
 
-def findgroups(scans):
-	"""
-	this groups together instances of the scan class based on their  "scantype" attribute and returns ordered scans
-	"""	
-	allscannames = []
-	for scan in scans:
-		print scan
-		allscannames.append(scan)
-	allscannames.sort() # 
-	allscans = []
-	for scan in allscannames:
-		 allscans.append(scans[scan])
-	allscans = sorted(allscans,key=lambda x:x.gettype())
-	rawgroups = []
-	results = groupby(allscans,lambda x:x.gettype())
-	print 'the following scangroups were found:'
-	for key,thegroup in results:
-		print key
-		rawgroups.append(list(thegroup))
-	return rawgroups
-
-def makegroup(groupofscans,grouptype=None):
-	"""
-	takes a group of scans, sums up the signals and monitors, estimates poisson errors, and returns an instance of the scangroup class (turns several instances of the "scan" class into an instance of the "scangroup" class)
-	"""
-	if not grouptype:
-		grouptype = groupofscans[0].gettype() # the scantype of the sum of scans will be the same as the first from the list	
-	theenergy   = groupofscans[0].energy # all scans are splined onto energy grid of the first scan
-	thesignals  = np.zeros(groupofscans[0].getshape())
-	theerrors   = np.zeros(groupofscans[0].getshape())
-	themonitors = np.zeros(np.shape(groupofscans[0].monitor))
-	# add up signals from each scan for each ROI
-	for scan in groupofscans:
-		f  = interpolate.interp1d(scan.energy,scan.monitor, bounds_error=False, fill_value=0.0)
-		moni = f(theenergy)
-		themonitors += moni
-		for n in range(thesignals.shape[-1]):
-			f = interpolate.interp1d(scan.energy,scan.signals[:,n], bounds_error=False, fill_value=0.0)
-			signal = f(theenergy)
-			thesignals[:,n] += signal
-	# Poisson errors
-	for n in range(thesignals.shape[-1]):
-		theerrors[:,n]  = np.sqrt(thesignals[:,n])
-	# and normalize	to the monitor
-	for n in range(thesignals.shape[-1]):
-		thesignals[:,n] = thesignals[:,n]/themonitors
-		theerrors[:,n]  = theerrors[:,n]/themonitors
-
-	group = scangroup(theenergy,thesignals,theerrors,grouptype)
-	return group
-
-def makegroup_nointerp(groupofscans,grouptype=None):
-	"""
-	takes a group of scans, sums up the signals and monitors, estimates poisson errors, and returns an instance of the scangroup class (turns several instances of the "scan" class into an instance of the "scangroup" class), same as makegroup but withouth interpolation to account for encoder differences... may need to add some "linspace" function in case the energy scale is not monotoneous... 
-	"""
-	if not grouptype:
-		grouptype = groupofscans[0].gettype() # the scantype of the sum of scans will be the same as the first from the list	
-	theenergy   = groupofscans[0].energy
-	thesignals  = np.zeros(groupofscans[0].getshape())
-	theerrors   = np.zeros(groupofscans[0].getshape())
-	themonitors = np.zeros(np.shape(groupofscans[0].monitor))
-	# add up signals from each scan for each ROI
-	for scan in groupofscans:
-		themonitors += scan.monitor
-		for n in range(thesignals.shape[-1]):
-			thesignals[:,n] += scan.signals[:,n]
-	# Poisson errors
-	for n in range(thesignals.shape[-1]):
-		theerrors[:,n]  = np.sqrt(thesignals[:,n])
-	# and normalize to the monitor
-	for n in range(thesignals.shape[-1]):
-		thesignals[:,n] = thesignals[:,n]/themonitors
-		theerrors[:,n]  = theerrors[:,n]/themonitors
-	group = scangroup(theenergy,thesignals,theerrors,grouptype)
-	return group
-
-def makegroup_test(groupofscans,grouptype=None,elasticnum=None,cenom=None):
-	"""
-	takes a group of scans, sums up the signals and monitors, estimates poisson errors, and returns an instance of the scangroup class (turns several instances of the "scan" class into an instance of the "scangroup" class), uses the center of mass of the elastic scan closest in scannumber (but smaller) to correct each scan in energy loss to it's according elastic 
-	"""
-	if not grouptype:
-		grouptype = groupofscans[0].gettype() # the scantype of the sum of scans will be the same as the first from the list
-
-	theenergy   = groupofscans[0].energy
-	theeloss    = np.zeros_like(groupofscans[0].energy)
-	thesignals  = np.zeros(groupofscans[0].getshape())
-	theerrors   = np.zeros(groupofscans[0].getshape())
-	themonitors = np.zeros(np.shape(groupofscans[0].monitor))
-	theresolution = []
-	# go through all scans
-	for scan in groupofscans:
-		# do scan by scan energy correction if elastic numbers are provided
-		if elasticnum:
-			if grouptype == 'elastic':
-				cenom_all = scan.cenom # elastic scans have their own E0
-				theresolution.append(scan.resolution) # elastic scans have resolution
-			# find the elastic that is closest but smaller in scannumber
-			else:
-				ind = np.where(np.array(elasticnum)<scan.number)[0]
-				if len(ind)>0:
-					elastic_ind = min(range(len(np.array(elasticnum)[ind])), key=lambda i: abs(elasticnum[i]-scan.number))
-					cenom_all   = cenom[elastic_ind]
-		# if no elasticnumber are provided
-		else:
-			cenom_all   = 0 # needs changing
-		# sum up the monitor
-		f  = interpolate.interp1d(scan.energy,scan.monitor, bounds_error=False, fill_value=0.0)
-		moni = f(theenergy)
-		themonitors += moni
-		# master eloss scale
-		theeloss = (groupofscans[0].energy-cenom_all[0])*1.0e3
-		# go through all ROIs and spline onto master eloss scale
-		for n in range(thesignals.shape[-1]):
-			x = (scan.energy-cenom_all[n])*1.0e3 # insert trivial values far below and far above energy to avoid interpolation artefacts
-			x = np.insert(x,0,-1e10,)
-			x = np.insert(x,-1,1e10)
-			y = scan.signals[:,n]
-			y = np.insert(y,0,0)
-			y = np.insert(y,-1,0)
-			f = interpolate.interp1d(x,y,bounds_error=False, fill_value=0.0)
-			signal = f(theeloss)
-			thesignals[:,n] += signal
-	# Poisson errors
-	for n in range(thesignals.shape[-1]):
-		theerrors[:,n]  = np.sqrt(thesignals[:,n])
-	# and normalize	to the monitor
-	for n in range(thesignals.shape[-1]):
-		thesignals[:,n] = thesignals[:,n]/themonitors
-		theerrors[:,n]  = theerrors[:,n]/themonitors
-	#avarage over all resolutions if there were elastic scans involved
-	if theresolution:
-		resolution = np.mean(np.array(theresolution),axis=0)
-	else:
-		resolution = []
-	group = scangroup(theenergy,thesignals,theerrors,grouptype,eloss=theeloss,resolution=resolution)
-	return group
-
-def appendscans(groups):
-	"""
-	append groups of scans ordered by their first energy value. long scans are inserted into gaps that at greater than four times the 		grid of the finer scans
-	"""
-	# find all types of groups	
-	grouptypes = [key for key in groups.keys()]
-	# deal with cases where there is a long scan
-	if 'long' in grouptypes:
-		allgroups = [] # all groups BUT the long one
-		for grouptype in grouptypes:
-			if grouptype != 'long':
-				allgroups.append(groups[grouptype])
-		allgroups.sort(key = lambda x:x.getestart()) # sort all groups but long by their start-energy
-		
-		# go through all groups and see if there is a gap between them, if yes, see if the long scan can be inserted into the gap
-		# first things before the first group
-		theenergy = allgroups[0].energy
-		thesignals = allgroups[0].signals
-		theerrors = allgroups[0].errors
-		inds = np.where(groups['long'].energy<theenergy[0])
-		theenergy  = np.append(groups['long'].energy[inds],theenergy)
-		thesignals = np.append(np.squeeze(groups['long'].signals[inds,:]),thesignals,0)
-		theerrors  = np.append(np.squeeze(groups['long'].errors[inds,:]),theerrors,0)
-		# now go through the other groups and see if there is a gap and part of the long scan to insert
-		for n in range(len(allgroups[1:])):
-			if allgroups[n+1].getestart()-allgroups[n].geteend() > 2.0*allgroups[n+1].getmeanegridspacing(): # worry only if scan groups are far apart
-				inds = np.where(np.logical_and(groups['long'].energy>allgroups[n].geteend(),groups['long'].energy<allgroups[n+1].getestart()))
-				theenergy  = np.append(theenergy,groups['long'].energy[inds])
-				thesignals = np.append(thesignals,np.squeeze(groups['long'].signals[inds,:]),0)
-				theerrors  = np.append(theerrors,np.squeeze(groups['long'].errors[inds,:]),0)
-			theenergy  = np.append(theenergy,allgroups[n+1].energy)
-			thesignals = np.append(thesignals,allgroups[n+1].signals,0)
-			theerrors  = np.append(theerrors,allgroups[n+1].errors,0)
-		# see if there is more long scan after the last group
-		inds = np.where(groups['long'].energy>theenergy[-1])
-		theenergy  = np.append(theenergy,groups['long'].energy[inds])
-		thesignals = np.append(thesignals,np.squeeze(groups['long'].signals[inds,:]),0)
-		theerrors  = np.append(theerrors,np.squeeze(groups['long'].errors[inds,:]),0)
-
-	# deal with the cases where there is no long scan	
-	if not 'long' in grouptypes:
-		allgroups = []
-		for group in groups:
-			allgroups.append(groups[group])
-		allgroups.sort(key = lambda x:x.getestart()) # sort the groups by their start-energy
-		# energy scale
-		theenergy = allgroups[0].energy
-		for n in range(len(allgroups[1:])):
-			theenergy = np.append(theenergy,allgroups[n+1].energy,0)
-		# signals
-		thesignals = allgroups[0].signals
-		for n in range(len(allgroups[1:])):
-			thesignals = np.append(thesignals,allgroups[n+1].signals,0)
-		# errors
-		theerrors = allgroups[0].errors
-		for n in range(len(allgroups[1:])):
-			theerrors = np.append(theerrors,allgroups[n+1].errors,0)
-	return theenergy, thesignals, theerrors
-
-def appendscans_test(groups):
-	"""
-	append groups of scans ordered by their first energy value. long scans are inserted into gaps that at greater than four times the 		grid of the finer scans
-	"""
-	# find all types of groups	
-	grouptypes = [key for key in groups.keys()]
-	# deal with cases where there is a long scan
-	if 'long' in grouptypes:
-		allgroups = [] # all groups BUT the long one
-		for grouptype in grouptypes:
-			if grouptype != 'long':
-				allgroups.append(groups[grouptype])
-		allgroups.sort(key = lambda x:x.getestart()) # sort all groups but long by their start-energy
-		
-		# go through all groups and see if there is a gap between them, if yes, see if the long scan can be inserted into the gap
-		# first things before the first group
-		theenergy  = allgroups[0].energy
-		theeloss   = allgroups[0].eloss
-		thesignals = allgroups[0].signals
-		theerrors  = allgroups[0].errors
-		inds1       = np.where(groups['long'].energy<theenergy[0])
-		theenergy  = np.append(groups['long'].energy[inds1],theenergy)
-		inds2       = np.where(groups['long'].eloss<theenergy[0])
-		print inds1 == inds2
-		theeloss   = np.append(groups['long'].eloss[inds2],theeloss)
-		thesignals = np.append(np.squeeze(groups['long'].signals[inds,:]),thesignals,0)
-		theerrors  = np.append(np.squeeze(groups['long'].errors[inds,:]),theerrors,0)
-		# now go through the other groups and see if there is a gap and part of the long scan to insert
-		for n in range(len(allgroups[1:])):
-			if allgroups[n+1].getestart()-allgroups[n].geteend() > 2.0*allgroups[n+1].getmeanegridspacing(): # worry only if scan groups are far apart
-				inds = np.where(np.logical_and(groups['long'].energy>allgroups[n].geteend(),groups['long'].energy<allgroups[n+1].getestart()))
-				theenergy  = np.append(theenergy,groups['long'].energy[inds])
-				thesignals = np.append(thesignals,np.squeeze(groups['long'].signals[inds,:]),0)
-				theerrors  = np.append(theerrors,np.squeeze(groups['long'].errors[inds,:]),0)
-			theenergy  = np.append(theenergy,allgroups[n+1].energy)
-			thesignals = np.append(thesignals,allgroups[n+1].signals,0)
-			theerrors  = np.append(theerrors,allgroups[n+1].errors,0)
-		# see if there is more long scan after the last group
-		inds = np.where(groups['long'].energy>theenergy[-1])
-		theenergy  = np.append(theenergy,groups['long'].energy[inds])
-		thesignals = np.append(thesignals,np.squeeze(groups['long'].signals[inds,:]),0)
-		theerrors  = np.append(theerrors,np.squeeze(groups['long'].errors[inds,:]),0)
-
-	# deal with the cases where there is no long scan	
-	if not 'long' in grouptypes:
-		allgroups = []
-		for group in groups:
-			allgroups.append(groups[group])
-		allgroups.sort(key = lambda x:x.getestart()) # sort the groups by their start-energy
-		# energy scale
-		theenergy = allgroups[0].energy
-		theeloss  = allgroups[0].eloss
-		for n in range(len(allgroups[1:])):
-			theenergy = np.append(theenergy,allgroups[n+1].energy,0)
-			theeloss  = np.append(theeloss,allgroups[n+1].eloss,0)
-		# signals
-		thesignals = allgroups[0].signals
-		for n in range(len(allgroups[1:])):
-			thesignals = np.append(thesignals,allgroups[n+1].signals,0)
-		# errors
-		theerrors = allgroups[0].errors
-		for n in range(len(allgroups[1:])):
-			theerrors = np.append(theerrors,allgroups[n+1].errors,0)
-		# resolution (stored in the elastic line group)
-		if allgroups[0].grouptype == 'elastic':
-			theresolution = allgroups[0].resolution
-		else:
-			theresolution = []
-	return theenergy, theeloss, thesignals, theerrors, theresolution
-
 def momtrans_au(e1,e2,tth):
 	"""
 	Calculates the momentum transfer in atomic units
@@ -1452,13 +1050,221 @@ def momtrans_inva(e1,e2,tth):
 	"""
 	e = 1.602e-19
 	c = 2.9979e8 
-	hbar = 6.626e-34/2/pi
+	hbar = 6.626e-34/2/np.pi
 
 	e1    = np.array(e1*1e3*e/c/hbar)
 	e2    = np.array(e2*1e3*e/c/hbar)
 	th    = np.radians(tth)
-	q     = np.sqrt(e1**2+e2**2-2*e1*e2*np.cos(phi))/1e10
+	q     = np.sqrt(e1**2+e2**2-2*e1*e2*np.cos(th))/1e10
 	return q
+
+def energy_monoangle(angle,d=5.4307/np.sqrt(11)):
+	"""
+	% ENERGY  Calculates energy corrresponing to Bragg angle for given d-spacing
+	%         function e=energy(dspace,bragg_angle)
+	%
+	%         dspace for reflection (defaulf for Si(311) reflection)
+	%         bragg_angle in DEG
+	%
+	%         KH 28.09.93
+	%
+	"""
+	hc = 12.3984191 # CODATA 2002 physics.nist.gov/constants
+	e  = (2.0*d*sin(angle/180.0*np.pi)/hc)**(-1.0)
+	return e
+
+def find_center_of_mass(x,y):
+	"""
+	Returns the center of mass (first moment) for the given curve y(x)
+	"""
+	return np.trapz(y*x,x)/np.trapz(y,x)
+
+
+def odefctn(y,t,abb0,abb1,abb7,abb8,lex,sgbeta,y0,c1):
+	"""
+	#%    [T,Y] = ODE23(ODEFUN,TSPAN,Y0,OPTIONS,P1,P2,...) passes the additional
+	#%    parameters P1,P2,... to the ODE function as ODEFUN(T,Y,P1,P2...), and to
+	#%    all functions specified in OPTIONS. Use OPTIONS = [] as a place holder if
+	#%    no options are set.   
+	"""
+	#print 'shape of y is ' , np.shape(y), np.shape(t)
+	fcomp = 1.0/(complex(0,-lex)) * (-2.0*((abb0*(abb8 + abb7*sgbeta*t) + abb1) + complex(0,y0))*(y[0] + complex(0,y[1])) + c1*(1.0 + (y[0] + complex(0,y[1]))**2.0))
+	return fcomp.real,fcomp.imag
+
+def taupgen(e, hkl = [6,6,0], crystals = 'Si', R = 1.0, dev = np.arange(-50.0,150.0,1.0), alpha = 0.0):
+	"""
+	% TAUPGEN          Calculates the reflectivity curves of bent crystals
+	%
+	% function [refl,e,dev]=taupgen_new(e,hkl,crystals,R,dev,alpha);
+	%
+	%              e = fixed nominal energy in keV
+	%            hkl = reflection order vector, e.g. [1 1 1]
+	%       crystals = crystal string, e.g. 'si' or 'ge'
+	%              R = bending radius in meters
+	%            dev = deviation parameter for which the 
+	%                  curve will be calculated (vector) (optional)
+	%          alpha = asymmetry angle 
+	% based on a FORTRAN program of Michael Krisch
+	% Translitterated to Matlab by Simo Huotari 2006, 2007
+	% Is far away from being good matlab writing - mostly copy&paste from
+	% the fortran routines. Frankly, my dear, I don't give a damn. 
+	% Complaints -> /dev/null
+	"""
+	prefix = os.path.join(installation_dir,'xrstools/data/')
+	path = prefix + 'chitables/chitable_' # path to chitables
+	# load the according chitable (tabulated)
+	hkl_string = str(int(hkl[0])) + str(int(hkl[1])) + str(int(hkl[2]))
+	filestring = path + crystals.lower() + hkl_string + '.dat'
+	chi = np.loadtxt(filestring)
+
+	# good for 1 m bent crystals in backscattering
+	ystart = -50.0 # start value of angular range in arcsecs
+	yend   = 150.0 # end value of angular range in arcsecs
+	ystep  = 1.0   # step width in arcsecs
+
+	if len(chi[:,0]) == 1:
+		print ' I will only  calculate for the following energy: ' + '%.4f' % chi[0,0] + ' keV!!!'
+	else:
+		if e < np.min(chi[:,0]) or e > np.max(chi[:,0]):
+			print 'Energy outside of the range in ' + filestring
+			return
+
+		chi0r = np.interp(e,chi[:,0],chi[:,1])
+		chi0i = np.interp(e,chi[:,0],chi[:,2])
+		chihr = np.interp(e,chi[:,0],chi[:,3])
+		chihi = np.interp(e,chi[:,0],chi[:,4])
+
+	th = braggd(hkl,e,crystals)
+	lam = 12.3984191/e/10.0 # wavelength in nm
+
+	reflcorr = 0.0
+	chi0 = complex(chi0r,chi0i)
+	chih = complex(chihr,chihi)
+
+	if crystals.upper() == 'SI':
+		s13 = -0.278
+	elif crytals.upper() == 'GE':
+		s13 = -0.273
+	else:
+		print 'Poisson ratio for this crystal not defined'
+		return
+
+	s15 = -0.0 # s15/s11
+	dsp = dspace(hkl,crystals)/10.0 # dspace
+
+	dwf    = 1.0 # dwf = 0.899577 # debye-waller factor
+	radius = R # meridional bending radius
+	rsag   = R*np.sin(np.radians(th))**2.0 # sagittal bending radius
+	thick  = 500.0 # thickness in micrometers #rsag = R
+
+	lam      = lam*1e-9
+	dsp      = dsp*1e-9
+	alpha    = np.radians(alpha) # alpha in rad
+	thick    = thick*1e-6
+	ystart   = ystart/3600.0/180.0*np.pi
+	yend     = yend/3600.0/180.0*np.pi
+	ystep    = ystep/3600.0/180*np.pi
+	dev      = dev/3600.0/180.0*np.pi
+	reflcorr = reflcorr/3600.0/180.0*np.pi
+
+	thetab = np.arcsin(lam/(2.0*dsp))
+	cpol   = 1.0 # cpol=0.5*(1+cos(2*thetab).^2) # cpol=cos(2*thetab).^2
+
+	# gamma0 = sin(thetab+alpha) # normal convention
+	# gammah = -sin(thetab-alpha) # normal convention
+	gammah = -np.sin(thetab + alpha) # Krisch et al. convention (really!)
+	gamma0 = np.sin(thetab - alpha) # Krisch et al. convention (I'm not kidding!!)
+
+	beta  = gamma0/np.abs(gammah)
+	gamma = gammah/gamma0
+
+	a0 = np.sqrt(1-gamma0**2.0)
+	ah = np.sqrt(1-gammah**2.0)
+
+	mu = -2.0*np.pi/lam*chi0i
+
+	tdepth = 1.0/mu/(1.0/np.abs(gamma0)+1.0/np.abs(gammah))
+
+	lex = lam*np.sqrt(gamma0*np.abs(gammah))/(np.pi*chihr)
+
+	y0 = chi0i*(1.0+beta)/(2.0*np.sqrt(beta)*chihr)
+
+	pfried = -chihi/chihr
+
+	c1 = cpol*dwf* complex(1.0,pfried)
+
+	#abbreviation concerning the deviation parameter y
+	abb0 = -np.sqrt(beta)/2.0/chihr
+	abb1 = chi0r*(1.0+beta)/(2.0*np.sqrt(beta)*chihr)
+
+	#abbreviations concerning the deformation field
+
+	abb2 = gamma0*gammah*(gamma0-gammah)
+	abb3 = 1.0 + 1.0/(gamma0*gammah)
+	abb4 = s13*(1.0 + radius/rsag)
+	abb5 = (ah - a0)/(gamma0 - gammah)*s15 
+	abb6 = 1.0/(np.abs(cpol)*chihr*np.cos(thetab)*radius)
+	abb7 = 2.0*np.abs(cpol)*chihr*np.cos(thetab)/gamma0
+
+	#   a spectrometer based on a spherical diced analyzer crystal with a 1-m bending radius in nearly backscattering conditions utilizing a strain gradient beta
+	sgbeta = abb6*(abb2*(abb3 - abb4 + abb5))
+
+	nstep=len(dev)
+	eta  = np.zeros_like(dev)
+	abb8z = np.zeros_like(dev)
+	refl  = np.zeros_like(dev)
+	refl1 = np.zeros_like(dev)
+	refl2 = np.zeros_like(dev)
+	for l in range(nstep):
+		# actual value of the deviation angle
+		# dev[l] = ystart + (l - 1)*ystep
+
+		# deviation parameter
+		abb8   = -2.0*np.sin(2.0*thetab)*dev[l]
+		eta[l] = (dev[l]*np.sin(2.0*thetab)+np.abs(chi0.real)/2.0*(1.0-gamma))/(np.abs(cpol)*np.sqrt(np.abs(gamma))*np.sqrt(chih*chih))
+		eta[l] = eta[l].real
+
+		ndiff = 2
+		xend = 0
+		x = np.max([-10.0*tdepth, -thick])
+		y = np.array([0.0, 0.0])
+		h = xend
+		abb8z[l] = abb8
+
+		# in this point call the subroutine
+		#     [T,Y] = ODE23(ODEFUN,TSPAN,Y0,OPTIONS,P1,P2,...) passes the additional
+		#    parameters P1,P2,... to the ODE function as ODEFUN(T,Y,P1,P2...), and to
+		#    all functions specified in OPTIONS. Use OPTIONS = [] as a place holder if
+		#    no options are set.   
+		#print 'the fucking shape of y is ', np.shape(y)
+		T = np.arange(x,xend,1e-8)
+		Y = odeint(odefctn,y,T,args=(abb0,abb1,abb7,abb8,lex,sgbeta,y0,c1)) 
+
+		# normalized reflectivity at this point
+		refl[l] = np.sum(Y[-1,:]**2.0)
+		refl1[l] = Y[-1,0]
+		refl2[l] = Y[-1,1]
+
+	de = dev * e * 1.0e6 /np.tan(thetab)
+
+	lam    = lam *1.0e+09        
+	dsp    = dsp*1.0e+09        
+	alpha  = alpha/np.pi*180.0        
+	ystart = ystart/4.848136811e-06
+	yend   = yend/4.848136811e-06   
+	ystep  = ystep/4.848136811e-06
+	dev    = dev/4.848136811e-06 # dev in arcsecs
+	
+	dev = dev/3600.0 # in degrees
+	thb = th
+	th  = thb + dev
+	e0  = e
+	e   = energy(dspace(hkl,crystals),th)-e0
+	e = e*1e6
+
+	dev = dev*3600.0 # back to arcsecs
+
+	return refl,e,dev,e0
 
 def readfio(prefix, scannumber, repnumber=0):
 	"""
@@ -1568,176 +1374,4 @@ def readp01scan_rep(prefix,scannumber,repetition):
 		mats[n,:,256:]  = mats2[n,:,:]
 	return fiodata, mats, mats1, mats2
 
-class scan:
-	"""
-	this is a container class for inelastic x-ray scattering scans with 2D detectors	
-	each scan is an instance of this class, the scans of an experiment can then be 
-	grouped and ordered by this class's attributes scantype, starting energy, etc. 
-	"""
-	def __init__(self,mats,num,en,monoa,moni,counts,mots,data,scantype='generic'):
-		# rawdata
-		self.edfmats  = np.array(mats)
-		self.number   = num
-		self.scantype = scantype
-		self.energy   = np.array(en)
-		self.monoangle= np.array(monoa)
-		self.monitor  = np.array(moni)
-		# some things maybe not imediately necessary
-		self.counters = np.array(counts)
-		self.motors   = mots
-		self.specdata = np.array(data)
-		# data (to be filled after defining rois)
-		self.eloss    = []
-		self.signals  = []
-		self.errors   = []
-		self.cenom    = [] # center of mass (only filled if scantype is 'elastic')
-		self.resolution = [] # resolution (only filled if scantype is 'elastic')
-		
-	def applyrois(self,rois):
-		"""
-		sums up each 2D matrix of a scan over the indices given in rois,
-		i.e. turns the 3D matrix of a scan (stack of 2D detector images)
-		into a matrix of size (len(energy),number of rois)
-		rois are a list of tuples
-		"""
-		data       = np.zeros((len(self.edfmats),len(rois)))
-		cenom      = []
-		resolution = []
-		edfmats    = self.edfmats
-		for n in range(len(rois)): # each roi (default is 9)
-			for m in range(len(edfmats)): # each energy point along the scan
-				for l in range(len(rois[n])): # each pixel on the detector
-					data[m,n] += edfmats[m,rois[n][l][1],rois[n][l][0]]
-		
-		# determine the center of mass adn resolution, if it's an elastic scan
-		if self.scantype == 'elastic':
-			for n in range(len(rois)): # each roi
-				cenom.append(trapz(data[:,n]*self.energy,x=self.energy)/trapz(data[:,n],x=self.energy))
-				try:
-					FWHM,x0 = fwhm((self.energy - cenom[n])*1e3,data[:,n])
-					resolution.append(FWHM)
-				except:
-					resolution.append(0)
-		# pass variables back to the class attributes
-		self.signals    = np.array(data)
-		self.cenom      = cenom
-		self.resolution = resolution
-
-	def applyrois_old(self,rois):
-		"""
-		sums up each 2D matrix of a scan over the indices given in rois,
-		i.e. turns the 3D matrix of a scan (stack of 2D detector images)
-		into a matrix of size (len(energy),number of rois)
-		rois are a list of tuples
-		this seems a bit faster than the old version
-		"""
-		data     = np.zeros((len(self.edfmats),len(rois)))
-		roixinds = []
-		roiyinds = []
-		cenom   = []
-		resolution = []
-		edfmats = self.edfmats
-		for r in range(len(rois)):
-			for n in range(len(rois[r])):
-				roixinds.append(rois[r][n][0])
-				roiyinds.append(rois[r][n][1])
-			data[:,r] = np.sum(np.sum(edfmats[:,np.amin(roiyinds):np.amax(roiyinds)+1,np.amin(roixinds):np.amax(roixinds)+1],axis=1),axis=1)
-		# determine the center of mass, if it's an elastic scan
-		if self.scantype == 'elastic':
-			for n in range(len(rois)): # each roi
-				cenom.append(trapz(data[:,n]*self.energy,x=self.energy)/trapz(data[:,n],x=self.energy))
-				try:
-					FWHM,x0 = fwhm((self.energy - cenom[n])*1e3,data[:,n])
-					resolution.append(FWHM)
-				except:
-					resolution.append(0.0) # need something more sofisticated to fit FWHM
-		self.signals = np.array(data)
-		self.cenom   = cenom
-		self.resolution = resolution
-
-	def gettype(self):
-		return self.scantype
-
-	def getnumber(self):
-		return self.number
-
-	def getshape(self):
-		if not self.signals.any():
-			print 'please apply the ROIs first.'
-			return
-		else:
-			return np.shape(self.signals)
-
-	def getnumofrois(self):
-		if not self.signals.any():
-			print 'please apply the ROIs first.'
-			return
-		else:
-			return np.shape(self.signals)[1]
-
-class scangroup:
-	"""
-	container class for scans with the same 'scantype' attribute
-	each group of scans will summed into an instance of this class
-	different goups of scans will then be stitched together based on 
-	their type, starting energy, etc. 
-	"""
-	def __init__(self,energy,signals,errors,grouptype='generic',eloss=[],resolution=[]):
-		self.energy    = energy
-		self.eloss     = eloss
-		self.signals   = signals
-		self.errors    = errors
-		self.grouptype = grouptype
-		self.resolution = resolution
-
-	def gettype(self):
-		return self.grouptype
-
-	def getmeanenergy(self):
-		return np.mean(self.energy)
-
-	def getestart(self):
-		return self.energy[0]
-
-	def geteend(self):
-		return self.energy[-1]
-
-	def getmeanegridspacing(self):
-		return np.mean(np.diff(self.energy))
-
-	def getmaxediff(self):
-		return (self.energy[-1]-self.energy[0])
-
-# superresolution/imaging
-
-def interpolate_image(oldx,oldy,oldIM,newx,newy):
-	"""
-	2d interpolation
-	"""
-	interp = RectBivariateSpline(oldx,oldy,oldIM)
-	return interp(newx,newy)
-
-def estimate_xshift(x1,y1,im1,x2,y2,im2):
-	"""
-	estimate shift in x-direction only by stepwise shifting im2 by precision and thus minimising the sum of the difference between im1 and im2
-	"""
-	funct = lambda a: np.sum((interpolate_image(x1,y1,im1,x1,y1) - interpolate_image(x2,y2,im2,x2+a,y2))**2.0)
-	res = leastsq(funct,0.0)
-	return res[0]
-
-def estimate_yshift(x1,y1,im1,x2,y2,im2):
-	"""
-	estimate shift in x-direction only by stepwise shifting im2 by precision and thus minimising the sum of the difference between im1 and im2
-	"""
-	funct = lambda a: np.sum((interpolate_image(x1,y1,im1,x1,y1) - interpolate_image(x2,y2,im2,x2,y2+a))**2.0)
-	res = leastsq(funct,0.0)
-	return res[0]
-
-def estimate_shift(x1,y1,im1,x2,y2,im2):
-	"""
-	estimate shift in x-direction only by stepwise shifting im2 by precision and thus minimising the sum of the difference between im1 and im2
-	"""
-	funct = lambda a: np.sum((interpolate_image(x1,y1,im1,x1,y1) - interpolate_image(x2,y2,im2,x2+a[0],y2+a[1]))**2.0)
-	res = fmin(funct,[0.0,0.0],disp=0)
-	return res
 

@@ -1,7 +1,8 @@
 #!/usr/bin/python
 # Filename: theory.py
 
-from helpers import *
+from xrs_utilities import *
+from math_functions import *
 
 import numpy as np
 import pylab 
@@ -24,7 +25,7 @@ class HFspecpredict:
 		self.E0             = E0
 		self.eloss          = eloss
 		self.rho_formu      = rho_formu
-		self.rho            = 0
+		self.rho            = 0.0
 		if len(rho_formu)>1:
 			for n in range(len(rho_formu)):
 				self.rho += rho_formu[n]*concentrations[n]

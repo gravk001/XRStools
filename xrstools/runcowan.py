@@ -105,13 +105,10 @@ def readracah(fname,degauss=0.5,delorentz=0.4):
 		counter += 1
 		if 'Sticks' in line:
 			break
-
 	for line in lines[:counter-2]:
 		A.append([float(line.strip().split()[0]), float(line.strip().split()[1])])	
-
-	for n in lines[counter+1:]:
+	for line in lines[counter+1:]:
 		B.append([float(line.strip().split()[0]), float(line.strip().split()[1])])
-
 	espectr = np.array([col[0] for col in A])
 	yspectr = np.array([col[1] for col in A])
 	estick  = np.array([col[0] for col in B])
@@ -153,7 +150,6 @@ def createracinput(fname1,fname2,tendq):
 def writercginput_r1(fnamef,fnameg,scscale):
 	fidf = open(fnamef,'r').readlines()
 	fidg = open(fnameg,'w+')
-
 	string = '   10    1    0   14    2    4    1    1 SHELL03000000 SPIN03000000 INTER8      \n'
 	fidg.write(string)
 	string = '    0                         %2d99%2d%2d            8065.47800     0000000        \n' % (scscale,scscale,scscale)
@@ -162,17 +158,29 @@ def writercginput_r1(fnamef,fnameg,scscale):
 		fidg.write(line)
 	fidg.close()
 
+def writercginput_r2(fnamef,fnameg,scscale):
+	fidf = open(fnamef,'r').readlines()
+	fidg = open(fnameg,'w+')
+	string = '   10    1    0   14    2    6    2    2 SHELL03000000 SPIN03000000 INTER8      \n'
+	fidg.write(string)
+	string = '    0                         %2d99%2d%2d            8065.47800     0000000        \n' % (scscale,scscale,scscale)
+	fidg.write(string)
+	string = '    1     2 1 12 1 10         00      9 00000000 3 8065.4790 .00       1\n'
+	fidg.write(string)
+	for line in fidf[3:]:
+		fidg.write(line)
+	fidg.close()
+
 def writercginput_r3(fnamef,fnameg,scscale):
 	fidf = open(fnamef,'r').readlines()
 	fidg = open(fnameg,'w+')
-
 	string = '   10    1    0   14    2    4    3    3 SHELL03000000 SPIN03000000 INTER8      \n'
 	fidg.write(string)
 	string = '    0                         %2d99%2d%2d            8065.47800     0000000        \n' % (scscale,scscale,scscale)
 	fidg.write(string)
 	for line in fidf[2:]:
 		if '//R1//' in line:
-			s = 'Fe3+ 3P06 3D06      Fe3+ 3p05 3D07         1.21660( 3P//R3// 3D)-0.991HR -91 -96\n'
+			s = 'Fe2+ 3P06 3D06      Fe2+ 3p05 3D07         1.21660( 3P//R3// 3D)-0.991HR -91 -96\n'
 			fidg.write(s)
 		else:
 			fidg.write(line)
@@ -182,10 +190,8 @@ def for_fitfe2_r1(a,e,y):
 	scscale = a[1]#int(np.around(80)) # a[1]
 	tendq   = a[0]
 	eshift  = 1.5
-
 	if scscale<0.0 or scscale>99.0 or tendq<-10.0 or tendq>7.0:
 		d = 1000000
-
 	os.system('../batch/RCN2.sh fe3_r1')
 	writercginput_r1('fe3_r1.rcf','fe3_r1.rcg',scscale)
 	os.system('../batch/RCG2.sh fe3_r1')	
@@ -197,16 +203,60 @@ def for_fitfe2_r1(a,e,y):
 	f  = interpolate.interp1d(espectr, yspectr,bounds_error=False,fill_value=0.0)
 	yspectr = f(e)
 	yspectr = yspectr/np.trapz(yspectr,e)*np.trapz(y,e)
-	
 	pylab.plot(e,yspectr,e,y)
 	pylab.show(block=False)
-
 	#return np.sum((yt-y)**2.0)
 	return yspectr
 
-exp = np.loadtxt('/home/christoph/data/fe_data_alex/2/fe3oct_lq.dat')
-e = exp[:,0]
-y = exp[:,1]
+
+def make_10dq_series(tendqs,scscale,degauss=1.0,delorentz=0.4):
+	"""
+	calculates spectra for a series of 10dq values
+	writes a file with columns: energy, 10dq1, 10dq2, ... 
+	"""
+	sticks   = {}
+	spectra  = {}
+	spectra2 = {}
+	# run the first tendq to get the output shape etc.
+	for tendq in tendqs:
+		os.system('../batch/RCN2.sh fe3_r2')
+		writercginput_r2('fe3_r2.rcf','fe3_r2.rcg',scscale)
+		os.system('../batch/RCG2.sh fe3_r2')	
+		createracinput('rac_Oh_template_r2.rac','fe3_r2.rac',tendq)
+		os.system('../batch/RAC2.sh fe3_r2')
+		os.system('../batch/PLO2.sh fe3_r2')
+		et,yt,estick,ystick,espectr,yspectr = readracah('fe3_r2.dat',degauss=degauss,delorentz=delorentz)
+		sticks[str(tendq)]   = estick,ystick
+		spectra[str(tendq)]  = et,yt
+		spectra2[str(tendq)] = espectr,yspectr
+	return sticks, spectra, spectra2
+
+def write_dict_to_txt(dictionary,prefix,postfix):
+	for key in dictionary:
+		fname = prefix + key + postfix
+		data  = np.zeros((len(dictionary[key][0]),len(dictionary[key])))
+		for ii in range(len(dictionary[key])):		
+			data[:,ii] = dictionary[key][ii]
+		np.savetxt(fname,data)
+
+# make calculations for Christopher Weiss
+tendqs  = np.arange(1.0,5.1,0.1)
+scscale = 80.0 
+sticks, spectra, spectra2 = make_10dq_series(tendqs,scscale,degauss=1.0,delorentz=0.4)
+
+from pylab import *
+ion()
+thelegend = []
+for key in spectra:
+	thelegend.append(key)
+	plot(spectra[key][0],spectra[key][1])
+
+legend(thelegend)
+
+
+#exp = np.loadtxt('/home/christoph/data/fe_data_alex/2/fe3oct_lq.dat')
+#e = exp[:,0]
+#y = exp[:,1]
 
 #fitfunc = lambda p, x, y: for_fitfe2_r1(p,x,y) # Target function
 #errfunc = lambda p, x, y: fitfunc(p, x, y) - y # Distance to the target function
@@ -215,10 +265,10 @@ y = exp[:,1]
 
 #a = for_fitfe2_r1(p1,e,y)
 
-p1 = [2.5,70]
+#p1 = [2.5,70]
 
-pylab.plot(e,y,e,for_fitfe2_r1(p1,e,y))
-pylab.show()
+#pylab.plot(e,y,e,for_fitfe2_r1(p1,e,y))
+#pylab.show()
 
 #print p1, success
 

@@ -1,9 +1,42 @@
 #!/usr/bin/python
 # Filename: xrs_read.py
 
-from helpers import * 
+#/*##########################################################################
+#
+# The XRStools software package for XRS spectroscopy
+#
+# Copyright (c) 2013-2014 European Synchrotron Radiation Facility
+#
+# This file is part of the XRStools XRS spectroscopy package developed at
+# the ESRF by the DEC and Software group.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+#
+#############################################################################*/
+__author__ = "Christoph J. Sahle - ESRF"
+__contact__ = "christoph.sahle@esrf.fr"
+__license__ = "MIT"
+__copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
 
-# should have classes id20_read, p01_read, lerix_read, etc. 
+
+#from helpers import *
+import xrs_rois, xrs_scans, xrs_utilities, math_functions
 
 from numpy import array
 import scipy.io
@@ -19,16 +52,25 @@ from pylab import *
 from scipy import signal
 from scipy.ndimage import measurements
 
-from matplotlib.widgets import Cursor
 import matplotlib.pyplot as plt
 
 __metaclass__ = type # new style classes
 
 class read_id20:
 	"""
-	a class for loading data form SPEC files and the according edf files
+	Main class for handling raw data from XRS experiments on ESRF's ID20. This class
+    is used to read scans from SPEC files and the according EDF-files, it provides access
+    to all tools from the xrs_rois module for defining ROIs, it can be used to integrate
+    scans, sum them up, stitch them together, and define the energy loss scale.
+    INPUT:
+    absfilename   = path and filename of the SPEC-file
+    energycolumn  = name (string) of the counter for the energy as defined in the SPEC session (counter mnemonic)
+    monitorcolumn = name (string) of the counter for the monitor signals as defined in the SPEC session (counter mnemonic)
+    edfName       = name/prefix (string) of the EDF-files (default is the same as the SPEC-file name)
+    single_image  = boolean switch, 'True' (default) if all 6 detectors are merged in a single image,
+                    'False' if two detector images per point exist.
 	"""
-	def __init__(self,absfilename,energycolumn='energy',monitorcolumn='kap4dio',edfName=None):
+	def __init__(self,absfilename,energycolumn='energy',monitorcolumn='kap4dio',edfName=None,single_image=True):
 		self.scans         = {} # was a dictionary before
 		if not os.path.isfile(absfilename):
 			raise Exception('IOError! No such file, please check filename.')
@@ -38,13 +80,15 @@ class read_id20:
 			self.edfName = os.path.split(absfilename)[1]
 		else:
 			self.edfName = edfName
+		self.single_image  = single_image
 		self.scannumbers   = []
 		self.EDF_PREFIXh   = 'edf/h_'
 		self.EDF_PREFIXv   = 'edf/v_'
+		self.EDF_PREFIX    = 'edf/'
 		self.EDF_POSTFIX   = '.edf'
 		self.DET_PIXEL_NUMx = 768
-		self.DET_PIXEL_NUMy = 256
-
+		self.DET_PIXEL_NUMy = 512
+		self.DET_PIXEL_NUM  = 256
 		# which column in the SPEC file to be used for the energy and monitor
 		self.encolumn      = energycolumn.lower()
 		self.monicolumn    = monitorcolumn.lower()
@@ -54,60 +98,41 @@ class read_id20:
 		self.signals  = []	# signals for all analyzers
 		self.errors   = []	# poisson errors
 		self.qvalues  = []	# for all analyzers
-		self.groups   = {}      # dictionary of groups (such as 2 'elastic', or 5 'edge1', etc.)
-		self.cenom    = []
-		self.E0       = []
-		self.tth      = []
-		self.resolution = []    # list of FWHM of the elastic lines for each analyzer
+		self.groups   = {}  # dictionary of groups (such as 2 'elastic', or 5 'edge1', etc.)
+		self.cenom    = []  # list of center of masses of the elastic lines
+		self.E0       = []  # energy value, mean value of self.cenom
+		self.tth      = []  # list of scattering angles (one for each ROI)
+		self.VDtth    = []
+		self.VUtth    = []
+		self.VBtth    = []
+		self.HRtth    = []
+		self.HLtth    = []
+		self.HBtth    = []
+		self.resolution   = []  # list of FWHM of the elastic lines for each analyzer
 		self.signals_orig = []  # signals for all analyzers before interpolation
-		# some new attributes, specific to id20
-		# raw data signals sorted by analyzer module:
-		self.VDsignals = []
-		self.VUsignals = []
-		self.VBsignals = []
-		self.HRsignals = []
-		self.HLsignals = []
-		self.HBsignals = []
-		# raw data errors sorted by analyzer module:
-		self.VDerrors = []
-		self.VUerrors = []
-		self.VBerrors = []
-		self.HRerrors = []
-		self.HLerrors = []
-		self.HBerrors = []
-		# q-values sorted by analyzer module:
-		self.VDqvalues = []
-		self.VUqvalues = []
-		self.VBqvalues = []
-		self.HRqvalues = []
-		self.HLqvalues = []
-		self.HBqvalues = []
-		# tth-values sorted by analyzer module:
-		self.VDtth = []
-		self.VUtth = []
-		self.VBtth = []
-		self.HRtth = []
-		self.HLtth = []
-		self.HBtth = []
+		self.errors_orig  = []  # errors for all analyzers before interpolation
 		# TTH offsets from center of V and H modules
 		# tth offsets in one direction (horizontal for V-boxes, vertical for H-boxes)
 		self.TTH_OFFSETS1   = np.array([5.0, 0.0, -5.0, 5.0, 0.0, -5.0, 5.0, 0.0, -5.0, 5.0, 0.0, -5.0])
 		# tth offsets in the other direction (horizontal for H-boxes, vertical for V-boxes)
 		self.TTH_OFFSETS2   = np.array([-9.71, -9.75, -9.71, -3.24, -3.25, -3.24, 3.24, 3.25, 3.24, 9.71, 9.75, 9.71]) 
 		# input
-		self.rois  = []	# can be set once the rois are defined to integrate scans directly
-		self.roisx = [] # list of x-indices of the rois
-		self.roisy = [] # list of y-indices of the rois
+		self.rois  = []	# object of a container class from the helpers module (old)
+		self.roi_obj = [] # an instance of the roi_object class from the xrs_rois module (new)
 
 	def readscan(self,scannumber,fromtofile=False):
 		"""
-		returns the data, motors, counter-names, and edf-files from the calss's specfile of "scannumber"
-		should use PyMca's routines to read the Spec- and edf-files
+		Returns the data, motors, counter-names, and edf-files from the SPEC file defined when
+        the xrs_read object was initiated.
+		There should be an alternative that uses the PyMca module if installed.
+        INPUT:
+        scannumber = number of the scan to be loaded
+        fromtofile = boolean flag, 'True' if the scan should be saved in a pickle-file (this is developmental)
 		"""
 		# first see if scan can be loaded from npz-file
 		if fromtofile:
 			try:
-				print 'try loading scan from file'
+				print 'Trying to load scan from file.'
 				scanname = 'Scan%03d' % scannumber
 				sub_path = os.path.split(self.path[:-1])[0]
 				fname    = sub_path + '/scans/' + scanname + '.npz'
@@ -118,31 +143,40 @@ class read_id20:
 				edfmats  = scan['edfmats']
 				return data, motors, counters, edfmats
 			except:
-				print 'failed loading scan from file, will read edf- and SPEC-file.'
+				print 'Failed loading scan from file, will read EDF- and SPEC-file.'
 				pass
 
 		# proceed with parsing edf- and SPEC-files, if scan could not be loaded from zip-archive
 		if not fromtofile:
-			print 'parsing edf- and SPEC-files of scan No. %s' % scannumber
+			print 'Parsing EDF- and SPEC-files of scan No. %s' % scannumber
 
 		# load SPEC-file
 		fn = self.path + self.filename
-		data, motors, counters = specread(fn,scannumber)
+		data, motors, counters = xrs_utilities.specread(fn,scannumber)
 
-		# initiate arrays for the edf-files
-		edfmatsh = np.array(np.zeros((len(counters['ccdno']),self.DET_PIXEL_NUMy,self.DET_PIXEL_NUMx)))
-		edfmatsv = np.array(np.zeros((len(counters['ccdno']),self.DET_PIXEL_NUMy,self.DET_PIXEL_NUMx)))
-		edfmats  = np.array(np.zeros((len(counters['ccdno']),self.DET_PIXEL_NUMy*2,self.DET_PIXEL_NUMx)))
-		# load edf-files
-		for m in range(len(counters['ccdno'])):
-			ccdnumber = counters['ccdno'][m]
-			edfnameh   = self.path + self.EDF_PREFIXh + self.edfName + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
-			edfnamev   = self.path + self.EDF_PREFIXv + self.edfName + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
-			edfmatsh[m,:,:] = (edfread_test(edfnameh))
-			edfmatsv[m,:,:] = (edfread_test(edfnamev))
+		if not self.single_image:
+			# initiate arrays for the edf-files
+			edfmatsh = np.array(np.zeros((len(counters['ccdno']),self.DET_PIXEL_NUMy/2,self.DET_PIXEL_NUMx)))
+			edfmatsv = np.array(np.zeros((len(counters['ccdno']),self.DET_PIXEL_NUMy/2,self.DET_PIXEL_NUMx)))
+			edfmats  = np.array(np.zeros((len(counters['ccdno']),self.DET_PIXEL_NUMy,self.DET_PIXEL_NUMx)))
+			# load edf-files
+			for m in range(len(counters['ccdno'])):
+				ccdnumber = counters['ccdno'][m]
+				edfnameh   = self.path + self.EDF_PREFIXh + self.edfName + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
+				edfnamev   = self.path + self.EDF_PREFIXv + self.edfName + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
+				edfmatsh[m,:,:] = (xrs_utilities.edfread_test(edfnameh))
+				edfmatsv[m,:,:] = (xrs_utilities.edfread_test(edfnamev))
 
-			edfmats[m,0:self.DET_PIXEL_NUMy,:] = edfmatsv[m,:,:]
-			edfmats[m,self.DET_PIXEL_NUMy:,:]  = edfmatsh[m,:,:]
+				edfmats[m,0:self.DET_PIXEL_NUMy/2,:] = edfmatsv[m,:,:]
+				edfmats[m,self.DET_PIXEL_NUMy/2:,:]  = edfmatsh[m,:,:]
+		else:
+			# initiate arrays for the edf-files
+			edfmats  = np.array(np.zeros((len(counters['ccdno']),self.DET_PIXEL_NUMy,self.DET_PIXEL_NUMx)))
+			# load edf-files
+			for m in range(len(counters['ccdno'])):
+				ccdnumber = counters['ccdno'][m]
+				edfname   = self.path + self.EDF_PREFIX + self.edfName + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
+				edfmats[m,:,:] = (xrs_utilities.edfread_test(edfname))
 
 		# add the scannumber to self.scannumbers, if not already present
 		if not scannumber in self.scannumbers:
@@ -164,10 +198,14 @@ class read_id20:
 
 	def loadscan(self,scannumbers,scantype='generic',fromtofile=False):
 		"""
-		loads the files belonging to scan No "scannumber" and puts it into an instance
-		of the container-class scan. the default scantype is 'generic', later the scans
-		will be grouped (then added) based on the scantype
-		"""
+		Loads the files belonging to scan No. "scannumber" and puts it into an instance
+		of the xrs_scan-class 'scan'. The default scantype is 'generic', later the scans
+		will be grouped (and added) based on the scantype.
+        INPUT:
+        scannumbers = integer or list of scannumbers that should be loaded
+        scantype    = string describing the scan to be loaded (e.g. 'edge1' or 'K-edge') 
+        fromtofile  = boolean flag, 'True' if the scan should be saved in a pickle-file (this is developmental)
+        """
 		# make sure scannumbers are iterable (list)
 		if not isinstance(scannumbers,list):
 			scannums = []
@@ -182,15 +220,16 @@ class read_id20:
 			monoangle = 1 # have to check for this later ... !!! counters['pmonoa']
 			energy    = counters[self.encolumn]
 			# create an instance of "scan" class for every scan
-			onescan = scan(edfmats,number,energy,monoangle,monitor,counters,motors,data,scantype)
+			onescan = xrs_scans.scan(edfmats,number,energy,monitor,counters,motors,data,scantype)
 			# assign one dictionary entry to each scan 
 			self.scans[scanname] = onescan
 
 	def loadloop(self,begnums,numofregions,fromtofile=False):
 		"""
-		loads a whole loop of scans based on their starting scannumbers and the number of single
-		scans in a single loop
-		begnums      = scannumbers of the first scans of each loop (is a list)
+		Loads a whole loop of scans based on their starting scannumbers and the number of single
+		scans in the loop.
+        INPUT:
+		begnums      = list of scannumbers of the first scans of each loop (is a list)
 		numofregions = number of scans in each loop (integer)
 		"""
 		typenames = []
@@ -208,98 +247,165 @@ class read_id20:
 
 	def loadelastic(self,scann,fromtofile=False):
 		"""
-		loads a scan using the loadscan function and sets the scantype attribute to 'elastic'
+		Loads a scan using the loadscan function and sets the scantype attribute to 'elastic'.
+        I.e. shorthand for 'obj.loadscan(scannumber,type='elastic')'.
+        INPUT:
+        scann      = integer or list of integers
+        fromtofile = boolean flag, 'True' if the scan should be saved in a pickle-file (this is developmental)        
 		"""
 		self.loadscan(scann,'elastic',fromtofile)
 	
 	def loadlong(self,scann,fromtofile=False):
 		"""
-		loads a scan using the loadscan function and sets the scantype attribute to 'long'
+		Loads a scan using the loadscan function and sets the scantype attribute to 'long'.
+        I.e. shorthand for 'obj.loadscan(scannumber,type='long')'.
+        INPUT:
+        scann      = integer or list of integers
+        fromtofile = boolean flag, 'True' if the scan should be saved in a pickle-file (this is developmental)
 		"""
 		self.loadscan(scann,'long',fromtofile)
 
-	def createrois(self,scannumbers):
+        
+	def get_zoom_rois(self,scannumbers,logscaling=True,colormap='jet',interpolation='nearest'):
 		"""
-		create rois object from this class and scannumbers
+		Define ROIs by zooming into an image constructed from the sum of all edf-files 
+		in 'scannumbers'
+		scannumbers = either single scannumber or list of scannumbers
+		logscaling  = set to 'True' if images is to be shown on log-scale (default is True)
+		colormap    = string to define the colormap which is to be used for display (anything 
+		              supported by matplotlib, 'jet' by default)
+		interpolation = interpolation scheme to be used for displaying the image (anything
+		                supported by matplotlib, 'nearest' by default)
 		"""
-		rois_object = rois(self.scans,scannumbers)
-		return rois_object
+		image = xrs_rois.create_sum_image(self.scans,scannumbers)
+		roi_finder_obj = xrs_rois.roi_finder()
+		roi_finder_obj.get_zoom_rois(image,logscaling=logscaling,colormap=colormap,interpolation=interpolation)
+		self.roi_obj = roi_finder_obj.roi_obj
 
-	def getautorois(self,scannumbers,kernel_size=5,colormap='jet',threshfrac=100):
+	def get_linear_rois(self,scannumbers,logscaling=True,height=5,colormap='jet',interpolation='nearest'):
 		"""
-		define ROIs automatically using median filtering and a variable threshold
+		Define ROIs by zooming into an image constructed from the sum of all edf-files 
+		in 'scannumbers'
+		scannumbers = either single scannumber or list of scannumbers
+		logscaling  = set to 'True' if images is to be shown on log-scale (default is True)
+		colormap    = string to define the colormap which is to be used for display (anything 
+		              supported by matplotlib, 'jet' by default)
+		interpolation = interpolation scheme to be used for displaying the image (anything
+		                supported by matplotlib, 'nearest' by default)
 		"""
-		rois_object = self.createrois(scannumbers)
-		rois_object.getautorois(kernel_size,colormap,thresholdfrac=threshfrac)
-		self.rois = rois_object.rois
+		image = xrs_rois.create_sum_image(self.scans,scannumbers)
+		roi_finder_obj = xrs_rois.roi_finder()
+		roi_finder_obj.get_linear_rois(image,logscaling=logscaling,height=height,colormap=colormap,interpolation=interpolation)
+		self.roi_obj = roi_finder_obj.roi_obj
 
-	def getautorois_eachdet(self,scannumbers,kernel_size=5,colormap='jet',threshfrac=100):
+	def get_auto_rois(self,scannumbers,kernel_size=5,threshold=100.0,logscaling=True,colormap='jet',interpolation='bilinear'):
 		"""
-		define ROIs automatically one detector at a time using median filtering and a variable threshold
+		Define ROIs automatically using median filtering and a variable threshold.
+		scannumbers   = either single scannumber or list of scannumbers
+		kernel_size   = used kernel size for the median filter (must be an odd integer)
+		logscaling    = set to 'True' if images is to be shown on log-scale (default is True)
+		colormap      = string to define the colormap which is to be used for display (anything 
+		                supported by matplotlib, 'jet' by default)
+		interpolation = interpolation scheme to be used for displaying the image (anything
+		                supported by matplotlib, 'nearest' by default)
 		"""
-		rois_object = self.createrois(scannumbers)
-		rois_object.getautorois_eachdet(kernel_size,colormap,thresholdfrac=threshfrac)
-		self.rois = rois_object.rois
+		# check that kernel_size is odd
+		if not kernel_size % 2 == 1:
+			print 'The \'kernal_size\' must be an odd number.'
+			return
+		image = xrs_rois.create_sum_image(self.scans,scannumbers)
+		roi_finder_obj = xrs_rois.roi_finder()
+		roi_finder_obj.get_auto_rois(image,kernel_size=kernel_size,threshold=threshold,logscaling=logscaling,colormap=colormap,interpolation=interpolation)
+		self.roi_obj = roi_finder_obj.roi_obj
 
-	def getlinrois(self,scannumbers,numrois=72,logscaling=True,height=5,colormap='jet'):
+	def get_auto_rois_eachdet(self,scannumbers,kernel_size=5,threshold=100.0,logscaling=True,colormap='jet',interpolation='bilinear'):
 		"""
-		define ROIs by clicking two points
+		Define ROIs automatically using median filtering and a variable threshold for each detector
+		separately.
+		scannumbers   = either single scannumber or list of scannumbers
+		kernel_size   = used kernel size for the median filter (must be an odd integer)
+		logscaling    = set to 'True' if images is to be shown on log-scale (default is True)
+		colormap      = string to define the colormap which is to be used for display (anything 
+		                supported by matplotlib, 'jet' by default)
+		interpolation = interpolation scheme to be used for displaying the image (anything
+		                supported by matplotlib, 'nearest' by default)
 		"""
-		rois_object = self.createrois(scannumbers)
-		rois_object.getlinrois(numrois,logscaling,height,colormap)
-		self.rois = rois_object.rois
+		# check that kernel_size is odd
+		if not kernel_size % 2 == 1:
+			print 'The \'kernal_size\' must be an odd number.'
+			return
 
-	def getzoomrois(self,scannumbers,numrois=72,logscaling=True,colormap='jet'):
-		"""
-		define ROIs by zooming in on a region of interest
-		"""
-		rois_object = self.createrois(scannumbers)
-		rois_object.getzoomrois(numrois,logscaling,colormap)
-		self.rois = rois_object.rois
+		# create a big image
+		image = xrs_rois.create_sum_image(self.scans,scannumbers)
 
-	def getlinedgerois(self,scannumbers,energyval,numrois=72,logscaling=True,height=5,colormap='jet'):
-		"""
-		define ROIs by clicking two points on a matrix, which is a difference of edf-files above and 
-		below an energy value
-		"""
-		if not isinstance(scannumbers,list):
-			scannums = []
-			scannums.append(scannumbers)
-		else:
-			scannums = scannumbers
-		# search for correct index in the first of the given scans
-		scanname = 'Scan%03d' % scannums[0]
-		index = self.scans[scanname].energy.flat[np.abs(self.scans[scanname].energy - energyval).argmin()]
-		rois_object = self.createrois(scannumbers)
-		rois_object.getlinedgerois(index,numrois,logscaling,height,colormap)
-		self.rois = rois_object.rois
+		# break down the image into 256x256 pixel images
+		det_images, offsets = xrs_rois.break_down_det_image(image,self.DET_PIXEL_NUM)
 
-	def getzoomedgerois(self,scannumbers,energyval,numrois=72,logscaling=True,colormap='jet'):
-		"""
-		define ROIs by zooming in on a matrix, which is a difference of edf-files above and 
-		below an energy value
-		"""
-		if not isinstance(scannumbers,list):
-			scannums = []
-			scannums.append(scannumbers)
-		else:
-			scannums = scannumbers
-		# search for correct index in the first of the given scans
-		scanname = 'Scan%03d' % scannums[0]
-		index = self.scans[scanname].energy.flat[np.abs(self.scans[scanname].energy - energyval).argmin()]
-		rois_object = self.createrois(scannumbers)
-		rois_object.getlinedgerois(index,numrois,logscaling,colormap)
-		self.rois = rois_object.rois
+		# create one roi_object per sub-image
+		temp_objs = []
+		for ii in range(det_images.shape[0]):
+			temp = xrs_rois.roi_finder()
+			temp.get_auto_rois(det_images[ii,:,:],kernel_size=kernel_size,threshold=threshold,logscaling=logscaling,colormap=colormap,interpolation=interpolation)
+			temp_objs.append(temp)
 
-	def saverois(self,filename):
+		# merge all roi_objects into one
+		merged_obj   = xrs_rois.merge_roi_objects_by_matrix(temp_objs,image.shape,offsets,self.DET_PIXEL_NUM)
+		self.roi_obj = merged_obj
+
+	def get_polygon_rois(self,scannumbers,logscaling=True,colormap='jet',interpolation='nearest'):
 		"""
-		saves the rois into an file using pickle
-		filename = absolute path to file and filename
+		Define a polygon shaped ROI from an image constructed from 
+		the sum of all edf-files in 'scannumbers'
+		image_shape = tuple with shape of the current image (i.e. (256,256))
+		scannumbers = either single scannumber or list of scannumbers
+		logscaling  = set to 'True' if images is to be shown on log-scale (default is True)
+		colormap    = string to define the colormap which is to be used for display (anything 
+		              supported by matplotlib, 'jet' by default)
+		interpolation = interpolation scheme to be used for displaying the image (anything
+		                supported by matplotlib, 'nearest' by default)
+		"""
+		image = xrs_rois.create_sum_image(self.scans,scannumbers)
+		roi_finder_obj = xrs_rois.roi_finder()
+		roi_finder_obj.get_polygon_rois(image,logscaling=logscaling,colormap=colormap,interpolation=interpolation)
+		self.roi_obj = roi_finder_obj.roi_obj
+
+	def get_polygon_rois_eachdet(self,scannumbers,logscaling=True,colormap='jet',interpolation='nearest'):
+		"""
+		Define a polygon shaped ROI from an image constructed from 
+		the sum of all edf-files in 'scannumbers'
+		image_shape = tuple with shape of the current image (i.e. (256,256))
+		scannumbers = either single scannumber or list of scannumbers
+		logscaling  = set to 'True' if images is to be shown on log-scale (default is True)
+		colormap    = string to define the colormap which is to be used for display (anything 
+		              supported by matplotlib, 'jet' by default)
+		interpolation = interpolation scheme to be used for displaying the image (anything
+		                supported by matplotlib, 'nearest' by default)
+		"""
+
+		# create a big image
+		image = xrs_rois.create_sum_image(self.scans,scannumbers)
+
+		# break down the image into 256x256 pixel images
+		det_images, offsets = xrs_rois.break_down_det_image(image,self.DET_PIXEL_NUM)
+
+		# create one roi_object per sub-image
+		temp_objs = []
+		for modind in range(det_images.shape[0]):
+			temp = xrs_rois.roi_finder()
+			temp.get_polygon_rois( det_images[modind,:,:],modind,logscaling=logscaling,colormap=colormap,interpolation=interpolation)
+			temp_objs.append(temp)
+
+		# merge all roi_objects into one
+		merged_obj   = xrs_rois.merge_roi_objects_by_matrix(temp_objs,image.shape,offsets,self.DET_PIXEL_NUM)
+		self.roi_obj = merged_obj
+
+	def save_rois(self,filename):
+		"""
+		Saves the defined ROIs in a pick
 		"""
 		import pickle
 		f = open(filename, 'wb')
-		theobject = self.rois
-		pickle.dump(theobject, f,protocol=-1)
+		pickle.dump(self.roi_obj, f,protocol=-1)
 		f.close()
 
 	def loadrois(self,filename):
@@ -310,49 +416,171 @@ class read_id20:
 		import pickle
 		f = open(filename,'rb')
 		self.rois = pickle.load(f)
+		self.roi_obj = xrs_rois.roi_object()
+		self.roi_obj.indices = xrs_rois.swap_indices_old_rois(self.rois.inds)
 		f.close()
 
-	def plotrois(self):
+	def load_rois(self,filename):
 		"""
-		returns a plot of the ROI shapes
+		Loads ROIs from a file written with the save_rois-function.
+		filename = absolute path to file and filename
 		"""
-		figure()
-		thematrix = np.zeros((self.DET_PIXEL_NUMy*2.0,self.DET_PIXEL_NUMx))
-		for roi in self.rois:
-			for index in roi:
-				thematrix[index[1],index[0]] = 1
-		theimage = imshow(thematrix)
-		show()
+		import pickle
+		f = open(filename,'rb')
+		self.roi_obj = pickle.load(f)
+		f.close()
 
-	def findrois_columnwise(self,scannumber):
+	def show_rois(self):
 		"""
-		constructs a waterfall plot from the columns in a scan, i.e. energy vs. pixel number along the roi
+		Produces an image of all selected ROIs and their according number.
 		"""
-		pass
+		# check if ROIs are defined
+		if not self.roi_obj:
+			print 'Please define some ROIs first.'
+			return
+		else:
+			self.roi_obj.show_rois()		
 
-	def orderrois(self):
+	def findroisColumns(self,scannumbers,whichroi,logscaling=False):
+		"""
+		Constructs a waterfall plot from the columns in a scan, i.e. energy vs. pixel number along the ROI
+		scannumbers = scannumber or list of scannumbers from which to construct the plot
+		whichroi    = integer (starting from 0) from which ROI to use for constructing the plot
+		"""
+		if not isinstance(scannumbers,list):
+			scannums = []
+			scannums.append(scannumbers)
+		else:
+			scannums = scannumbers 
+
+		if not self.roi_obj.indices:
+			'Please define some zoom ROIs first.'
+			return
+		if not self.roi_obj.kind == 'zoom':
+			'Currently this feature only works for ROIs of type \'zoom\'.'
+			return
+
+		xinds     = np.unique(self.roi_obj.x_indices[whichroi])
+		yinds     = np.unique(self.roi_obj.y_indices[whichroi])
+		scanname  = 'Scan%03d' % scannums[0]
+		edfmats   = np.zeros_like(self.scans[scanname].edfmats)
+		energy    = self.scans[scanname].energy
+		waterfall = np.zeros((len(yinds),len(energy)))
+
+		for scannum in scannums:
+			scanname = 'Scan%03d' % scannum
+			scanedf  = self.scans[scanname].edfmats
+			scanmonitor = self.scans[scanname].monitor
+			for ii in range(len(energy)):
+				edfmats[ii,:,:] += scanedf[ii,:,:]/scanmonitor[ii]
+
+		for ii in range(len(energy)):
+			for jj in range(len(yinds)):
+				waterfall[jj,ii] = np.sum(edfmats[ii,xinds,yinds[jj]])
+
+		plt.figure()
+		for ii in range(len(yinds)):
+			plt.plot(waterfall[ii,:])
+
+		fig = plt.figure()
+		ax = fig.add_subplot(111)
+
+		if logscaling:
+			ax.imshow(np.log(np.transpose(waterfall)), interpolation='nearest')
+		else:
+			ax.imshow(np.transpose(waterfall), interpolation='nearest')
+
+		ax.set_aspect('auto')
+		plt.xlabel('ROI pixel')
+		plt.ylabel('energy point')
+		plt.show()
+
+	def orderrois(self,arrangement='vertical',missing=None):
 		"""
 		order the rois in an order provided such that e.g. autorois have the correct order 
 		"""
-		pass	
+		if not self.roi_obj:
+			print 'Please select some ROIs first!'
+			return
+
+		# get some detector infos
+		all_det_names = ['VD','VU','VB','HR','HL','HB']
+		all_dets      = []
+		for name in all_det_names:
+			all_dets.append(xrs_utilities.maxipix_det(name,arrangement))
+
+		# find the ROIs for each detector
+		# go through all detectors and ROIs defined and see which one has centers in which detector
+		for det in all_dets:
+			det_x_min = det.get_pixel_range()[0]
+			det_x_max = det.get_pixel_range()[1]
+			det_y_min = det.get_pixel_range()[2]
+			det_y_max = det.get_pixel_range()[3]
+			for ii in range(len(self.roi_obj.indices)):
+				x_mean = np.mean(self.roi_obj.x_indices[ii])
+				y_mean = np.mean(self.roi_obj.y_indices[ii])
+				if x_mean >= det_x_min and x_mean <= det_x_max and y_mean >= det_y_min and y_mean <= det_y_max:
+					det.roi_indices.append(self.roi_obj.indices[ii])
+					det.roi_x_indices.append(self.roi_obj.x_indices[ii])
+					det.roi_y_indices.append(self.roi_obj.y_indices[ii])
+					det.roi_x_means.append(x_mean)
+					det.roi_y_means.append(y_mean)
+	
+		# count, check with missing, break if something is wrong
+		for det in all_dets:
+			if not len(det.roi_indices) == 12:
+				print 'WARNING! Module ' + det.name + ' only has ' + '%d' % len(det.roi_indices) + ' ROIs defined, your numbering will be messed up!'
+		# rearrange according to 'arrangement' keyword
+		if arrangement == 'vertical':
+			verticalIndex = [0,3,6,9,1,4,7,10,2,5,8,11]	
+			for det in all_dets:
+				# order from low to high y-mean
+				roi_coords   = np.array(det.roi_indices)
+				roi_y_means  = np.array(det.roi_x_means) 
+				sorting_inds = roi_y_means.argsort()
+				roi_coords_increasing = [roi_coords[i] for i in sorting_inds]
+				if det.get_det_name() in ['VD','VU','VB']:
+					# sort from high to low y-center
+					det.roi_indices = [roi_coords_increasing[i] for i in verticalIndex[::-1]]
+				elif det.get_det_name() in ['HR','HL','HB']:
+					# sort from low to high y-center
+					det.roi_indices = [roi_coords_increasing[i] for i in verticalIndex]
+				else:
+					print 'Sorry, no such module.'
+
+		# reassign all roi_obj variables... 
+		allrois = []
+		for det in all_dets:
+			allrois.extend(det.roi_indices)
+
+		self.roi_obj.indices = allrois
+		self.roi_obj.roi_matrix     = xrs_rois.convert_inds_to_matrix(self.roi_obj.indices,(512,768))
+		self.roi_obj.red_rois       = xrs_rois.convert_matrix_to_redmatrix(self.roi_obj.roi_matrix)
+		self.roi_obj.x_indices      = xrs_rois.convert_inds_to_xinds(self.roi_obj.indices)
+		self.roi_obj.y_indices      = xrs_rois.convert_inds_to_yinds(self.roi_obj.indices)
+		self.roi_obj.masks          = xrs_rois.convert_roi_matrix_to_masks(self.roi_obj.roi_matrix)
+		self.roi_obj.number_of_rois = np.amax(self.roi_obj.roi_matrix)
 
 	def getrawdata(self):
 		"""
-		goes through all instances of the scan class and calls it's applyrois method
-		to sum up over all rois
+		Goes through all instances of the scan class and calls it's applyrois method
+		to sum up over all rois.
 		"""
-		if not self.rois:
-			print 'please define some ROIs first.'
+		if not np.any(self.roi_obj.indices):
+			print 'Please define some ROIs first.'
 			return
 		for scan in self.scans:
 			if len(self.scans[scan].edfmats):
 				print ("integrating "+scan)
-				self.scans[scan].applyrois(self.rois)
+				self.scans[scan].applyrois(self.roi_obj.indices)
 
 	def loadscandirect(self,scannumbers,scantype='generic',fromtofile=False,scaling=None):
 		"""
-		loads a scan without saving the edf files in matrices 
-		needs ROIs as input (this needs testing)
+		Loads a scan without saving the edf files in matrices.
+		scannumbers = integer or list of integers defining the scannumbers from the SPEC file
+		scantype    = string describing the scan to be loaded (e.g. 'edge1' or 'K-edge') 
+        fromtofile  = boolean flag, 'True' if the scan should be saved in a pickle-file (this is developmental)
+		scaling     = list of scaling factors to be applied, one for each ROI defined
 		"""
 		# make sure scannumbers are iterable (list)
 		if not isinstance(scannumbers,list):
@@ -361,8 +589,8 @@ class read_id20:
 		else:
 			scannums = scannumbers 
 		# check if there are ROIs defined		
-		if not self.rois:
-			print 'please define some ROIs first'
+		if not self.roi_obj:
+			print 'Please define some ROIs first'
 			return
 		for number in scannums:
 			scanname = 'Scan%03d' % number
@@ -372,16 +600,20 @@ class read_id20:
 			monoangle = 1 # counters['pmonoa'] # this still needs checking
 			energy    = counters[self.encolumn]
 			# create an instance of "scan" class for every scan
-			onescan = scan(edfmats,number,energy,monoangle,monitor,counters,motors,data,scantype)
-			onescan.applyrois(self.rois,scaling=scaling)
-			print 'deleting edf-files of scan No. %03d' % number
+			onescan = xrs_scans.scan(edfmats,number,energy,monitor,counters,motors,data,scantype)
+			onescan.applyrois(self.roi_obj.indices,scaling=scaling)
+			print 'Deleting EDF-files of Scan No. %03d' % number
 			onescan.edfmats = [] # delete the edfmats
 			self.scans[scanname] = onescan
 
 	def loadloopdirect(self,begnums,numofregions,fromtofile=False,scaling=None):
 		"""
-		loads a scan without saving the edf files in matrices and sets
-		the scantype attribute to 'edge1', 'edge2', ...
+		Loads a whole loop of scans based on their starting scannumbers and the number of single
+        INPUT:
+		begnums      = list of scannumbers of the first scans of each loop (is a list)
+		numofregions = number of scans in each loop (integer)
+        fromtofile   = boolean flag, 'True' if the scan should be saved in a pickle-file (this is developmental)
+		scaling      = list of scaling factors to be applied, one for each ROI defined
 		"""
 		typenames = []
 		for n in range(numofregions):
@@ -398,21 +630,29 @@ class read_id20:
 
 	def loadelasticdirect(self,scann,fromtofile=False):
 		"""
-		loads a scan without saving the edf files in matrices and sets
-		the scantype attribute to 'elastic'
+		Loads a scan using the loadscan function and sets the scantype attribute to 'elastic'.
+        I.e. shorthand for 'obj.loadscan(scannumber,type='elastic')'.
+        INPUT:
+        scann      = integer or list of integers
+        fromtofile = boolean flag, 'True' if the scan should be saved in a pickle-file (this is developmental)        
 		"""
 		self.loadscandirect(scann,'elastic',fromtofile)
 
 	def loadlongdirect(self,scann,fromtofile=False,scaling=None):
 		"""
-		loads a scan without saving the edf files in matrices and sets
-		the scantype attribute to 'long'
+		Loads a scan using the loadscan function and sets the scantype attribute to 'long'.
+        I.e. shorthand for 'obj.loadscan(scannumber,type='long')'.
+        INPUT:
+        scann      = integer or list of integers
+        fromtofile = boolean flag, 'True' if the scan should be saved in a pickle-file (this is developmental)        
 		"""
 		self.loadscandirect(scann,'long',fromtofile,scaling=scaling)
 
 	def deletescan(self,scannumbers):
 		"""
-		deletes the instance 'scann' of the scans class from the dictionary of scans and the number scann from the scannumbers list
+		Deletes scans from the class.
+		INPUT:
+		scannumbers = integer or list of integers (SPEC scan numbers) to delete
 		"""
 		numbers = []
 		if not isinstance(scannumbers,list):
@@ -424,44 +664,52 @@ class read_id20:
 			del(self.scans[scanname])
 			self.scannumbers.remove(number)
 
-	def getspectrum(self):
+	def getspectrum(self, include_elastic=False):
 		"""
-		groups the instances of the scan class by their scantype attribute, 
-		adds equal scans (each group of equal scans) and appends them 
+		Groups the instances of the scan class by their scantype attribute, 
+		adds equal scans (each group of equal scans) and appends them.
+		INPUT:
+		include_elastic = boolean flag, skips the elastic line if set to 'False' (default)
 		"""
 		# find the groups 
-		allgroups = findgroups(self.scans)
+		allgroups = xrs_scans.findgroups(self.scans)
 		for group in allgroups:
 			# self.makegroup(group)
-			onegroup = makegroup_nointerp(group)
-			self.groups[onegroup.gettype()] = onegroup
-		self.energy,self.signals,self.errors = appendScans(self.groups)
+			onegroup = xrs_scans.makegroup_nointerp(group)
+			self.groups[onegroup.get_type()] = onegroup
+		self.energy,self.signals,self.errors = xrs_scans.appendScans(self.groups,include_elastic)
 		self.signals_orig = self.signals
+		self.errors_orig  = self.errors
 
 	def geteloss(self):
 		"""
-		finds the center of mass of each roi and interpolates the signals onto a common grid
+		Defines the energy loss scale for all ROIs by finding the center of mass for each ROI's elastic line.
+		Interpolates the signals and errors onto a commom energy loss scale. Finds the resolution (FWHM) of the
+		'elastic' groups.
 		"""
 		if not 'elastic' in self.groups:
-			print 'please load/integrate at least one elastic scan first!'
+			print 'Please load/integrate at least one elastic scan first!'
 			return
 		else:
 			# reset values, in case this is run several times
 			self.cenom = []
 			self.resolution = []
 			self.E0 = []
-			for n in range(len(self.rois)):
-				self.cenom.append(trapz(self.groups['elastic'].signals_orig[:,n]*self.groups['elastic'].energy,x=self.groups['elastic'].energy)/trapz(self.groups['elastic'].signals_orig[:,n],x=self.groups['elastic'].energy))
+			for n in range(len(self.roi_obj.indices)):
+				# find the center of mass for each ROI
+				self.cenom.append(xrs_utilities.find_center_of_mass(self.groups['elastic'].energy,self.groups['elastic'].signals_orig[:,n]))
+				# try finden the FWHM/resolution for each ROI
 				try:
 					FWHM,x0 = fwhm((self.groups['elastic'].energy - self.cenom[n])*1e3,self.groups['elastic'].signals_orig[:,n])
 					self.resolution.append(FWHM)
+				# append a zero if the FWHM routine fails
 				except:
-					self.resolution.append(0) # need a more sofisticated way of finding the FWHM
+					self.resolution.append(0.0) # need a more sofisticated way of finding the FWHM
 			self.E0 = np.mean(self.cenom)
+			# define the first eloss scale as the 'master' scale for all ROIs
 			self.eloss = (self.energy - self.cenom[0])*1e3 # energy loss in eV
-			# append the FWHM to self.resolution for each analyzer
-			
-			for n in range(len(self.rois)):
+			# define eloss-scale for each ROI and interpolate onto the 'master' eloss-scale 
+			for n in range(len(self.roi_obj.indices)):
 				# inserting zeros at beginning and end of the vectors to avoid interpolation errors
 				x = (self.energy-self.cenom[n])*1e3
 				x = np.insert(x,0,-1e10)
@@ -471,31 +719,31 @@ class read_id20:
 				y = np.insert(y,-1,0)
 				f = interp1d(x,y, bounds_error=False,fill_value=0.0)
 				self.signals[:,n] = f(self.eloss)
-			# set the eloss scale for all scans too but do not interpolate (using self.E0 for all)
-			#for number in self.scannumbers:
-			#	scanname = 'Scan%03d' % number
-			#	self.scans[scanname].eloss = (self.scans[scanname].energy - self.cenom[0])*1e3 # here always the same cenom is subtracted: this is WRONG
-			#	for n in range(len(self.rois)):
-			#		# inserting zeros at beginning and end of the vectors to avoid interpolation errors
-			#		x = (self.scans[scanname].energy-self.cenom[n])*1e3
-			#		x = np.insert(x,0,-1e10)
-			#		x = np.insert(x,-1,1e10)
-			#		y = self.scans[scanname].signals_orig[:,n]
-			#		y = np.insert(y,0,0)
-			#		y = np.insert(y,-1,0)
-			#		f = interp1d(x,y, bounds_error=False,fill_value=0.0)
-			#		self.scans[scanname].signals[:,n] = f(self.scans[scanname].eloss)
+			# do the same for the errors 
+			for n in range(len(self.roi_obj.indices)):
+				# inserting zeros at beginning and end of the vectors to avoid interpolation errors
+				x = (self.energy-self.cenom[n])*1e3
+				x = np.insert(x,0,-1e10)
+				x = np.insert(x,-1,1e10)
+				y = self.errors_orig[:,n]
+				y = np.insert(y,0,0)
+				y = np.insert(y,-1,0)
+				f = interp1d(x,y, bounds_error=False,fill_value=0.0)
+				self.errors[:,n] = f(self.eloss)
 
 	def gettths(self,rvd=0.0,rvu=0.0,rvb=0.0,rhl=0.0,rhr=0.0,rhb=0.0,order=[0,1,2,3,4,5]):
 		"""
-		uses the defined TT_OFFSETS of the read_id20 class to set all scattering angles tth
-		from the mean angle avtth of the analyzer modules
+		Uses the defined TT_OFFSETS of the read_id20 class to set all scattering angles tth
+		from the mean angle avtth of the analyzer modules.
+		INPUT:
 		rhl = mean tth angle of HL module (default is 0.0)
 		rhr = mean tth angle of HR module (default is 0.0)
 		rhb = mean tth angle of HB module (default is 0.0)
 		rvd = mean tth angle of VD module (default is 0.0)
 		rvu = mean tth angle of VU module (default is 0.0)
 		rvb = mean tth angle of VB module (default is 0.0)
+		order = list of integers (0-5) which describes the order of modules in which the 
+				ROIs were defined (default is VD, VU, VB, HR, HL, HB; i.e. [0,1,2,3,4,5])
 		"""
 		# reset all values, just in case mean angles are redefined (values are otherwise appended to existing values)
 		self.VDtth = []
@@ -545,31 +793,35 @@ class read_id20:
 		for n in order:
 			self.tth.extend(tth[n])
 
-
 	def getqvals(self,invangstr=False):
 		"""
-		calculates q-values from E0 and tth values in either atomic units (defalt) or
-		inverse angstroms 
+		Calculates q-values from E0 and tth values in either atomic units (defalt) or
+		inverse angstroms.
 		"""
 		theqvals = np.zeros_like(self.signals)
 		if invangstr:
 			for n in range(len(self.tth)):
-				theqvals[:,n] = momtrans_inva(self.E0+self.eloss/1e3,self.E0,self.tth[n]) 
+				theqvals[:,n] = xrs_utilities.momtrans_inva(self.E0+self.eloss/1e3,self.E0,self.tth[n]) 
 		else:
 			for n in range(len(self.tth)):
-				theqvals[:,n] = momtrans_au(self.E0+self.eloss/1e3,self.E0,self.tth[n])
+				theqvals[:,n] = xrs_utilities.momtrans_au(self.E0+self.eloss/1e3,self.E0,self.tth[n])
 		self.qvalues = theqvals
 
 	def getqvals_energy(self,energy):
 		"""
-		returns all q-values at a certain energy loss
+		Returns all q-values at a certain energy loss.
+		INPUT:
+		energy = energy loss value for which all q-values are stored
 		"""
 		ind = np.abs(self.eloss - energy).argmin()
 		return self.qvalues[ind,:]
 
 	def copy_edf_files(self,scannumbers,destdir):
 		"""
-		copies all edf-files from scan with scannumber or scannumbers into directory 'destdir'
+		Copies all edf-files from scan with scannumber or scannumbers into directory 'destdir'
+		INPUT:
+		scannumbers = integer or list of integers defining the scannumbers from the SPEC file
+		destdir     = string with absolute path for the destination
 		"""
 		import shutil
 		numbers = []
@@ -578,18 +830,27 @@ class read_id20:
 		else:
 			numbers = scannumbers
 		fn = self.path + self.filename
-		for n in range(len(numbers)):
-			data, motors, counters = specread(fn,numbers[n])
-			for m in range(len(counters['ccdno'])):
-				ccdnumber = counters['ccdno'][m]
-				edfnameh   = self.path + self.EDF_PREFIXh + self.filename + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
-				edfnamev   = self.path + self.EDF_PREFIXv + self.filename + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
-				shutil.copy2(edfnameh, destdir)
-				shutil.copy2(edfnamev, destdir)
+		if not self.single_image:
+			for n in range(len(numbers)):
+				data, motors, counters = xrs_utilities.specread(fn,numbers[n])
+				for m in range(len(counters['ccdno'])):
+					ccdnumber = counters['ccdno'][m]
+					edfnameh   = self.path + self.EDF_PREFIXh + self.filename + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
+					edfnamev   = self.path + self.EDF_PREFIXv + self.filename + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
+					shutil.copy2(edfnameh, destdir)
+					shutil.copy2(edfnamev, destdir)
+		if self.single_image:
+			for n in range(len(numbers)):
+				data, motors, counters = xrs_utilities.specread(fn,numbers[n])
+				for m in range(len(counters['ccdno'])):
+					ccdnumber = counters['ccdno'][m]
+					edfname   = self.path + self.EDF_PREFIX + self.filename + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
+					shutil.copy2(edfname, destdir)
 
 	def make_posscan_image(self,scannumber,motorname,filename=None):
 		"""
-		loads a scan from a sample position scan (x-scan, y-scan, z-scan), lets you choose a zoomroi and constructs a 2D image from this
+		Loads a scan from a sample position scan (x-scan, y-scan, z-scan), lets you choose a zoomroi and constructs a 2D image from this
+		INPUT:
 		scannumber = number of the scan
 		motorname  = string that contains the motor name (must be the same as in the SPEC file)
 		filename   = optional parameter with filename to store the image
@@ -599,18 +860,16 @@ class read_id20:
 		data, motors, counters, edfmats = self.readscan(scannumber)
 		# the scan motor
 		position = counters[motorname.lower()]
-		# create a roi object
-		roi_object = self.createrois(scannumber)
-		# get one zoomroi 
-		roi_object.getzoomrois_frommatrix(sumx(edfmats),1)
-		roixinds = []
-		roiyinds = []
-		for n in range(len(roi_object.rois[0])):
-			roixinds.append(roi_object.rois[0][n][0])
-			roiyinds.append(roi_object.rois[0][n][1])
+		# define a zoom ROI
+		image = xrs_utilities.sumx(edfmats)
+		roi_finder_obj = xrs_rois.roi_finder()
+		roi_finder_obj.get_zoom_rois(image)
+		# construct the image
+		roixinds = roi_finder_obj.roi_obj.x_indices[0]
+		roiyinds = roi_finder_obj.roi_obj.y_indices[0]
 		# go through all edf files of the scan, sum over the height of the roi and stack the resulting lines into a matrix
 		axesrange = [0,roiyinds[-1],position[-1],position[0]]
-		theimage = (np.sum(edfmats[:,np.amin(roiyinds):np.amax(roiyinds)+1,np.amin(roixinds):np.amax(roixinds)+1],axis=1))
+		theimage = (np.sum(edfmats[:,np.amin(roixinds):np.amax(roixinds)+1,np.amin(roiyinds):np.amax(roiyinds)+1],axis=1))
 		plt.close()
 		fig = plt.figure()
 		ax = fig.add_subplot(111)
@@ -630,7 +889,13 @@ class read_id20:
 
 	def animation(self,scannumber,logscaling=True,timeout=-1,colormap='jet'):
 		"""
-		shows the edf-files of a scan
+		Shows the edf-files of a scan as a 'movie'.
+		INPUT:
+		scannumber = integer/scannumber
+		logscaling = set to 'True' (default) if edf-images are to be shown on logarithmic-scale
+		timeout    = time in seconds defining pause between two images, if negative (default)
+					 images are renewed by mouse clicks
+		colormap   = matplotlib color scheme used in the display
 		"""
 		if isinstance(scannumber,list):
 			if len(scannumber)>1:
@@ -644,6 +909,7 @@ class read_id20:
 		plt.ion()
 		plt.clf()
 		for n in range(scanlen):
+			plt.clf()
 			if logscaling:
 				theimage = plt.imshow(np.log(edfmats[n,:,:]))
 			else:
@@ -664,7 +930,6 @@ class read_id20:
 		"""
 		shows a sum of all edf-files from a scan for one or several scans
 		"""
-		
 		numbers = []
 		if not isinstance(scannumbers,list):
 			numbers.append(scannumbers)
@@ -707,7 +972,7 @@ class read_id20:
 			# show all individual ROIs if no columns are specified
 			if not columns:
 				y = np.array(self.scans[scanname].signals)
-				for n in range(len(self.rois)):
+				for n in range(len(self.roi_obj.indices)):
 					y[:,n] = y[:,n]/self.scans[scanname].monitor
 				try:
 					titlestring = 'all analyzer signals of scan No. ' + scanname
@@ -724,7 +989,7 @@ class read_id20:
 			# sum over the columns if they are provided
 			if columns:
 				if isinstance(columns,list):
-					y = np.zeros_like(self.scans[scanname].eloss)
+					y = np.zeros_like(self.scans[scanname].energy)
 					for n in columns:
 						y += self.scans[scanname].signals[:,n]
 					y = y/self.scans[scanname].monitor
@@ -768,6 +1033,11 @@ class read_id20:
 			plt.ylabel('normalized signal [arb. units]')
 
 	def printlength(self,scannumbers):
+		"""
+		Prints the number of energy points in a scan or a number of scans.
+		INPUT:
+		scannumbers = integer or list of integers
+		"""
 		numbers = []
 		if not isinstance(scannumbers,list):
 			numbers.append(scannumbers)
@@ -847,12 +1117,12 @@ class read_id16:
 			fn = path + self.filename
 		#try: #try loading variables from file
 		print ("parsing edf- and SPEC-files of scan No. %s" % scannumber)
-		data, motors, counters = specread(fn,scannumber)
+		data, motors, counters = xrs_utilities.specread(fn,scannumber)
 		edfmats = np.array(np.zeros((len(counters['ccdno']),self.DET_PIXEL_NUM,self.DET_PIXEL_NUM)))
 		for m in range(len(counters['ccdno'])):
 			ccdnumber = counters['ccdno'][m]+1
 			edfname   = path + self.EDF_PREFIX + self.filename + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
-			edfmats[m,:,:] = edfread(edfname)
+			edfmats[m,:,:] = xrs_utilities.edfread(edfname)
 		self.scannumbers.extend([scannumber]) # keep track of the scnanumbers
 		return data, motors, counters, edfmats
 
@@ -876,7 +1146,7 @@ class read_id16:
 			monoangle = counters['pmonoa']
 			energy    = counters[self.encolumn]
 			# create an instance of "scan" class for every scan
-			onescan = scan(edfmats,number,energy,monoangle,monitor,counters,motors,data,scantype)
+			onescan = xrs_scans.scan(edfmats,number,energy,monitor,counters,motors,data,scantype)
 			# assign one dictionary entry to each scan 
 			self.scans[scanname] = onescan
 
@@ -927,6 +1197,10 @@ class read_id16:
 		rois_object = self.createrois(scannumbers)
 		rois_object.getautorois(kernel_size,colormap)
 		self.rois = rois_object.rois
+		# feed an instance of the new roi_object class with these results for backward compatibility
+		new_obj = xrs_rois.roi_object()
+		new_obj.indices = rois_object.rois.inds
+		self.roi_obj = new_obj
 
 	def getlinrois(self,scannumbers,numrois=9,logscaling=True,height=5,colormap='jet'):
 		"""
@@ -935,6 +1209,10 @@ class read_id16:
 		rois_object = self.createrois(scannumbers)
 		rois_object.getlinrois(numrois,logscaling,height,colormap)
 		self.rois = rois_object.rois
+		# feed an instance of the new roi_object class with these results for backward compatibility
+		new_obj = xrs_rois.roi_object()
+		new_obj.indices = rois_object.rois.inds
+		self.roi_obj = new_obj
 
 	def getzoomrois(self,scannumbers,numrois=9,logscaling=True,colormap='jet'):
 		"""
@@ -943,6 +1221,10 @@ class read_id16:
 		rois_object = self.createrois(scannumbers)
 		rois_object.getzoomrois(numrois,logscaling,colormap)
 		self.rois = rois_object.rois
+		# feed an instance of the new roi_object class with these results for backward compatibility
+		new_obj = xrs_rois.roi_object()
+		new_obj.indices = rois_object.rois.inds
+		self.roi_obj = new_obj
 
 	def getlinedgerois(self,scannumbers,energyval,numrois=9,logscaling=True,height=5,colormap='jet'):
 		"""
@@ -960,6 +1242,10 @@ class read_id16:
 		rois_object = self.createrois(scannumbers)
 		rois_object.getlinedgerois(index,numrois,logscaling,height,colormap)
 		self.rois = rois_object.rois
+		# feed an instance of the new roi_object class with these results for backward compatibility
+		new_obj = xrs_rois.roi_object()
+		new_obj.indices = rois_object.rois.inds
+		self.roi_obj = new_obj
 
 	def getzoomedgerois(self,scannumbers,energyval,numrois=9,logscaling=True,colormap='jet'):
 		"""
@@ -977,6 +1263,10 @@ class read_id16:
 		rois_object = self.createrois(scannumbers)
 		rois_object.getlinedgerois(index,numrois,logscaling,colormap)
 		self.rois = rois_object.rois
+		# feed an instance of the new roi_object class with these results for backward compatibility
+		new_obj = xrs_rois.roi_object()
+		new_obj.indices = rois_object.rois.inds
+		self.roi_obj = new_obj
 
 	def getrawdata(self):
 		"""
@@ -989,7 +1279,7 @@ class read_id16:
 		for scan in self.scans:
 			if len(self.scans[scan].edfmats):
 				print ("integrating "+scan)
-				self.scans[scan].applyrois(self.rois)
+				self.scans[scan].applyrois(self.roi_obj.indices)
 
 	def loadscandirect(self,scannumbers,rois,scantype='generic'):
 		"""
@@ -1004,8 +1294,8 @@ class read_id16:
 			monoangle = counters['pmonoa']
 			energy    = counters[self.encolumn]
 			# create an instance of "scan" class for every scan
-			onescan = scan(edfmats,number,energy,monoangle,monitor,counters,motors,data,scantype)
-			onescan.applyrois(rois.rois)
+			onescan = xrs_scans.scan(edfmats,number,energy,monitor,counters,motors,data,scantype)
+			onescan.applyrois(self.roi_obj.indices)
 			onescan.edfmats = [] # delete the edfmats
 			self.scans[scanname] = onescan
 		# if there are no rois yet, set the rois	
@@ -1114,7 +1404,7 @@ class read_id16:
 			numbers = scannumbers
 		fn = self.path + self.filename
 		for n in range(len(numbers)):
-			data, motors, counters = specread(fn,numbers[n])
+			data, motors, counters = xrs_utilities.specread(fn,numbers[n])
 			for m in range(len(counters['ccdno'])):
 				ccdnumber = counters['ccdno'][m]+1
 				edfname   = self.path + self.EDF_PREFIX + self.filename + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX

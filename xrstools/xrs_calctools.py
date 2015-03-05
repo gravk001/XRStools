@@ -17,6 +17,15 @@ import matplotlib.pyplot as plt
 
 __metaclass__ = type # new style classes
 
+def gauss1(x,x0,fwhm):
+	"""
+	returns a gaussian with peak value normalized to unity
+	a[0] = peak position
+	a[1] = Full Width at Half Maximum
+	"""
+	y = np.exp(-np.log(2.0)*((x-x0)/fwhm*2.0)**2.0)
+	return y
+
 def gauss(x,x0,fwhm):
     # area-normalized gaussian
     sigma = fwhm/(2*np.sqrt(2*np.log(2)));
@@ -161,7 +170,7 @@ def broaden_linear(spec,params=[0.8, 8, 537.5, 550],npoints=1000):
     fwhm[evals <= e_min] = f_min
     fwhm[evals >= e_max] = f_max
     for n in range(len(sticks)):
-        s2 = s2 + sticks[n]*gauss(e2,evals[n],fwhm[n])
+        s2 = s2 + sticks[n]*gauss1(e2,evals[n],fwhm[n])
     spectrum = np.zeros((len(e2),2))
     spectrum[:,0] = e2
     spectrum[:,1] = s2
@@ -214,6 +223,179 @@ def cut_spec(spec,emin=None,emax=None):
     spec = spec[spec[:,0]>emin]
     spec = spec[spec[:,0]<emax]
     return spec
+
+
+
+def readxas(filename):
+	"""
+	function output = readxas(filename)%[e,p,s,px,py,pz] = readxas(filename)
+
+	% READSTF   Load StoBe fort.11 (XAS output) data
+	%
+	%   [E,P,S,PX,PY,PZ] = READXAS(FILENAME)
+	%
+	%      E        energy transfer [eV]
+	%      P        dipole transition intensity
+	%      S        r^2 transition intensity 
+	%      PX       dipole transition intensity along x
+	%      PY       dipole transition intensity along y
+	%      PZ       dipole transition intensity along z
+	%
+	%                   as line diagrams.
+	%
+	%                             T Pylkkanen @ 2011-10-17 
+	"""
+	# Open file
+	f = open(filename,'r')
+	lines = f.readlines()
+	f.close()
+	data = []
+	for line in lines[1:]:
+		data.append([float(x) for x in line.replace('D', 'e').strip().split()])
+
+	data      = np.array(data)
+	data[:,0] = data[:,0]*27.211384565719481 # convert from a.u. to eV
+	
+
+	data[:,3] = 2.0/3.0*data[:,3]**2.0*e/27.211384565719481 # osc(x)
+	data[:,4] = 2.0/3.0*data[:,4]**2.0*e/27.211384565719481 # osc(y)
+	data[:,5] = 2.0/3.0*data[:,5]**2.0*e/27.211384565719481 # osc(z)
+
+	return data
+
+def broaden_diagram(e,s,params=[1.0, 1.0, 537.5, 540.0],npoints=1000):
+	"""
+	function [e2,s2] = broaden_diagram2(e,s,params,npoints)
+
+	% BROADEN_DIAGRAM2   Broaden a StoBe line diagram
+	%
+	%  [ENE2,SQW2] = BROADEN_DIAGRAM2(ENE,SQW,PARAMS,NPOINTS)
+	%
+	%   gives the broadened spectrum SQW2(ENE2) of the line-spectrum
+	%   SWQ(ENE). Each line is substituted with a Gaussian peak,
+	%   the FWHM of which is determined by PARAMS. ENE2 is a linear
+	%   scale of length NPOINTS (default 1000).
+	%
+	%    PARAMS = [f_min f_max emin max]
+	%
+	%     For ENE <= e_min, FWHM = f_min.
+	%     For ENE >= e_max, FWHM = f_min.
+	%     FWHM increases linearly from [f_min f_max] between [e_min e_max].
+	%
+	%                               T Pylkkanen @ 2008-04-18 [17:37]
+	"""
+	f_min = params[0]
+	f_max = params[1]
+	e_min = params[2]
+	e_max = params[3]
+
+	e2   = np.linspace(np.min(e)-10.0,np.max(e)+10.0,npoints);
+	s2   = np.zeros_like(e2) 
+	fwhm = np.zeros_like(e)
+
+	# FWHM: Constant  -- Linear -- Constant
+	A    = (f_max-f_min)/(e_max-e_min)
+	B    = f_min - A*e_min
+	fwhm = A*e + B
+	inds = e <= e_min
+	fwhm[inds] = f_min
+	inds = e >= e_max	
+	fwhm[inds] = f_max
+
+	for i in range(len(s)):
+		s2 += s[i]*gauss1(e2,e[i],fwhm[i])
+
+	return e2, s2
+
+def broaden_linear(spec,params=[0.8, 8, 537.5, 550],npoints=1000):
+	"""
+	broadens a spectrum with a Gaussian of width params[0] below 
+	params[2] and width params[1] above params[3], width increases 
+	linear in between.
+	returns two-column numpy array of length npoints with energy and the broadened spectrum
+	"""
+	evals = spec[:,0]
+	sticks= spec[:,1]
+	f_min = params[0]
+	f_max = params[1]
+	e_min = params[2]
+	e_max = params[3]
+	e2    = np.linspace(np.min(evals)-10.0,np.max(evals)+10.0,npoints)
+	s2    = np.zeros(len(e2))
+	fwhm  = np.zeros(len(evals))
+	# FWHM: Constant  -- Linear -- Constant
+	A    = (f_max-f_min)/(e_max-e_min)
+	B    = f_min - A*e_min
+	fwhm = A*evals + B
+	fwhm[evals <= e_min] = f_min
+	fwhm[evals >= e_max] = f_max
+	for n in range(len(sticks)):
+		s2 = s2 + sticks[n]*gauss(e2,evals[n],fwhm[n])
+	spectrum = np.zeros((len(e2),2))
+	spectrum[:,0] = e2
+	spectrum[:,1] = s2
+	return spectrum
+
+def load_stobe_specs(prefix,postfix,fromnumber,tonumber,step,stepformat=2):
+	"""
+	load a bunch of StoBe calculations, which filenames are made up of the 
+	prefix, postfix, and the counter in the between the prefix and postfix 
+	runs from 'fromnumber' to 'tonumber' in steps of 'step' (number of digits 
+	is 'stepformat')
+	"""
+	numbers = np.linspace(fromnumber,tonumber,(tonumber-fromnumber + step)/step)
+	filenames = []
+	precision = '%0'+str(stepformat)+'d'
+	for number in numbers:
+		thenumber = precision % number
+		thefilename = prefix+thenumber+postfix
+		filenames.append(thefilename)
+	specs = []
+	for filename in filenames:
+		try:
+			specs.append(readxas(filename))
+		except:
+			print 'found no file: ' + filename
+	return specs
+
+def load_erkale_spec(filename):
+	"""
+	returns an erkale spectrum
+	"""
+	spec = np.loadtxt(filename)
+	return spec
+
+def load_erkale_specs(prefix,postfix,fromnumber,tonumber,step,stepformat=2):
+	"""
+	returns a list of erkale spectra
+	"""
+	numbers = np.linspace(fromnumber,tonumber,(tonumber-fromnumber + step)/step)
+	filenames = []
+	precision = '%0'+str(stepformat)+'d'
+	for number in numbers:
+		thenumber = precision % number
+		thefilename = prefix+thenumber+postfix
+		filenames.append(thefilename)
+	specs = []
+	for filename in filenames:
+		try:
+			specs.append(load_erkale_spec(filename))
+		except:
+			print 'found no file: ' + filename
+	return specs
+
+def cut_spec(spec,emin=None,emax=None):
+	"""
+	deletes lines of matrix with first column smaller than emin and larger than emax 
+	"""
+	if not emin:
+		emin = spec[0,0]
+	if not emax:
+		emax = spec[-1,0]
+	spec = spec[spec[:,0]>emin]
+	spec = spec[spec[:,0]<emax]
+	return spec
+
 
 class stobe:
 	"""
@@ -305,66 +487,5 @@ class erkale:
 
 ################################### 
 # reading function for cowan's code output
-
-def read_rcg_born(fname,q=9.2*0.529,egauss=0.2,elore=0.1):
-	#% function [e,spectr]=read_rcg_born(fname,q);
-	#% fname = filename (outg11 with plane wave born collision calculation)
-	#% q     = momentum transfer in at.units
-	#% egauss = gaussian component of the resolution
-	#% elore  = lorentzian component of the resolution
-	#%   S. Huotari 2012
-
-
-	return e,spectr
-function [e,spectr]=read_rcg_born(fname,q,egauss,elore);
-
-
-fid=fopen(fname);
-ei=[]; y=[];
-
-conti=1;
-while conti & ~feof(fid),
-  s=fgetl(fid);
-  conti=isempty(findstr('k-values',s));
-end
-conti=1;
-while conti & ~feof(fid),
-  s=fgetl(fid);
-  conti=isempty(findstr('k-values',s));
-end
-      s=fgetl(fid); % empty string
-      conti=1;k=[];
-      while conti,
-          s=fgetl(fid);
-          conti=length(str2num(s)); 
-          k=[k str2num(s)];
-      end
-
-while ~feof(fid)
-  s=fgetl(fid);
-  if ~isempty(findstr('delta E',s));
-      s=fgetl(fid); % empty line
-      s=fgetl(fid); disp(s);
-      sn=str2num(s);
-      ei=[ei sn(8)];
-      s=fgetl(fid); % the text "0generalised.."
-      conti=1;ytmp=[];
-      while conti,
-          s=fgetl(fid);
-          conti=length(str2num(s)); 
-          ytmp=[ytmp str2num(s)];
-      end      
-      y=[y;ytmp];
-  end
-end
-fclose(fid);
-ei=ei/8.065-1.45;
-%q=9.2*0.529; 
-[q,qi]=min((k-q).^2)
-e=[min(ei)-2:0.01:max(ei)+2]';
-spectr=zeros(size(e));
-for ii=1:length(ei),
-  spectr=spectr+convg(e,lorentz2([y(ii,qi) elore ei(ii)],e),egauss);
-end
 
 

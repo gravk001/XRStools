@@ -1,0 +1,36 @@
+#### detector
+energy    = 9.7	# working energy, same as analyzer energy (E0)
+thickness  = 500.0 	# thickness of analyzer active material (micron)
+material   = 'Si'	# analyzer active material
+pixel_size = [256,768]	# number of pixels (height, width)
+
+#### analyzer
+material  = 'Si'	# analyzer material
+hkl       = [6,6,0] 	# hkl-indices of reflection used
+mask_d    = 100.0    	# mask diameter (in mm)
+bend_r    = 1.0	    	# analyzer crystal bending radius
+diced     = False   	# boolean: False for bent crystals, True for diced crystals 
+thickness = 500.0   	# analyzer crystal thickness (micron)
+energy_resolution = 0.5	# expected overall resolution (eV)
+database_dir = '/home/christoph/Dropbox/XRSTools/xrstools/things/refl_database/' # directory to where already calculated reflectivities are stored
+
+#### sample
+chem_formulas = ['C']	# chemical formulae (python list)
+concentrations = [1.0]		# concentrations (python list)
+densities = [2.2]			# density of the sample's constituents (python list)
+molar_masses = [12.0]		# molar masses of the sample's constituents, needed for calculation of the number of scatterers (python list)
+angle_tth = 45.0 			# 2 theta scattering angle (degress)
+sample_thickness = 0.1			# sample thickness/diameter (cm)
+
+#### thomson
+scattering_plane = 'vertical'		# keyword, either 'vertical' (no polarization dependence) or 'horizontal' (polarization dependence)
+polarization     = 0.99			# degree of polarization of incident radiation
+
+#### beam
+i0_intensity = 1e14			# number of incident photons
+beam_height  = 10.0 			# beam dimension in vertical direction (microns)
+beam_width   = 10.0 			# beam dimension in horizontal direction (microns)
+
+#### compton_profiles
+eloss_range = np.arange(0.0,1200.0,0.1)	# energy loss range for the calculation (eV)
+E0          = 9.7			# analyzer energy (keV)

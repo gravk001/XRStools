@@ -1,7 +1,8 @@
 #!/usr/bin/python
 # Filename: extraction.py
 
-from helpers import *
+from math_functions import *
+from xrs_utilities import *
 
 import numpy as np
 import pylab
@@ -38,6 +39,11 @@ class extraction:
 		self.valasymmetry = np.zeros((len(self.eloss),len(self.signals[0,:])))
 		self.sqwav      = np.zeros(np.shape(data.eloss))
 		self.sqwaverr   = np.zeros(np.shape(data.eloss))
+		# some variables for averaging over analyzers/whole chambers
+		self.avsignals  = np.array([])
+		self.averrors   = np.array([])
+		self.avC        = np.array([])
+		self.avqvals    = np.array([])
 
 		# rough normalization over range given by prenormrange
 		for n in range(len(self.signals[0,:])):
@@ -66,6 +72,60 @@ class extraction:
 		for col in cols:
 			inds = np.where(np.logical_and(self.eloss>=emin,self.eloss<=emax))
 			self.signals[:,col] = self.signals[:,col]/np.trapz(self.signals[inds,col],self.eloss[inds])
+
+	def analyzerAverage(self,whichq,errorweighing=True):
+		"""
+		average signals over several analyzers before background subtraction, either with (default) or without error weighing whichq = either list of analyzer numbers to be averaged over or keywords ('VD','VB', ... ) to average over chambers
+		"""	
+		analyzerNames = ['VD','VU','VB','HR','HL','HB']
+		if type(whichq) == str:
+			if whichq.upper() == 'VD':
+				columns = range(0,12)
+			elif whichq.upper() == 'VU':
+				columns = range(12,24)
+			elif whichq.upper() == 'VB':
+				columns = range(24,36)
+			elif whichq.upper() == 'HL':
+				columns = range(36,48)
+			elif whichq.upper() == 'HR':
+				columns = range(48,60)
+			elif whichq.upper() == 'HB':
+				columns = range(60,72)
+			elif whichq not in analyzerNames:
+				print 'Unknown keyword ' + '\'' + whichq + '\'' + '! Try one of these: \'VD\', \'VU\', \'VB\', \'HR\', \'HL\', \'HB\'.'
+				return
+		else:
+			if not isinstance(whichq,list):
+				columns = []
+				columns.append(whichq)
+			else: 
+				columns = whichq
+
+		# build the matricies
+		av    = np.zeros((len(self.eloss),len(columns)))
+		averr = np.zeros((len(self.eloss),len(columns)))
+		avC   = np.zeros((len(self.eloss),len(columns)))
+		avqvals = np.zeros((len(self.eloss),len(columns)))
+		for n in range(len(columns)):
+			# find data points with error = 0.0 and replace by 1.0
+			inds = np.where(self.errors[:,columns[n]] == 0.0)[0]
+			for ind in inds:
+				self.errors[ind,columns[n]] = 1.0
+			# arrange the desired columns into a matrix
+			av[:,n]    = self.signals[:,columns[n]]
+			averr[:,n] = self.errors[:,columns[n]]
+			avC[:,n]   = self.C[:,columns[n]]
+			avqvals[:,n] = self.qvals[:,columns[n]]
+		# sum things up
+		if errorweighing:
+			self.avsignals = np.sum( av/averr**2.0 ,axis=1)/( np.sum(1.0/averr**2.0,axis=1))
+			self.averrors  = np.sqrt( 1.0/np.sum(1.0/(averr)**2.0,axis=1) )
+		else: 
+			self.avsignals = np.sum(av,axis=1)
+			self.averrors  = np.sqrt(np.sum(np.absolute(averr)**2.0,axis=1)) # check this again
+
+		self.avC = np.mean(avC,axis=1)
+		self.avqvals = np.mean(avqvals,axis=1)
 
 	def energycorrect(self,whichq,alpha,densities,samthickness):
 		"""
@@ -201,6 +261,34 @@ class extraction:
 			# close the figure to show the next one
 		plt.ioff()
 
+	def removeconstav(self,emin,emax,ewindow=100.0):
+		"""
+		fits a constant as background in the range emin-emax and 
+		saves the constant in self.back and the background subtracted self.signals in self.sqw
+		"""
+
+		if not np.any(self.avsignals):
+			print 'use averageAnalyzers first to create some averages'
+			return
+
+		plt.ion()
+		plt.cla()
+
+		inds = np.where(np.logical_and(self.eloss >= emin,self.eloss <= emax))
+		res  = np.polyfit(self.eloss[inds],self.avsignals[inds], 0)
+		yres = np.polyval(res, self.eloss)
+
+		plt.plot(self.eloss,self.avsignals,self.eloss,yres,self.eloss,self.avsignals-yres)
+		plt.legend(('signal','constant fit','signal - constant'))
+		plt.xlabel('energy loss [eV]')
+		plt.ylabel('signal [a.u.]')
+		plt.xlim(emin-ewindow,emax+ewindow)
+		plt.autoscale(enable=True, axis='y', tight=False)
+		plt.draw()
+
+		self.sqwav    = self.avsignals - yres
+		self.sqwaverr = self.averrors
+
 	def removelinear(self,whichq,emin,emax,ewindow=100.0,stoploop=True):
 		"""
 		fits a linear function as background in the range emin-emax and 
@@ -235,6 +323,68 @@ class extraction:
 			plt.close()    # close the figure to show the next one
 		plt.ioff()
 
+	def removelinearav(self,emin,emax,ewindow=100.0):
+		"""
+		fits a linear function as background in the range emin-emax from averaged data and saves the result in self.sqwav and self.sqwerrav
+		"""
+		if not np.any(self.avsignals):
+			print 'use averageAnalyzers first to create some averages'
+			return
+
+		plt.ion()
+		plt.cla()
+
+		inds = np.where(np.logical_and(self.eloss >= emin,self.eloss <= emax))
+		res  = np.polyfit(self.eloss[inds],self.avsignals[inds], 1)
+		yres = np.polyval(res, self.eloss)
+			
+		plt.plot(self.eloss,self.avsignals,self.eloss,yres,self.eloss,self.avsignals-yres)
+		plt.legend(('signal','linear fit','signal - linear'))
+		plt.xlabel('energy loss [eV]')
+		plt.ylabel('signal [a.u.]')
+		plt.grid(False)
+		plt.xlim(emin-ewindow,emax+ewindow) 
+		plt.autoscale(enable=True, axis='y')
+		plt.draw()
+
+		self.sqwav    = self.avsignals - yres
+		self.sqwaverr = self.averrors
+
+	def removeLinearAv(self,region1,region2=None,ewindow=100.0,scale=1):
+		"""
+		fits a linear function as background in the range emin-emax from averaged data and saves the result in self.sqwav and self.sqwerrav
+		"""
+		if not np.any(self.avsignals):
+			print 'use averageAnalyzers first to create some averages'
+			return
+
+		range1 = np.where(np.logical_and(self.eloss >= region1[0], self.eloss <= region1[1]))
+		if region2:
+			range2 = np.where(np.logical_and(self.eloss >= region2[0], self.eloss <= region2[1]))
+			region = np.append(range1,range2)
+		else:
+			region = range1
+
+		plt.ion()
+		plt.cla()
+
+		res  = np.polyfit(self.eloss[region],self.avsignals[region], 1)
+		yres = np.polyval(res, self.eloss)
+
+		newspec = (self.avsignals-yres)*scale
+		newerrs = self.averrors*scale
+		plt.plot(self.eloss,self.avsignals,self.eloss,yres,self.eloss,newspec,self.eloss,self.avC)
+		plt.legend(('signal','linear fit','signal - linear','av. core Compton'))
+		plt.xlabel('energy loss [eV]')
+		plt.ylabel('signal [a.u.]')
+		plt.grid(False)
+		plt.xlim(region1[0]-ewindow,region1[-1]+ewindow) 
+		plt.autoscale(enable=True, axis='y')
+		plt.draw()
+
+		self.sqwav    = newspec
+		self.sqwaverr = newerrs
+
 	def removepoly(self,whichq,emin,emax,polyorder=2.0,ewindow=100.0):
 		"""
 		fits a polynomial of order "polyorder" (default is quadratic) as background 
@@ -267,6 +417,149 @@ class extraction:
 			_ = raw_input("Press [enter] to continue.") # wait for input from the user
 			plt.close()    # close the figure to show the next one
 		plt.ioff()
+
+	def removepolyav(self,polyregion,coreregion,weights=[1,1],scale=1.0,polyorder=2.0,ewindow=100.0,hfcoreshift=0.0):
+		"""
+		fits a polynomial of order "polyorder" (default is quadratic) as background 
+		in the range emin-emax to averaged signals, save it to self.sqwav and self.sqwerrav
+		"""
+		if not np.any(self.avsignals):
+			print 'use averageAnalyzers first to create some averages'
+			return
+
+		region1 = np.where(np.logical_and(self.eloss >= polyregion[0], self.eloss <= polyregion[1]))
+		region2 = np.where(np.logical_and(self.eloss >= coreregion[0], self.eloss <= coreregion[1]))
+		region  = np.append(region1*weights[0],region2*weights[1])
+
+		# shift the HF core edge onset by hfcoreshift
+		thecore = np.interp(self.eloss,self.eloss+hfcoreshift,self.avC)
+
+		plt.ion()
+		plt.cla()
+		print scale
+		newspec = (self.avsignals)*scale
+
+		#inds = np.where(np.logical_and(self.eloss >= emin,self.eloss <= emax))
+		res  = np.polyfit(self.eloss[region],newspec[region]-thecore[region], polyorder)
+		yres = np.polyval(res, self.eloss)
+
+		resspec = (newspec-yres)
+		plt.plot(self.eloss,newspec,self.eloss,yres,self.eloss,resspec,self.eloss,thecore)
+		plt.legend(('signal','poly fit','signal - poly (scaled)','av. C'))
+		plt.xlabel('energy loss [eV]')
+		plt.ylabel('signal [a.u.]')
+		plt.xlim(polyregion[0]-ewindow,coreregion[1]+ewindow) 
+		plt.autoscale(enable=True, axis='y')
+		plt.draw()
+
+		self.sqwav    = resspec
+		self.sqwaverr = self.averrors * scale
+
+	def removepolyav1(self,polyregion1,polyregion2=None,polyorder=2.0,weights=[1,1]):
+		"""
+		"""
+		if not np.any(self.avsignals):
+			print 'use averageAnalyzers first to create some averages'
+			return
+
+		region1 = np.where(np.logical_and(self.eloss >= polyregion1[0], self.eloss <= polyregion1[1]))[0]
+		if polyregion2:
+			region2 = np.where(np.logical_and(self.eloss >= polyregion2[0], self.eloss <= polyregion2[1]))[0]
+			region  = np.append(region1*weights[0],region2*weights[1])
+		else:
+			region = region1
+
+		plt.ion()
+		plt.cla()
+		newspec = (self.avsignals)
+
+		#inds = np.where(np.logical_and(self.eloss >= emin,self.eloss <= emax))
+		res  = np.polyfit(self.eloss[region],newspec[region], polyorder)
+		yres = np.polyval(res, self.eloss)
+
+		resspec = (newspec-yres)
+		plt.plot(self.eloss,newspec,self.eloss,yres,self.eloss,resspec)
+		plt.legend(('signal','poly fit','signal - poly (scaled)'))
+		plt.xlabel('energy loss [eV]')
+		plt.ylabel('signal [a.u.]')
+		plt.draw()
+
+		self.sqwav    = resspec
+		self.sqwaverr = self.averrors
+
+
+	def removePolyCoreAv(self,polyregion,coreregion,weights=[1,1],guess=[1.0,0.0,0.0],ewindow=100.0):
+		"""
+		fits a polynomial of order "polyorder" (default is quadratic) as background 
+		in the range emin-emax to averaged signals, save it to self.sqwav and self.sqwerrav
+		"""
+		if not np.any(self.avsignals):
+			print 'use averageAnalyzers first to create some averages'
+			return
+
+		plt.ion()
+		plt.cla()
+
+		region1 = np.where(np.logical_and(self.eloss >= polyregion[0], self.eloss <= polyregion[1]))
+		region2 = np.where(np.logical_and(self.eloss >= coreregion[0], self.eloss <= coreregion[1]))
+		region  = np.append(region1*weights[0],region2*weights[1])
+
+		funct = lambda a: np.sum( (a[0]*self.avsignals[region] - self.avC[region] - np.polyval(a[1::],self.eloss[region]) )**2.0 )
+
+		res   = optimize.minimize(funct,guess).x
+		print 'the fit results are: ', res
+
+		yres = np.polyval(res[1::], self.eloss)
+		plt.plot(self.eloss,self.avC)	
+		plt.plot(self.eloss,self.avsignals*res[0],self.eloss,yres+self.avC,self.eloss,self.avsignals*res[0]-yres)
+		plt.legend(('scaled signal','poly fit + core','scaled signal - poly'))
+		plt.xlabel('energy loss [eV]')
+		plt.ylabel('signal [a.u.]')
+		plt.xlim(polyregion[0]-ewindow,polyregion[1]+ewindow) 
+		plt.autoscale(enable=True, axis='y')
+		plt.draw()
+
+		self.sqwav    = self.avsignals*res[0] - yres
+		self.sqwaverr = self.averrors*res[0]
+
+	def removePolyCoreAv2(self,polyregion,coreregion,weights=[1,1],guess=[1.0,0.0],ewindow=100.0,scale=1.0,hfcoreshift=0.0):
+		"""
+		fits a polynomial of order "polyorder" (default is quadratic) as background 
+		in the range emin-emax to averaged signals, save it to self.sqwav and self.sqwerrav
+		"""
+		if not np.any(self.avsignals):
+			print 'use averageAnalyzers first to create some averages'
+			return
+
+		plt.ion()
+		plt.cla()
+
+		region1 = np.where(np.logical_and(self.eloss >= polyregion[0], self.eloss <= polyregion[1]))
+		region2 = np.where(np.logical_and(self.eloss >= coreregion[0], self.eloss <= coreregion[1]))
+		region  = np.append(region1*weights[0],region2*weights[1])
+
+		# try scaling data before the fit (so scale does not have to be a parameter in the fit)
+		thespec = self.avsignals * scale
+
+		# shift the HF core edge onset by hfcoreshift
+		thecore = np.interp(self.eloss,self.eloss+hfcoreshift,self.avC)
+
+		funct = lambda a: np.sum( (thespec[region] - thecore[region] - np.polyval(a,self.eloss[region]) )**2.0 )
+
+		res   = optimize.minimize(funct,guess).x
+		print 'the fit results are: ', res
+
+		yres = np.polyval(res, self.eloss)
+		plt.plot(self.eloss,thespec,self.eloss,yres+thecore,self.eloss,thespec-yres,self.eloss,thecore)
+		plt.legend(('scaled signal','poly fit + core','scaled signal - poly','core profile'))
+		plt.xlabel('energy loss [eV]')
+		plt.ylabel('signal [a.u.]')
+		plt.xlim(polyregion[0]-ewindow,polyregion[1]+ewindow) 
+		plt.autoscale(enable=True, axis='y')
+		plt.draw()
+
+		self.sqwav    = thespec - yres
+		self.sqwaverr = self.averrors*scale
 
 	def removeconstpcore(self,whichq,constregion,coreregion,weights=[5,1],guess=[0.0, 1.0],ewindow=100.0,stoploop=True):
 		"""
@@ -327,7 +620,7 @@ class extraction:
 
 	def removelinpcore(self,whichq,linregion,coreregion,weights=[5,1],guess=[0.0, 0.0, 1.0],ewindow=100.0,stoploop=True):
 		"""
-		fit a linear to the preedge and scale data to postedge
+		fit a linear to the preedge and scale data so postedge
 		matches the theory profiles
 		fminconv: http://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
 		"""
@@ -374,6 +667,95 @@ class extraction:
 				_ = raw_input("Press [enter] to continue.") # wait for input from the user
 			plt.close()    # close the figure to show the next one
 		plt.ioff()
+
+	def removelinpcoreav(self,linregion,coreregion,weights=[5,1],guess=[0.0, 0.0, 1.0],ewindow=100.0):
+		"""
+		fit a linear to the preedge and scale data so postedge
+		matches the theory profiles
+		fminconv: http://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
+		"""
+
+		if not np.any(self.avsignals):
+			print 'use averageAnalyzers first to create some averages'
+			return
+
+		plt.ion()
+		plt.cla()
+
+		region1 = np.where(np.logical_and(self.eloss >= linregion[0], self.eloss <= linregion[1]))
+		region2 = np.where(np.logical_and(self.eloss >= coreregion[0], self.eloss <= coreregion[1]))
+		region  = np.append(region1*weights[0],region2*weights[1])
+
+		# remove a constant from before the edge
+		linguess = guess[0:2]
+		fitfct  = lambda a: self.avsignals[region1] - np.polyval(a,self.eloss[region1])	
+		res1    = optimize.leastsq(fitfct,linguess)[0]
+		back    = np.polyval(res1,self.eloss)
+
+		newspec = self.avsignals - back
+
+		# scale results in a way that it oscillates around the core profile
+		coreguess = guess[2]
+		fitfct  = lambda a: (a*newspec[region2] - self.avC[region2])
+		res2    = optimize.leastsq(fitfct,coreguess)[0]
+
+		# first scale data to same area as core profile in region2
+		#corenorm = np.trapz(self.avC[region2],self.eloss[region2])
+		#self.signalsav = self.avsignals/np.trapz(self.avsignals[region2],self.eloss[region2])*corenorm
+
+		#c1 = lambda a: -np.sum((a[2]*self.avsignals[region2] - (np.polyval(a[0:2],self.eloss[region2])+self.avC[region2]))**2.0) # post edge should oscillate around HF core profile
+		#c2 = lambda a: a[2] # scaling should not be negative
+		#fitfct  = lambda a: np.sum( (a[2]*self.avsignals[region] - (np.polyval(a[0:2],self.eloss[region])+self.avC[region]) )**2.0 )
+		#cons = [c1,c2] #, c2, c3, c4, c5, c6
+		#res  = optimize.fmin_cobyla(fitfct,guess,cons)
+		#yres = np.polyval(res[0:2],self.eloss)
+
+		plt.plot(self.eloss,res2*self.avsignals,self.eloss,self.avsignals,self.eloss,back+self.avC,self.eloss,res2*newspec,self.eloss,self.avC)
+		plt.legend(('scaled data','data','fit','data - linear','core profile'))
+		plt.xlabel('energy loss [eV]')
+		plt.ylabel('signal [a.u.]')
+		plt.xlim(linregion[0]-ewindow,coreregion[1]+ewindow) 
+		plt.autoscale(enable=True, axis='y')
+		plt.draw()
+
+		self.sqwav  = res2*newspec
+		self.sqwaverr = self.averrors*res2
+
+	def removeLinCoreAv(self,linregion,coreregion,weights=[5,1],guess=[0.0, 0.0, 1.0],ewindow=100.0):
+		"""
+		fit a linear to the preedge and scale data so postedge
+		matches the theory profiles
+		fminconv: http://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
+		"""
+
+		if not np.any(self.avsignals):
+			print 'use averageAnalyzers first to create some averages'
+			return
+
+		plt.ion()
+		plt.cla()
+
+		region1 = np.where(np.logical_and(self.eloss >= linregion[0], self.eloss <= linregion[1]))
+		region2 = np.where(np.logical_and(self.eloss >= coreregion[0], self.eloss <= coreregion[1]))
+		region  = np.append(region1*weights[0],region2*weights[1])
+
+		# remove a constant from before the edge
+		fitfct  = lambda a: np.sum( (a[2]*self.avsignals[region] - (a[0]*self.eloss[region] + a[1] + self.avC[region]) )**2.0)
+		res1    = optimize.minimize(fitfct,guess).x
+		back    = np.polyval(res1[0:2],self.eloss)
+		print 'the result of the fit is: ', res1
+		newspec = res1[2]*self.avsignals - back
+
+		plt.plot(self.eloss,res1[2]*self.avsignals,self.eloss,self.avsignals,self.eloss,back+self.avC,self.eloss,newspec,self.eloss,self.avC)
+		plt.legend(('scaled data','data','fit','data - linear','core profile'))
+		plt.xlabel('energy loss [eV]')
+		plt.ylabel('signal [a.u.]')
+		plt.xlim(linregion[0]-ewindow,coreregion[1]+ewindow) 
+		plt.autoscale(enable=True, axis='y')
+		plt.draw()
+
+		self.sqwav  = res1[2]*newspec
+		self.sqwaverr = self.averrors*res1[2]
 
 	def removepearson(self,whichq,emin,emax,guess=None,stoploop=True):
 		"""
@@ -463,6 +845,117 @@ class extraction:
 			plt.close()    # close the figure to show the next one
 		plt.ioff()
 
+	def removePearsonAv(self,region1,region2=None,guess=None,scale=1.0):
+		"""
+		weights must be integers!
+		
+		guess values: 
+		pearson (always zero background):
+		a[0] = Peak position
+		a[1] = FWHM
+		a[2] = Shape, 1 = Lorentzian, infinite = Gaussian
+		a[3] = Peak intensity
+		linear:
+		a[4] = linear slope
+		a[5] = linear background/offset
+		data: 
+		a[6] = scaling factor
+		"""
+		range1 = np.where(np.logical_and(self.eloss >= region1[0], self.eloss <= region1[1]))
+		if region2:
+			range2 = np.where(np.logical_and(self.eloss >= region2[0], self.eloss <= region2[1]))
+			region = np.append(range1,range2)
+		else:
+			region = range1
+
+		guessregion = np.where(np.logical_and(self.eloss>=self.prenormrange[0],self.eloss<=self.prenormrange[1]))[0]
+
+		plt.ion()
+		plt.cla()
+
+		if not guess: 
+			guess = []
+			ind = self.avsignals[guessregion].argmax(axis=0) # find index of maximum of signal in "prenormrange" (defalt [5,inf])
+			guess.append(self.eloss[guessregion][ind]) # max of signal (in range of prenorm from __init__)
+			guess.append(guess[0]*1.0) # once the position of the peason maximum
+			guess.append(1.0) # pearson shape, 1 = Lorentzian, infinite = Gaussian
+			guess.append(self.avsignals[guessregion][ind]) # Peak intensity
+			guess.append(0.0) # linear slope
+			guess.append(0.0) # linear background
+
+		# fit a pearson to the whole region
+		res1  = optimize.curve_fit(pearson7_linear_forcurvefit, self.eloss[region], self.avsignals[region],p0=guess)[0]
+		yres1 = pearson7_zeroback(self.eloss,res1[0:4]) + np.polyval(res1[4:6],self.eloss)
+		print 'the fitting results are: ', res1
+
+		newspec = (self.avsignals-yres1)*scale
+		plt.plot(self.eloss,self.avsignals,self.eloss,yres1,self.eloss,newspec,self.eloss,self.avC)
+		plt.legend(('data','pearson fit','data - pearson'))
+		plt.draw()
+
+		self.sqwav = newspec
+		self.sqwaverr = self.averrors * scale
+
+	def removePearsonAv2(self,region1,region2=None,weights=[1,1],guess=None,ewindow=100.0,scale=1.0,hfcoreshift=0.0):
+		"""
+		weights must be integers!
+		
+		guess values: 
+		pearson (always zero background):
+		a[0] = Peak position
+		a[1] = FWHM
+		a[2] = Shape, 1 = Lorentzian, infinite = Gaussian
+		a[3] = Peak intensity
+		linear:
+		a[4] = linear slope
+		a[5] = linear background/offset
+		data: 
+		a[6] = scaling factor
+		"""
+		range1 = np.where(np.logical_and(self.eloss >= region1[0], self.eloss <= region1[1]))
+		if region2:
+			range2 = np.where(np.logical_and(self.eloss >= region2[0], self.eloss <= region2[1]))
+			region = np.append(range1*weights[0],range2*weights[1])
+		else:
+			region = range1
+
+		guessregion = np.where(np.logical_and(self.eloss>=self.prenormrange[0],self.eloss<=self.prenormrange[1]))[0]
+
+		plt.ion()
+		plt.cla()
+
+		if not guess: 
+			guess = []
+			ind = self.avsignals[guessregion].argmax(axis=0) # find index of maximum of signal in "prenormrange" (defalt [5,inf])
+			guess.append(self.eloss[guessregion][ind]) # max of signal (in range of prenorm from __init__)
+			guess.append(guess[0]*1.0) # once the position of the peason maximum
+			guess.append(1.0) # pearson shape, 1 = Lorentzian, infinite = Gaussian
+			guess.append(self.avsignals[guessregion][ind]) # Peak intensity
+			guess.append(0.0) # linear slope
+			guess.append(0.0) # linear background
+
+		# try scaling data before the fit (so scale does not have to be a parameter in the fit)
+		thespec = self.avsignals * scale
+
+		# shift the HF core edge onset by hfcoreshift
+		thecore = np.interp(self.eloss,self.eloss+hfcoreshift,self.avC)
+
+		# fit a pearson to the whole region
+		fitfct  = lambda a: np.sum( (thespec[region] - pearson7_zeroback(self.eloss[region],a[0:4]) - np.polyval(a[4:6],self.eloss[region]) - thecore[region])**2.0 )
+		res = optimize.minimize(fitfct,guess).x
+		#res1  = optimize.curve_fit(pearson7_linear_forcurvefit, self.eloss[region], thespec[region],p0=guess)[0]
+		#yres1 = pearson7_zeroback(self.eloss,res1[0:4]) + np.polyval(res1[4:6],self.eloss)
+		print 'the fitting results are: ', res
+
+		yres = pearson7_zeroback(self.eloss,res[0:4]) + np.polyval(res[4:6],self.eloss)
+
+		plt.plot(self.eloss,thespec,self.eloss,yres,self.eloss,thespec-yres,self.eloss,thecore)
+		plt.legend(('data','pearson fit','data - pearson','core'))
+		plt.draw()
+
+		self.sqwav = thespec-yres
+		self.sqwaverr = self.averrors * scale
+
 	def removecoreppearson(self,whichq,pearsonrange,postrange,weights=[2,1],guess=None,stoploop=True):
 		"""
 		weights must be integers!
@@ -530,6 +1023,178 @@ class extraction:
 				_ = raw_input("Press [enter] to continue.") # wait for input from the user
 			plt.close()    # close the figure to show the next one
 		plt.ioff()
+
+	def removeCorePearsonAv(self,fitrange,guess=None):
+		"""
+		weights must be integers!
+		
+		guess values: 
+		pearson (always zero background):
+		a[0] = Peak position
+		a[1] = FWHM
+		a[2] = Shape, 1 = Lorentzian, infinite = Gaussian
+		a[3] = Peak intensity
+		linear:
+		a[4] = linear slope
+		a[5] = linear background/offset
+		data: 
+		a[6] = scaling factor
+		"""
+		inds = np.where(np.logical_and(self.eloss >= fitrange[0], self.eloss <= fitrange[1]))
+		plt.ion()
+		plt.cla()
+
+		if not guess: 
+			guess = []
+			ind = self.avsignals[inds].argmax(axis=0) # find index of maximum of signal in "prenormrange" (defalt [5,inf])
+			guess.append(self.eloss[inds][ind]) # max of signal (in range of prenorm from __init__)
+			guess.append(guess[0]*1.0) # once the position of the peason maximum
+			guess.append(1.0) # pearson shape, 1 = Lorentzian, infinite = Gaussian
+			guess.append(self.avsignals[inds][ind]) # Peak intensity
+			guess.append(0.0) # linear slope
+			guess.append(0.0) # linear background
+			guess.append(1.0) # scaling factor for exp. data
+
+		fitfct  = lambda a: a[6]*self.avsignals[inds] - (pearson7_zeroback(self.eloss[inds],a[0:4]) + np.polyval(a[4:6],self.eloss[inds]) + self.avC[inds])
+		res     = optimize.leastsq(fitfct,guess)[0]
+		yres    = pearson7_zeroback(self.eloss,res[0:4]) + np.polyval(res[4:6],self.eloss)
+
+		print 'the current fit-parameters are: ' + str(res) + ', try using these as guess parameters in a more refined fit!'
+
+		plt.plot(self.eloss,self.avsignals*res[6],self.eloss,yres+self.avC,self.eloss,self.avsignals*res[6]-yres,self.eloss,self.avC)
+		plt.legend(('scaled data','pearson + linear + core','data - (pearson + linear +core)','core'))
+		plt.draw()
+
+		self.sqwav = self.avsignals*res[6] - yres
+		self.sqwaverr = self.averrors*res[6]
+
+	def removeCorePearsonAv2(self,pearsonrange,corerange,weights=[2,1],guess=None):
+		"""
+		weights must be integers!
+		
+		guess values: 
+		pearson (always zero background):
+		a[0] = Peak position
+		a[1] = FWHM
+		a[2] = Shape, 1 = Lorentzian, infinite = Gaussian
+		a[3] = Peak intensity
+		linear:
+		a[4] = linear slope
+		a[5] = linear background/offset
+		data: 
+		a[6] = scaling factor
+		"""
+		region1 = np.where(np.logical_and(self.eloss >= pearsonrange[0], self.eloss <= pearsonrange[1]))
+		region2 = np.where(np.logical_and(self.eloss >= corerange[0], self.eloss <= corerange[1]))
+		region  = np.append(region1*weights[0],region2*weights[1])
+		guessregion = np.where(np.logical_and(self.eloss>=self.prenormrange[0],self.eloss<=self.prenormrange[1]))[0]
+
+		plt.ion()
+		plt.cla()
+
+		# scale the data approximately to get a better match in edge jumb btw. data and compton profiles
+		#try:
+		#theojump = np.abs(self.avC[region2[0][0]] - self.avC[region1[0][-1]])
+		#datajump = np.abs(self.avsignals[region2[0][0]] - self.avsignals[region1[0][-1]])
+		#prescaling = datajump/theojump
+		#except:
+		#	prescaling = 1.0
+		#self.avsignals *= prescaling
+
+		if not guess: 
+			guess = []
+			ind = self.avsignals[guessregion].argmax(axis=0) # find index of maximum of signal in "prenormrange" (defalt [5,inf])
+			guess.append(self.eloss[guessregion][ind]) # max of signal (in range of prenorm from __init__)
+			guess.append(guess[0]*1.0) # once the position of the peason maximum
+			guess.append(1.0) # pearson shape, 1 = Lorentzian, infinite = Gaussian
+			guess.append(self.avsignals[guessregion][ind]) # Peak intensity
+			guess.append(0.0) # linear slope
+			guess.append(0.0) # linear background
+			guess.append(1.0) # scaling factor for exp. data
+
+		# some sensible boundary conditions for the fit:
+		c1 = lambda a: a[1]*np.absolute(2e2 - a[1]) # FWHM should not be bigger than 200 eV and positive
+		c2 = lambda a: a[2] # shape should not be negative
+		c3 = lambda a: a[3] # peak intensity should not be negative
+		c4 = lambda a: np.absolute(5e-1 - a[4]) # slope for linear background should be small
+		c5 = lambda a: a[3] - a[5] # offset for linear should be smaller than maximum of pearson
+		c6 = lambda a: a[6] # scaling factor for the data should not be negative
+		c7 = lambda a: np.sum( (a[6]*self.avsignals[region2] - pearson7_zeroback(self.eloss[region2],a[0:4]) - self.avC[region2] - np.polyval(a[4:6],self.eloss[region2]))**2.0 )
+
+		fitfct  = lambda a: np.sum( (a[6]*self.avsignals[region1] - pearson7_zeroback(self.eloss[region1],a[0:4]) - np.polyval(a[4:6],self.eloss[region1]) - self.avC[region1])**2.0 ) + np.sum( (a[6]*self.avsignals[region2] - pearson7_zeroback(self.eloss[region2],a[0:4]) - np.polyval(a[4:6],self.eloss[region2]) - self.avC[region2])**2.0 )
+		cons = []#[c1, c2, c3, c4, c5, c6, c7]
+		res     = optimize.minimize(fitfct,guess)
+		yres    = pearson7_zeroback(self.eloss,res[0:4]) + np.polyval(res[4:6],self.eloss)
+
+		plt.plot(self.eloss,self.avsignals*res[6],self.eloss,yres+self.avC,self.eloss,self.avsignals*res[6]-yres,self.eloss,self.avC)
+		plt.legend(('scaled data','pearson + linear + core','data - (pearson + linear)','core'))
+		plt.draw()
+
+		self.sqwav = self.avsignals*res[6] - yres
+		self.sqwaverr = self.averrors*res[6]
+
+	def removeCorePearsonAv3(self,pearsonrange,corerange,weights=[1,1],guess=None):
+		"""
+		weights must be integers!
+		
+		guess values: 
+		pearson (always zero background):
+		a[0] = Peak position
+		a[1] = FWHM
+		a[2] = Shape, 1 = Lorentzian, infinite = Gaussian
+		a[3] = Peak intensity
+		linear:
+		a[4] = linear slope
+		a[5] = linear background/offset
+		data: 
+		a[6] = scaling factor
+		"""
+		region1 = np.where(np.logical_and(self.eloss >= pearsonrange[0], self.eloss <= pearsonrange[1]))
+		region2 = np.where(np.logical_and(self.eloss >= corerange[0], self.eloss <= corerange[1]))
+		region  = np.append(region1*weights[0],region2*weights[1])
+		guessregion = np.where(np.logical_and(self.eloss>=self.prenormrange[0],self.eloss<=self.prenormrange[1]))[0]
+
+		plt.ion()
+		plt.cla()
+
+		if not guess: 
+			guess = []
+			ind = self.avsignals[guessregion].argmax(axis=0) # find index of maximum of signal in "prenormrange" (defalt [5,inf])
+			guess.append(self.eloss[guessregion][ind]) # max of signal (in range of prenorm from __init__)
+			guess.append(guess[0]*1.0) # once the position of the peason maximum
+			guess.append(1.0) # pearson shape, 1 = Lorentzian, infinite = Gaussian
+			guess.append(self.avsignals[guessregion][ind]) # Peak intensity
+			guess.append(0.0) # linear slope
+			guess.append(0.0) # linear background
+
+		# fit a pearson to the whole region
+		res1  = optimize.curve_fit(pearson7_linear_forcurvefit, self.eloss[region], self.avsignals[region],p0=guess)[0]
+		yres1 = pearson7_zeroback(self.eloss,res1[0:4]) + np.polyval(res1[4:6],self.eloss)
+
+		plt.plot(self.eloss,self.avsignals,self.eloss,yres1+self.avC,self.eloss,self.avsignals-yres1,self.eloss,self.avC)
+
+		# estimate a scaling factor from area in the coreregion
+		scale = np.trapz(self.avC[region2],self.eloss[region2])/np.abs(np.trapz(self.avsignals[region2]-yres1[region2],self.eloss[region2]))
+		print 'trapz of core is ',np.trapz(self.avC[region2],self.eloss[region2])
+		print 'trapz of data is ',np.trapz(self.avsignals[region2]-yres1[region2],self.eloss[region2])
+		print 'scale is ', scale
+		newspec = self.avsignals * scale
+		newerrs = self.averrors * scale
+		# fit scaled averaged data again (fit scaling with this too)
+		guess = res1
+		guess = np.append(guess,1.0) # scaling factor for exp. data
+
+		res2  = optimize.curve_fit(pearson7_linear_scaling_forcurvefit, self.eloss[region], newspec[region],p0=guess)[0]
+		yres2 = pearson7_zeroback(self.eloss,res2[0:4]) + np.polyval(res2[4:6],self.eloss)
+
+		print  res2
+		plt.figure()
+		plt.plot(self.eloss,newspec*res2[6],self.eloss,yres2+self.avC,self.eloss,newspec*res2[6]-yres2,self.eloss,self.avC)
+		plt.legend(('scaled data','pearson + linear + core','scaled data - (pearson + linear)','core'))
+		plt.draw()
+
+		self.sqwav = newspec*res2[6] - yres2
+		self.sqwaverr = newerrs*res2[6]
 
 	def removecoreppearson2(self,whichq,pearsonrange,postrange,guess=None,stoploop=True):
 		"""
@@ -1058,6 +1723,26 @@ class extraction:
 			self.sqwav    = np.sum(av,axis=1)
 			self.sqwaverr = np.sqrt(np.sum(np.absolute(self.errors)**2.0,axis=1)) # check this again
 
-
-
+	def savetxtsqwav(self,filename, emin=None, emax=None, normrange=None):
+		"""
+		save the S(q,w) into a filename (energy loss, sqw, error), save only part of the spectrum, if emin and emax are given, normalize to 		area using np.trapz if normrange is given and a list of length 2 
+		"""
+		if emin and emax: 
+			inds = np.where(np.logical_and(self.eloss>=emin,self.eloss<=emax))[0]
+			data = np.zeros((len(inds),3))
+			data[:,0] = self.eloss[inds]
+			data[:,1] = self.sqwav[inds]
+			data[:,2] = self.sqwaverr[inds]
+		else:
+			data = np.zeros((len(self.eloss),3))
+			data[:,0] = self.eloss
+			data[:,1] = self.sqwav
+			data[:,2] = self.sqwaverr
+		if normrange:
+			assert type(normrange) is list and len(normrange) is 2, "normrange has to be a list of length two!"
+			inds = np.where(np.logical_and(data[:,0]>=normrange[0],data[:,0]<=normrange[1]))[0]
+			norm = trapz(data[inds,1],data[inds,0])
+			data[:,1] /= norm
+			data[:,2] /= norm
+		np.savetxt(filename,data)
 

@@ -9,7 +9,7 @@ from scipy.interpolate import Rbf, RectBivariateSpline
 from scipy.optimize import leastsq, fmin
 
 from helpers import *
-from xrs_read import rois
+#from xrs_read import rois
 
 class imaging:
 	"""
