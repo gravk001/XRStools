@@ -316,55 +316,56 @@ def read_rcg_born(fname,q=9.2*0.529,egauss=0.2,elore=0.1):
 
 
 	return e,spectr
-function [e,spectr]=read_rcg_born(fname,q,egauss,elore);
+
+# function [e,spectr]=read_rcg_born(fname,q,egauss,elore);
 
 
-fid=fopen(fname);
-ei=[]; y=[];
+# fid=fopen(fname);
+# ei=[]; y=[];
 
-conti=1;
-while conti & ~feof(fid),
-  s=fgetl(fid);
-  conti=isempty(findstr('k-values',s));
-end
-conti=1;
-while conti & ~feof(fid),
-  s=fgetl(fid);
-  conti=isempty(findstr('k-values',s));
-end
-      s=fgetl(fid); % empty string
-      conti=1;k=[];
-      while conti,
-          s=fgetl(fid);
-          conti=length(str2num(s)); 
-          k=[k str2num(s)];
-      end
+# conti=1;
+# while conti &   ~feof(fid),
+#   s=fgetl(fid);
+#   conti=isempty(findstr('k-values',s));
+# end
+# conti=1;
+# while conti & ~feof(fid),
+#   s=fgetl(fid);
+#   conti=isempty(findstr('k-values',s));
+# end
+#       s=fgetl(fid); % empty string
+#       conti=1;k=[];
+#       while conti,
+#           s=fgetl(fid);
+#           conti=length(str2num(s)); 
+#           k=[k str2num(s)];
+#       end
 
-while ~feof(fid)
-  s=fgetl(fid);
-  if ~isempty(findstr('delta E',s));
-      s=fgetl(fid); % empty line
-      s=fgetl(fid); disp(s);
-      sn=str2num(s);
-      ei=[ei sn(8)];
-      s=fgetl(fid); % the text "0generalised.."
-      conti=1;ytmp=[];
-      while conti,
-          s=fgetl(fid);
-          conti=length(str2num(s)); 
-          ytmp=[ytmp str2num(s)];
-      end      
-      y=[y;ytmp];
-  end
-end
-fclose(fid);
-ei=ei/8.065-1.45;
-%q=9.2*0.529; 
-[q,qi]=min((k-q).^2)
-e=[min(ei)-2:0.01:max(ei)+2]';
-spectr=zeros(size(e));
-for ii=1:length(ei),
-  spectr=spectr+convg(e,lorentz2([y(ii,qi) elore ei(ii)],e),egauss);
-end
+# while ~feof(fid)
+#   s=fgetl(fid);
+#   if ~isempty(findstr('delta E',s));
+#       s=fgetl(fid); % empty line
+#       s=fgetl(fid); disp(s);
+#       sn=str2num(s);
+#       ei=[ei sn(8)];
+#       s=fgetl(fid); % the text "0generalised.."
+#       conti=1;ytmp=[];
+#       while conti,
+#           s=fgetl(fid);
+#           conti=length(str2num(s)); 
+#           ytmp=[ytmp str2num(s)];
+#       end      
+#       y=[y;ytmp];
+#   end
+# end
+# fclose(fid);
+# ei=ei/8.065-1.45;
+# %q=9.2*0.529; 
+# [q,qi]=min((k-q).^2)
+# e=[min(ei)-2:0.01:max(ei)+2]';
+# spectr=zeros(size(e));
+# for ii=1:length(ei),
+#   spectr=spectr+convg(e,lorentz2([y(ii,qi) elore ei(ii)],e),egauss);
+# end
 
 

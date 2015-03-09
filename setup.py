@@ -50,7 +50,7 @@ class smart_install_data(install_data):
     def run(self):
         global  version
         install_cmd = self.get_finalized_command('install')
-        self.install_dir = os.path.join(getattr(install_cmd, 'install_lib'),"xrstools"+version)
+        self.install_dir = os.path.join(getattr(install_cmd, 'install_lib'),"xrstools"+version,"..","..","..","..","share","xrstools","data")
         print "DATA to be installed in %s" %  self.install_dir
         return install_data.run(self)
 
@@ -119,7 +119,8 @@ if sys.platform == "win32":
 else:
     script_files = glob.glob("xrstools/scripts/*")
 
-version = '0.0' #[eval(l.split("=")[1]) for l in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "xrstools", "__init__.py")) if l.strip().startswith("version")][0]
+version = '' #[eval(l.split("=")[1]) for l in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "xrstools", "__init__.py")) if l.strip().startswith("version")][0]
+# version = '0.0' #[eval(l.split("=")[1]) for l in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "xrstools", "__init__.py")) if l.strip().startswith("version")][0]
 
 # We subclass the build_ext class in order to handle compiler flags
 # for openmp and opencl etc in a cross platform way
@@ -256,21 +257,44 @@ cython_ext2 = Extension(name="spotpicker_cy",
 cmdclass['install_scripts'] = smart_install_scripts
 cmdclass['install_data'] = smart_install_data
 
-setup(name          = 'xrstools',
-      version       = version,
-      author        = "Christoph J. Sahle",
-      author_email  = "christoph.sahle@esrf.fr",
-      description   = 'An XRS data analysis package.',
-      url           = "christoph.sahle@esrf.fr",
-      download_url  = "",
-      ext_package   = "xrstools"+version,
-      scripts       = script_files,
-      packages      = ["xrstools"+version],
-      package_dir   = {"xrstools"+version:"xrstools" },
-      package_data  = {"xrstools"+version: ['data/*.dat','data/chitables/*.dat','data/refl_database/*.dat','docs/*.txt','examples/*.*']},
-      test_suite    = "test",
-      cmdclass      = cmdclass,
-      ext_modules   = ext_modules
+# setup(name          = 'xrstools',
+#       version       = version,
+#       author        = "Christoph J. Sahle",
+#       author_email  = "christoph.sahle@esrf.fr",
+#       description   = 'An XRS data analysis package.',
+#       url           = "christoph.sahle@esrf.fr",
+#       download_url  = "",
+#       ext_package   = "xrstools"+version,
+#       scripts       = script_files,
+#       packages      = ["xrstools"+version],
+#       package_dir   = {"xrstools"+version:"xrstools" },
+#       package_data  = {"xrstools"+version: ['data/*.dat','data/chitables/*.dat','data/refl_database/*.dat','docs/*.txt','examples/*.*']},
+#       test_suite    = "test",
+#       cmdclass      = cmdclass,
+#       ext_modules   = ext_modules
+# )
+
+
+
+
+
+
+setup(name='xrstools',
+      version=version,
+      author="Christoph Sahal",
+      author_email="",
+      description='descrizione da farsi qui',
+      url="christoph.sahle@esrf.fr",
+      download_url="",
+      ext_package="xrstools"+version,
+      scripts=script_files,
+      # ext_modules=[Extension(**dico) for dico in ext_modules],
+      packages=["xrstools"+version],
+      package_dir={"xrstools"+version:"xrstools" },
+      test_suite="test",
+      cmdclass=cmdclass,
+      data_files=data_files,
+      ext_modules=ext_modules
       )
 
 # try:

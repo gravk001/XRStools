@@ -54,8 +54,9 @@ from scipy.optimize import leastsq, fmin
 from scipy.interpolate import Rbf, RectBivariateSpline
 from scipy.integrate import odeint
 
-#installation_dir = os.path.dirname(os.path.abspath(__file__))
-installation_dir = os.path.abspath('.')
+data_installation_dir = os.path.join( os.path.dirname(os.path.abspath(__file__)),"..","..","..","..","share","xrstools","data")
+#  installation_dir = os.path.abspath('.')
+# os.path.join(getattr(install_cmd, 'install_lib'),"xrstools"+version,"..","..","..","..","share","xrstools","data")
 
 
 class maxipix_det:
@@ -416,7 +417,7 @@ def readbiggsdata(filename,element):
 	data = (np.reshape(np.array(data),(length,arraysize)))
 	return data, occupation, bindingen, colnames
 
-def makepzprofile(element,filename=os.path.join(installation_dir,'xrstools/data/ComptonProfiles.dat')):
+def makepzprofile(element,filename=os.path.join(data_installation_dir,'ComptonProfiles.dat')):
 	"""
 	constructs compton profiles of element 'element' on pz-scale 
 	(-100:100 a.u.) from the Biggs tables provided in 'filename'
@@ -453,7 +454,7 @@ def makepzprofile(element,filename=os.path.join(installation_dir,'xrstools/data/
 	occupation = [float(val) for val in occupation]
 	return pzprofile, binden, occupation
 
-def makeprofile(element,filename=os.path.join(installation_dir,'xrstools/data/ComptonProfiles.dat'),E0=9.69,tth=35.0,correctasym=None):
+def makeprofile(element,filename=os.path.join(data_installation_dir,'ComptonProfiles.dat'),E0=9.69,tth=35.0,correctasym=None):
 	"""
 	takes the profiles from 'makepzprofile()', converts them onto eloss 
 	scale and normalizes them to S(q,w) [1/eV]
@@ -507,7 +508,7 @@ def makeprofile(element,filename=os.path.join(installation_dir,'xrstools/data/Co
 	C = J - V
 	return enscale,J,C,V,q
 
-def makeprofile_comp(formula,filename=os.path.join(installation_dir,'xrstools/data/ComptonProfiles.dat'),E0=9.69,tth=35,correctasym=None):
+def makeprofile_comp(formula,filename=os.path.join(data_installation_dir,'ComptonProfiles.dat'),E0=9.69,tth=35,correctasym=None):
 	"""
 	returns the compton profile of a chemical compound with formula 'formula'
 	input:
@@ -536,7 +537,7 @@ def makeprofile_comp(formula,filename=os.path.join(installation_dir,'xrstools/da
 		V += v
 	return eloss, J,C,V,q
 
-def makeprofile_compds(formulas,concentrations=None,filename=os.path.join(installation_dir,'xrstools/data/ComptonProfiles.dat'),E0=9.69,tth=35.0,correctasym=None):
+def makeprofile_compds(formulas,concentrations=None,filename=os.path.join(data_installation_dir,'ComptonProfiles.dat'),E0=9.69,tth=35.0,correctasym=None):
 	"""
 	returns sum of compton profiles from a lost of chemical compounds weighted by the given concentration
 	"""
@@ -671,7 +672,7 @@ def element(z):
 		print 'type '+ type(z) + 'not supported'	
 	return Z
 
-def myprho(energy,Z,logtablefile=os.path.join(installation_dir,'xrstools/data/logtable.dat')):
+def myprho(energy,Z,logtablefile=os.path.join(data_installation_dir,'logtable.dat')):
 	"""
 	calculates the photoelectric, elastic, and inelastic absorption of 
 	an element Z (can be atomic number or symbol) on the energyscal e1
@@ -1110,7 +1111,7 @@ def taupgen(e, hkl = [6,6,0], crystals = 'Si', R = 1.0, dev = np.arange(-50.0,15
 	% the fortran routines. Frankly, my dear, I don't give a damn. 
 	% Complaints -> /dev/null
 	"""
-	prefix = os.path.join(installation_dir,'xrstools/data/')
+	prefix = data_installation_dir+'/'
 	path = prefix + 'chitables/chitable_' # path to chitables
 	# load the according chitable (tabulated)
 	hkl_string = str(int(hkl[0])) + str(int(hkl[1])) + str(int(hkl[2]))
