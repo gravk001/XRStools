@@ -402,5 +402,3 @@ def appendScans(groups,include_elastic):
 		return catScansLong(groups,include_elastic)
 	else: 
 		return catScans(groups,include_elastic)
-
-

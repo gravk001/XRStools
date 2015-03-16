@@ -65,6 +65,43 @@ class roi_object:
 		self.y_indices      = [] # list of numpy arrays of y-indices (for each ROI)
 		self.masks          = [] # 3D numpy array with slices of zeros and ones (same size as detector image) for each roi
 
+
+	    self.nofrois=0
+	    self.image=np.zeros((1,1),"f")
+            
+            sl={}
+            sl[0  ] = slice(0  ,256)
+            sl[256] = slice(256,512)
+            sl[512] = slice(512,768)
+            
+            geo_informations = {"256x768": { "DET_PIXEL_NUM":256, "geo":[256,768], "nofrois":36,
+                                             "subnames": ["LU","RD" ,"B"],
+                                             "subgeos" : [(sl[0] ,sl[0]),
+                                                          (sl[0],sl[256]),
+                                                          (sl[0],sl[512])]
+                                         },
+                                "512x768" : { "DET_PIXEL_NUM":256, "geo":[512,768],"nofrois":72,
+                                              "subnames":["VU","VD" ,"VB", "HL","HR" ,"HB"] ,
+                                              "subgeos"  :[(sl[0],sl[0]     ),
+                                                           (sl[0],sl[256]   ),
+                                                           (sl[0],sl[512]   ),
+                                                           (sl[256],sl[0]   ),
+                                                           (sl[256],sl[256] ),
+                                                           (sl[256],sl[512] )]
+                                          } ,
+                                "256x256": { "DET_PIXEL_NUM":256, "geo":[256,256], "nofrois":12 ,
+                                             "subnames":{"DETECTOR"},
+                                             "subgeos"  :[(sl[0],sl[0])]
+                                         }
+                            }
+            self.geo_informations=geo_informations
+
+
+
+
+
+
+
 	def show_rois(self):
 		"""
 		Creates a figure with the defined ROIs as numbered boxes on it.
@@ -809,27 +846,7 @@ def test_roifinder(roi_type_str, imagesize = [512,768], scan = None ):
 	    roi_finder_obj.get_auto_rois(rand_image,kernel_size=5,threshold=1.0,logscaling=True,colormap='jet',interpolation='nearest')
 	    roi_finder_obj.show_rois()
 
-def create_sum_image(scans,scannumbers):
-	"""
-	Returns a summed image from all scans with numbers 'scannumbers'.
-	scans       = dictionary of objects from the scan-class
-	scannumbers = single scannumber, or list of scannumbers from which an image should be constructed
-	"""
-	# make 'scannumbers' iterable (even if it is just an integer)
-	numbers = []
-	if not isinstance(scannumbers,list):
-		numbers.append(scannumbers)
-	else:
-		numbers = scannumbers
 
-	key = 'Scan%03d' % numbers[0]
-	image = np.zeros_like(scans[key].edfmats[0,:,:])
-	for number in numbers:
-		key = 'Scan%03d' % number
-		for ii in range(scans[key].edfmats.shape[0]):
-			image += scans[key].edfmats[ii,:,:]
-
-	return image
 
 def break_down_det_image(image,pixel_num):
 	"""
@@ -1471,3 +1488,26 @@ class rois:
 
 
 
+
+
+def create_sum_image(scans,scannumbers):
+	"""
+	Returns a summed image from all scans with numbers 'scannumbers'.
+	scans       = dictionary of objects from the scan-class
+	scannumbers = single scannumber, or list of scannumbers from which an image should be constructed
+	"""
+	# make 'scannumbers' iterable (even if it is just an integer)
+	numbers = []
+	if not isinstance(scannumbers,list):
+		numbers.append(scannumbers)
+	else:
+		numbers = scannumbers
+
+	key = 'Scan%03d' % numbers[0]
+	image = np.zeros_like(scans[key].edfmats[0,:,:])
+	for number in numbers:
+		key = 'Scan%03d' % number
+		for ii in range(scans[key].edfmats.shape[0]):
+			image += scans[key].edfmats[ii,:,:]
+
+	return image
