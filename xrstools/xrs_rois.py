@@ -56,7 +56,7 @@ class roi_object:
 	Container class to hold all relevant information about given ROIs.
 	"""
 	def __init__(self):
-		self.roi_matrix     = np.array([]) # single matrix of zeros, ones, twos, ... , n's (where n is the number of ROIs defined)
+                self.roi_matrix     = np.array([]) # single matrix of zeros, ones, twos, ... , n's (where n is the number of ROIs defined)
 		self.red_rois       = {}           # dictionary, one entry for each ROI, each ROI has an origin and a rectangular box of ones and zeros defining the ROI
 		self.indices        = [] # list of list of tuples (one list of tuples for each ROI)
 		self.number_of_rois = 0            # number of ROIs defined
@@ -66,35 +66,35 @@ class roi_object:
 		self.masks          = [] # 3D numpy array with slices of zeros and ones (same size as detector image) for each roi
 
 
-	    self.nofrois=0
-	    self.image=np.zeros((1,1),"f")
-            
-            sl={}
-            sl[0  ] = slice(0  ,256)
-            sl[256] = slice(256,512)
-            sl[512] = slice(512,768)
-            
-            geo_informations = {"256x768": { "DET_PIXEL_NUM":256, "geo":[256,768], "nofrois":36,
-                                             "subnames": ["LU","RD" ,"B"],
-                                             "subgeos" : [(sl[0] ,sl[0]),
-                                                          (sl[0],sl[256]),
-                                                          (sl[0],sl[512])]
+                self.nofrois=0
+                self.image=np.zeros((1,1),"f")
+                
+                sl={}
+                sl[0  ] = slice(0  ,256)
+                sl[256] = slice(256,512)
+                sl[512] = slice(512,768)
+        
+                geo_informations = {"256x768": { "DET_PIXEL_NUM":256, "geo":[256,768], "nofrois":36,
+                                                 "subnames": ["LU","RD" ,"B"],
+                                                 "subgeos" : [(sl[0] ,sl[0]),
+                                                              (sl[0],sl[256]),
+                                                              (sl[0],sl[512])]
                                          },
-                                "512x768" : { "DET_PIXEL_NUM":256, "geo":[512,768],"nofrois":72,
-                                              "subnames":["VU","VD" ,"VB", "HL","HR" ,"HB"] ,
-                                              "subgeos"  :[(sl[0],sl[0]     ),
-                                                           (sl[0],sl[256]   ),
-                                                           (sl[0],sl[512]   ),
-                                                           (sl[256],sl[0]   ),
-                                                           (sl[256],sl[256] ),
-                                                           (sl[256],sl[512] )]
+                                    "512x768" : { "DET_PIXEL_NUM":256, "geo":[512,768],"nofrois":72,
+                                                  "subnames":["VU","VD" ,"VB", "HL","HR" ,"HB"] ,
+                                                  "subgeos"  :[(sl[0],sl[0]     ),
+                                                        (sl[0],sl[256]   ),
+                                                               (sl[0],sl[512]   ),
+                                                               (sl[256],sl[0]   ),
+                                                               (sl[256],sl[256] ),
+                                                               (sl[256],sl[512] )]
                                           } ,
-                                "256x256": { "DET_PIXEL_NUM":256, "geo":[256,256], "nofrois":12 ,
-                                             "subnames":{"DETECTOR"},
-                                             "subgeos"  :[(sl[0],sl[0])]
+                                    "256x256": { "DET_PIXEL_NUM":256, "geo":[256,256], "nofrois":12 ,
+                                                 "subnames":{"DETECTOR"},
+                                                 "subgeos"  :[(sl[0],sl[0])]
                                          }
                             }
-            self.geo_informations=geo_informations
+                self.geo_informations=geo_informations
 
 
 
