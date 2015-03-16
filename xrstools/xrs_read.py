@@ -318,6 +318,7 @@ class read_id20:
 		roi_finder_obj.get_auto_rois(image,kernel_size=kernel_size,threshold=threshold,logscaling=logscaling,colormap=colormap,interpolation=interpolation)
 		self.roi_obj = roi_finder_obj.roi_obj
 
+
 	def get_auto_rois_eachdet(self,scannumbers,kernel_size=5,threshold=100.0,logscaling=True,colormap='jet',interpolation='bilinear'):
 		"""
 		Define ROIs automatically using median filtering and a variable threshold for each detector
@@ -574,6 +575,16 @@ class read_id20:
 				print ("integrating "+scan)
 				self.scans[scan].applyrois(self.roi_obj.indices)
 
+
+        def SumDirect(self,scannumbers):
+                sum=None
+		for number in scannums:
+			data, motors, counters, edfmats = self.readscan(number)
+                        if sum is None:
+                                sum = np.zeros(edfmats[0].shape ,"f") 
+                        sum[:] += edfmats.sum(axis=0) 
+                return sum
+
 	def loadscandirect(self,scannumbers,scantype='generic',fromtofile=False,scaling=None):
 		"""
 		Loads a scan without saving the edf files in matrices.
@@ -600,8 +611,11 @@ class read_id20:
 			monoangle = 1 # counters['pmonoa'] # this still needs checking
 			energy    = counters[self.encolumn]
 			# create an instance of "scan" class for every scan
+
 			onescan = xrs_scans.scan(edfmats,number,energy,monitor,counters,motors,data,scantype)
+
 			onescan.applyrois(self.roi_obj.indices,scaling=scaling)
+
 			print 'Deleting EDF-files of Scan No. %03d' % number
 			onescan.edfmats = [] # delete the edfmats
 			self.scans[scanname] = onescan
