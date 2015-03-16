@@ -210,6 +210,7 @@ def relabelise(filled, A , nofroi):
 
 
 from PyMca5 import EdfFile
+# from PyMca5 import EdfFile
 
 
 if __name__=="__main__":

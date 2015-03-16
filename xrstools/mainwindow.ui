@@ -39,7 +39,7 @@
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>25</height>
+     <height>24</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuRemote">
@@ -69,10 +69,20 @@
     <addaction name="actionShowDatas"/>
     <addaction name="actionShowMasks"/>
    </widget>
+   <widget class="QMenu" name="menuTransferts">
+    <property name="title">
+     <string>transferts</string>
+    </property>
+    <addaction name="actionPush_mask_remotely"/>
+    <addaction name="actionLoad_mask_from_file"/>
+    <addaction name="actionRemote_load"/>
+    <addaction name="actionWrite_mask_on_file"/>
+   </widget>
    <addaction name="menuRemote"/>
    <addaction name="menuLocal"/>
    <addaction name="menuActions"/>
    <addaction name="menuView"/>
+   <addaction name="menuTransferts"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <widget class="QToolBar" name="toolBar">
@@ -120,6 +130,36 @@
   <action name="actionShowMasks">
    <property name="text">
     <string>showMasks</string>
+   </property>
+  </action>
+  <action name="actionPush_mask_remotely">
+   <property name="text">
+    <string>push mask remotely</string>
+   </property>
+  </action>
+  <action name="actionWrite_on_file">
+   <property name="text">
+    <string>write  mask on file</string>
+   </property>
+  </action>
+  <action name="actionLoad_mask_from_file">
+   <property name="text">
+    <string>load mask from file</string>
+   </property>
+  </action>
+  <action name="actionRemote_load">
+   <property name="text">
+    <string>remote load</string>
+   </property>
+  </action>
+  <action name="actionWrite_mask_oin_file">
+   <property name="text">
+    <string>write mask oin file</string>
+   </property>
+  </action>
+  <action name="actionWrite_mask_on_file">
+   <property name="text">
+    <string>write mask on file</string>
    </property>
   </action>
  </widget>

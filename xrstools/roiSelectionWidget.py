@@ -2,6 +2,7 @@ from  PyQt4 import Qt, QtCore
 import ui
 import os
 import PyMca5.PyMcaIO.EdfFile as edf
+import PyMca5
 
 import PyMca5.PyMcaIO.specfile as specfile
 import localfilesdialog
@@ -12,6 +13,14 @@ import numpy
 import xrs_rois
 import spotdetection
 import match
+import pickle
+
+FASTDEBUG=False
+try:
+    import PyTango
+except:
+    print " Could not load PyTango"
+
 
 @ui.UILoadable
 class spotdetectioncontrol(Qt.QDockWidget):
@@ -65,6 +74,29 @@ class spotregistrationcontrol(Qt.QDockWidget):
 
         self.tableWidget.resizeColumnsToContents()
 
+        def _mousePressEvent( event):
+            """ in case of problems, generate the code for spotregistrationcontrol from ui
+                and reimplement it as a class method """
+
+            print " evento at ", event.pos()
+            print "  widget ",   self.tableWidget.itemAt( event.pos())
+            print    self.tableWidget.itemAt( event.pos()).text()
+
+
+            drag      =  Qt.QDrag(   self.tableWidget)
+            mimeData  =  Qt.QMimeData()
+
+            mimeData.setText( self.tableWidget.itemAt( event.pos()).text()   );
+            drag.setMimeData(mimeData)
+            ## iconPixmap = Qt.QPixmap(_cross_data)
+            ## drag.setPixmap(iconPixmap)
+
+            dropAction = drag.exec_();
+
+
+        self.tableWidget.mousePressEvent = _mousePressEvent
+        
+
 class MyTableModel(Qt.QAbstractTableModel):
     def __init__(self, parent, mylist, header, *args):
         Qt.QAbstractTableModel.__init__(self, parent, *args)
@@ -101,13 +133,112 @@ class mainwindow(Qt.QMainWindow):
         self.loadUi()  # load the ui file
 
 
-        self.actionLoad.triggered.connect(self.LoadRemote )
+        # self.actionLoad.triggered.connect(self.LoadRemote )
         self.actionSelectScanFiles.triggered.connect(self.LoadLocal)
         self.actionSpot_detection.triggered.connect(self.CreateSpotDetectionDockWidget)
         self.actionGlobalSpotDetection.triggered.connect(self.CreateGlobalSpotDetectionDockWidget)
         self.actionShowDatas.triggered.connect(self.showDatas)
         self.actionShowMasks.triggered.connect(self.showMasks)
         self.actionRegistration.triggered.connect(self.CreateRegistrationWidget)
+
+
+        self.actionWrite_mask_on_file.triggered.connect(  self.write_mask_on_file  )
+        self.actionLoad_mask_from_file.triggered.connect(  self.read_mask_from_file  )
+        ## self.actionRemote_load.triggered.connect(  self.remoteMaskload  )
+        self.actionPush_mask_remotely.triggered.connect(  self.PushMask  )
+        
+
+    def remoteMaskload(self):
+        ## 
+        pathtolima = "id20/xrs/mpx-ram"
+        dev = PyTango.DeviceProxy(pathtolima ) 
+
+        string =dev.getLinRoifrompickle()
+        rois = pickle.loads(string)
+
+        therois = rois.inds
+        mask = self.mws[0].getSelectionMask()
+        mask[:]=0
+        for i,inds in enumerate(therois):
+            mask[inds] = i+1
+        self.mws[0].setSelectionMask(mask)
+        self.decomposeGlobalMask()
+            
+
+    def PushMask(self):
+        ## 
+        pathtolima = "id20/xrs/mpx-ram"
+        dev = PyTango.DeviceProxy(pathtolima ) 
+        self.recomposeGlobalMask()
+
+        mask = self.getMasks()
+
+        print " de mainWindow je vais pusher : " , masks
+        print " ========================================" 
+        masks_string = pickle.dumps(masks)
+        dev.setRoifromPickle( masks_string  )
+
+    def getMasks() :
+        self.recomposeGlobalMask()
+        globalMask = self.mws[0].getSelectionMask().astype("i")
+        masks = [] 
+        nrois = globalMask.max()
+        nummaxroi = (globalMask).max()
+        masks = []
+        for n in range(1, nummaxroi+1):
+            rawindices = numpy.nonzero( globalMask == n )
+            if(len(rawindices)):
+                if(len(rawindices[0])):
+                    Y1 = rawindices[0].min()
+                    Y2 = rawindices[0].max()+1
+                    X1 = rawindices[1].min()
+                    X2 = rawindices[1].max()+1
+                    submask = globalMask[Y1:Y2, X1:X2 ]/n
+                    masks.append(  ( n, [Y1,X1], submask  )  )
+        return masks
+        
+
+
+    def recomposeGlobalMask(self):
+      offset=0
+      globalMask = self.mws[0].getSelectionMask().astype("i")
+      for (name,geo,nofrois), mw in    zip(self.names_geos_nofrois[:], self.mws[1:]):
+          localmask = numpy.less(0,mw.getSelectionMask() ) 
+          globalMask[geo] =  offset*localmask +  mw.getSelectionMask()
+          offset += nofrois
+      self.mws[0].setSelectionMask(globalMask  )
+
+    
+    def decomposeGlobalMask(self):
+      offset=0
+      globalMask = self.mws[0].getSelectionMask().astype("i")
+      for (name,geo,nofrois), mw in    zip(self.names_geos_nofrois[:], self.mws[1:]):
+          localmask = numpy.less(0,globalMask[geo]  ) 
+          Mask =    globalMask[geo] - offset *localmask
+          offset += nofrois
+          mw.setSelectionMask(Mask  )
+          
+
+    def write_mask_on_file(self):
+        filename =  Qt.QFileDialog.getSaveFileName()
+        print filename
+        if filename is not None:
+            filename=str(filename)
+            self.recomposeGlobalMask()
+            globalMask = self.mws[0].getSelectionMask().astype("i")
+            ef = edf.EdfFile( filename, "w+")
+            ef.WriteImage( {}, globalMask )
+
+
+    def read_mask_from_file(self):
+        filename =  Qt.QFileDialog.getOpenFileName()
+        if filename is not None:
+            filename=str(filename)
+            ef = edf.EdfFile( filename, "r")
+            mask = ef.GetData(0)
+            self.recomposeGlobalMask()
+            self.mws[0].setSelectionMask(mask)
+            self.decomposeGlobalMask()
 
 
 
@@ -130,11 +261,27 @@ class mainwindow(Qt.QMainWindow):
     def annotateOneMaskCallBack(self):
         itab =  self.viewsTab.currentIndex()     
         if itab>0:
-            self.mws[itab].annotateSpots(  )
+
+            subset_infos = roi.get_geo_informations( self.roiob.image.shape )
+            if "3x4" in str(self.layouts[itab].currentText() ):
+                a_ids = subset_infos["analyser_nIDs"][ subset_infos["subnames"][itab-1]] ["3x4"]
+            else:
+                a_ids = subset_infos["analyser_nIDs"][ subset_infos["subnames"][itab-1]] ["Vertical"]
+
+            self.mws[itab].annotateSpots( a_ids )
 
     def annotateAllMasksCallBack(self):
+        itab=1
         for (name,geo,nofrois), mw in    zip(self.names_geos_nofrois[:], self.mws[1:]):
-            mw.annotateSpots(  )
+
+            subset_infos = roi.get_geo_informations( self.roiob.image.shape )
+            if "3x4" in str(self.layouts[itab].currentText() ):
+                a_ids = subset_infos["analyser_nIDs"][ subset_infos["subnames"][itab-1]] ["3x4"]
+            else:
+                a_ids = subset_infos["analyser_nIDs"][ subset_infos["subnames"][itab-1]] ["Vertical"]
+
+            mw.annotateSpots( a_ids )
+            itab+=1
 
     def relabeliseAllMasksCallBack(self):
         offset=0
@@ -209,6 +356,20 @@ class mainwindow(Qt.QMainWindow):
 
     def    detectSpotsSubMask( self, name,geo,nofrois, mw   , globalMask, offset ):
 
+
+
+        itab =  self.viewsTab.currentIndex()
+        if itab: 
+            subset_infos = roi.get_geo_informations( self.roiob.image.shape )
+            if "3x4" in str(self.layouts[itab].currentText() ):
+                a_ids = subset_infos["analyser_nIDs"][ subset_infos["subnames"][itab-1]] ["3x4"]
+            else:
+                a_ids = subset_infos["analyser_nIDs"][ subset_infos["subnames"][itab-1]] ["Vertical"]
+
+                
+        else:
+            a_ids = None
+
         submatrix = mw.getImageData()
         
         mask  = spotdetection.get_spots_mask( submatrix, median_size = 5 ) 
@@ -217,11 +378,14 @@ class mainwindow(Qt.QMainWindow):
 
         mw.setSelectionMask( mask)
         globalMask[geo]=mask+offset*numpy.less(0,mask)
-        mw.annotateSpots(   )
-        
-    def GlobaldetectionCallBack(self, warn=False):
 
-        if warn:
+
+
+        mw.annotateSpots( a_ids   )
+        
+    def GlobaldetectionCallBack(self, warn=True):
+        print " GlobaldetectionCallBack ",  warn
+        if 1 or warn:
             print " in Global  detectionCallBack" 
             ret = self.warnForGloablChange()
         else:
@@ -289,7 +453,14 @@ class mainwindow(Qt.QMainWindow):
         if itab>0:
             name,geo,nofrois = self.names_geos_nofrois[itab-1]
             self.registerSpots( self.mws[itab], self.layouts[itab].currentText(), name, nofrois )
-            self.mws[itab].annotateSpots( )
+
+            subset_infos = roi.get_geo_informations( self.roiob.image.shape )
+            if "3x4" in str(self.layouts[itab].currentText() ):
+                a_ids = subset_infos["analyser_nIDs"][ subset_infos["subnames"][itab-1]]["3x4"]
+            else:
+                a_ids = subset_infos["analyser_nIDs"][ subset_infos["subnames"][itab-1]] ["Vertical"]
+
+            self.mws[itab].annotateSpots(a_ids )
 
     def registerSpots( self,  mw, layoutString , name, nofrois) :
 
@@ -301,7 +472,7 @@ class mainwindow(Qt.QMainWindow):
         spots = []
         for i in range(1,nspots+1):
             zone = (mask==i)
-            mask[zone]=mask[zone]+100
+            mask[zone]=i+100
             m = zone.astype("f")
             msum=m.sum()
             if msum:
@@ -316,15 +487,21 @@ class mainwindow(Qt.QMainWindow):
         if "3x4" in str(layoutString):
             
             positions = [ [px,py]   for (py,px,i) in spots ]
-            choices = match.register(positions)
+            print str( numpy.array(positions))
+            choices = match.register(numpy.array(positions)  )
+            
+
             newspots = []
             for (cx,cy),(y,x,i) in zip(choices, spots ):
-                newspots.append((y,x,i,  (cy*4+cy)+1  ) )
+                print x,y, cx, cy
+                newspots.append((y,x,i,  (cy*4+cx)+1  ) )
         else:
             spots.sort()
             newspots = []
             for k,(y,x,i) in enumerate( spots):
                 newspots.append((y,x,i,k+1) ) 
+
+        print " NEWSPOTS ", newspots
 
         for (y,x,i,k) in newspots:
             zone = (mask==(i+100))
@@ -357,6 +534,7 @@ class mainwindow(Qt.QMainWindow):
         self.roiob=roiob
 
     def LoadRemote(self):
+
         if self.roiob is None:
             mb = qt.QMessageBox();
             mb.setText("No roi-object has been associated to the roi manager. Cannot Load.");
@@ -381,9 +559,9 @@ class mainwindow(Qt.QMainWindow):
         view.roiContainerWidget.layout().addWidget(maskW)
         return view, maskW
             
-    def showImage(self, roiob):
+    def showImage(self, roiob, geo_informations):
 
-        subset_infos = roiob.get_geo_informations( roiob.image.shape )
+        subset_infos = geo_informations
 
         self.viewsTab.clear()       
         totNofrois = subset_infos["nofrois"]
@@ -391,7 +569,7 @@ class mainwindow(Qt.QMainWindow):
 
         self.mws=[]
         self.layouts=[]
-        view, mw = self.create_viewWidget(image = roiob.image, nofrois = totNofrois , changeTagOn = False, isglobal=True  ) 
+        view, mw = self.create_viewWidget(image = image, nofrois = totNofrois , changeTagOn = False, isglobal=True  ) 
         self.viewsTab.addTab(view, "Global")
         self.mws.append(mw)
         self.layouts.append(view.registeringLayoutComboBox)
@@ -399,14 +577,14 @@ class mainwindow(Qt.QMainWindow):
         self.names_geos_nofrois = zip(subset_infos["subnames"],  subset_infos["subgeos"], [nofrois]*len(subset_infos["subgeos"])  )
 
         for name,geo,nofr in self.names_geos_nofrois :
-            view, mw = self.create_viewWidget(image = roiob.image[     geo ], nofrois = nofrois, changeTagOn = True  ) 
+            view, mw = self.create_viewWidget(image = image[     geo ], nofrois = nofrois, changeTagOn = True  ) 
             self.viewsTab.addTab(view, name)
             self.mws.append(mw)
             self.layouts.append(view.registeringLayoutComboBox)
             
 
     def LoadLocal(self):
-        if 0:
+        if not FASTDEBUG:
             w = localfilesdialog.localfilesdialog()
             w.exec_()
             sf =  str(w.SpecFileName_lineEdit.text())
@@ -439,9 +617,9 @@ class mainwindow(Qt.QMainWindow):
     
         
         self.showImage(roiob)
+        self.roiob = roiob
 
-
-        if 1:
+        if FASTDEBUG:
             self.GlobaldetectionCallBack(warn=False)
 
 
@@ -474,9 +652,54 @@ def getTemplateName(name):
     else:
         return [dirname+"/"+name]
 
+_cross_data = "\
+\x00\x00\x02\x71\
+\x89\
+\x50\x4e\x47\x0d\x0a\x1a\x0a\x00\x00\x00\x0d\x49\x48\x44\x52\x00\
+\x00\x00\x10\x00\x00\x00\x10\x08\x06\x00\x00\x00\x1f\xf3\xff\x61\
+\x00\x00\x00\x06\x62\x4b\x47\x44\x00\xff\x00\xff\x00\xff\xa0\xbd\
+\xa7\x93\x00\x00\x00\x09\x70\x48\x59\x73\x00\x00\x0d\xd7\x00\x00\
+\x0d\xd7\x01\x42\x28\x9b\x78\x00\x00\x00\x07\x74\x49\x4d\x45\x07\
+\xde\x07\x10\x0d\x3b\x14\x28\x69\xf4\x66\x00\x00\x01\xfe\x49\x44\
+\x41\x54\x38\xcb\x85\x93\xcf\x6a\x14\x41\x10\xc6\x7f\x5d\xdd\x59\
+\x77\x3d\x86\x44\x14\xd4\xa0\x41\xfc\x17\xc5\x9b\x20\x1e\x66\x86\
+\x3d\xa9\x2f\x10\x04\x4f\x7a\x51\x1f\xc3\x47\x10\x05\x51\x3c\x08\
+\x82\x4f\x90\xcb\x30\x33\x37\x11\xd4\x8d\xa2\x17\x49\x02\x1a\x3c\
+\x18\x04\x0f\x2e\xe8\x6c\xa6\xbb\x3c\xa4\x27\x4c\x16\xc5\x86\xa6\
+\xa1\xaa\xbe\xaf\xbf\xae\xfe\xca\x0c\x87\x49\x8f\x9d\x25\x40\x88\
+\xa7\xc6\xfd\xbf\x98\x97\x08\xb6\x31\xe9\x00\x35\x46\x4d\x9e\x57\
+\x13\xdf\xc8\x29\xdf\xc8\x25\xef\x65\x2e\xcf\xab\x7a\xba\x0e\xb0\
+\xd2\x61\xb4\x80\xcf\xf3\xaa\x6e\xb6\xed\xbd\x34\xc9\x14\x18\x01\
+\x25\xca\x66\x9a\x64\x3f\x7c\x23\x57\x22\x91\x6f\x55\x99\xf8\x04\
+\x07\x78\x2c\xea\x6b\x59\x03\x8e\xf0\xef\xf5\xb8\xac\x8a\x5b\xc3\
+\x61\x32\x00\x42\xab\xc0\xe7\x79\x55\xfb\x5a\x56\x80\x59\xeb\xc2\
+\x00\xb8\xb3\x07\x66\xb8\x0c\x9c\x00\x6e\xa6\x49\xb6\x1c\x55\x9b\
+\xb6\x39\x92\x26\xd9\x19\x20\x03\xdc\xb1\xa5\xad\xba\xbf\x7f\xfb\
+\x51\x4b\x62\x0c\x4b\x22\xe1\x2d\x30\x89\x74\x4f\xe3\x53\x42\x4b\
+\x00\x70\x3d\x9e\xbd\xb5\xd5\x83\x1b\x46\x34\x64\xcb\x1f\x1e\x18\
+\xd1\x79\x23\x61\x23\x78\x39\x04\x7c\x8e\x35\xfb\xd2\x24\x3b\x07\
+\x88\x00\xe2\x7a\x7e\x02\x1c\xdf\x15\x0b\x0b\xbf\xc6\xbd\xd1\xfa\
+\xea\x01\x23\xa2\x3f\x83\x97\x59\x60\x7d\xaa\x17\x8b\x80\x0a\x10\
+\xfc\xb6\xed\x01\x5b\x9d\xa4\x07\xae\x6d\x7e\x9a\xeb\xe7\x79\x55\
+\x97\x55\xf1\x15\x78\x38\x45\x30\x6e\xcd\x23\xaa\x04\xe0\x7d\x4c\
+\xd4\xc6\xe8\x61\x6b\xc3\xf7\x10\xe4\x74\x9a\x64\xef\x00\xca\xaa\
+\xb8\x0d\x3c\x6b\xd1\xbd\x41\x53\xec\x69\x62\x59\x15\x4f\xe2\xcd\
+\xa3\xa2\x2c\xbf\x79\x2f\x17\x50\xde\x00\xe7\xd3\x24\x7b\x1d\x49\
+\x6e\x44\xfc\x0b\x0d\xc6\x01\xa1\xf5\x81\x45\x51\x1f\xe4\x22\x4a\
+\x05\x7c\x01\x8e\x4e\x49\xfe\x18\x2f\x58\xb4\x2e\xcc\x77\xbf\x71\
+\xc7\x89\x06\x71\xd6\xbf\x04\xd2\xbf\x80\x01\xce\x02\x7d\x23\xba\
+\x80\xee\xce\x84\xee\xb1\xb1\x62\xac\x75\xe1\x55\x59\x15\x06\xb8\
+\x0b\x3c\x07\x72\xe0\x3e\x70\xb5\xac\x8a\x93\x22\x3a\xc6\x60\x76\
+\xfd\x35\x1c\x26\xfd\xce\x94\xd1\x25\xb4\x2e\x04\x37\xe3\xc3\xe4\
+\xb7\x13\x55\x33\xd3\x99\x81\xb6\xce\xb8\x18\xb4\x31\xd0\xfa\xa0\
+\x01\xc4\x37\x22\xbe\x11\xe9\xc6\xa6\xea\xfc\x1f\xdb\x37\xde\x59\
+\x25\x68\xce\x04\x00\x00\x00\x00\x49\x45\x4e\x44\xae\x42\x60\x82\
+\
+"
 
 if __name__=="__main__":
     app=Qt.QApplication([])
     w = mainwindow()
     w.show()
     app.exec_()
+

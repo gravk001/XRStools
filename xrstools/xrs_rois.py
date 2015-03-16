@@ -51,6 +51,54 @@ class container:
 	def __init__(self):
 		pass
 
+
+
+
+sl={}
+sl[0  ] = slice(0  ,256)
+sl[256] = slice(256,512)
+sl[512] = slice(512,768)
+
+V147 = [1,4,7,10,2,5,8,11,3,6,9,12]
+V1296 = [12,9,6,3,11,8,5,2,10,7,4,1]
+V1074 = [10,7,4,1,11,8,5,2,12,9,6,3     ]
+V369  = [3,6,9,12,2,5,8,11,1,4,7,10             ]
+geo_informations = {(256,768): { "DET_PIXEL_NUM":256, "geo":[256,768], "nofrois":36,
+                                 "subnames": ["RD" ,"LU","B"],
+                                 "subgeos" : [(sl[0] ,sl[0]),
+                                              (sl[0],sl[256]),
+                                              (sl[0],sl[512])]   ,
+                                 "analyser_nIDs": {"LU":{"3x4":V1074,"Vertical": V147},  
+                                                   "RD":{"3x4":V147,"Vertical": V147},
+                                                   "B": {"3x4":V147,"Vertical": V147}  
+                                                   }
+                                 },
+                    (512,768) : { "DET_PIXEL_NUM":256, "geo":[512,768],"nofrois":72,
+                                  "subnames":["HR" ,"HL","HB","VD" , "VU","VB", ] ,
+                                  "subgeos"  :[(sl[0],sl[0]     ),
+                                               (sl[0],sl[256]   ),
+                                               (sl[0],sl[512]   ),
+                                               (sl[256],sl[0]   ),
+                                               (sl[256],sl[256] ),
+                                               (sl[256],sl[512] )],
+                                  "analyser_nIDs": {"VU":{"3x4":V1074,"Vertical": V147},
+                                                    "VD":{"3x4":V147 ,"Vertical": V147},
+                                                    "VB":{"3x4":V147 ,"Vertical": V147},
+                                                    "HR":{"3x4":V369 ,"Vertical":V1296},
+                                                    "HL":{"3x4":V1296,"Vertical":V1296},
+                                                    "HB":{"3x4":V1296,"Vertical":V1296},
+                                                    }
+                                  },
+                    (256,256):{"DET_PIXEL_NUM":256, "geo":[256,256],"nofrois":1,"subnames":["DETECTOR"],"subgeos" : [(sl[0] ,sl[0])],
+                               "analyser_nIDs": {"DETECTOR":{"3x4":V147},"Vertical": V147}
+                       }
+            }
+
+def get_geo_informations(shape):
+    return geo_informations[shape]
+
+
+
 class roi_object:
 	"""
 	Container class to hold all relevant information about given ROIs.
@@ -64,43 +112,6 @@ class roi_object:
 		self.x_indices      = [] # list of numpy arrays of x-indices (for each ROI)
 		self.y_indices      = [] # list of numpy arrays of y-indices (for each ROI)
 		self.masks          = [] # 3D numpy array with slices of zeros and ones (same size as detector image) for each roi
-
-
-                self.nofrois=0
-                self.image=np.zeros((1,1),"f")
-                
-                sl={}
-                sl[0  ] = slice(0  ,256)
-                sl[256] = slice(256,512)
-                sl[512] = slice(512,768)
-        
-                geo_informations = {"256x768": { "DET_PIXEL_NUM":256, "geo":[256,768], "nofrois":36,
-                                                 "subnames": ["LU","RD" ,"B"],
-                                                 "subgeos" : [(sl[0] ,sl[0]),
-                                                              (sl[0],sl[256]),
-                                                              (sl[0],sl[512])]
-                                         },
-                                    "512x768" : { "DET_PIXEL_NUM":256, "geo":[512,768],"nofrois":72,
-                                                  "subnames":["VU","VD" ,"VB", "HL","HR" ,"HB"] ,
-                                                  "subgeos"  :[(sl[0],sl[0]     ),
-                                                        (sl[0],sl[256]   ),
-                                                               (sl[0],sl[512]   ),
-                                                               (sl[256],sl[0]   ),
-                                                               (sl[256],sl[256] ),
-                                                               (sl[256],sl[512] )]
-                                          } ,
-                                    "256x256": { "DET_PIXEL_NUM":256, "geo":[256,256], "nofrois":12 ,
-                                                 "subnames":{"DETECTOR"},
-                                                 "subgeos"  :[(sl[0],sl[0])]
-                                         }
-                            }
-                self.geo_informations=geo_informations
-
-
-
-
-        def get_geo_informations(self,shape):
-            return self.geo_informations["%dx%d"%shape]
 
 
 
