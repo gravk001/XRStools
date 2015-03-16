@@ -99,6 +99,8 @@ class roi_object:
 
 
 
+        def get_geo_informations(self,shape):
+            return self.geo_informations["%dx%d"%shape]
 
 
 

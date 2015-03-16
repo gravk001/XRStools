@@ -578,7 +578,7 @@ class read_id20:
 
         def SumDirect(self,scannumbers):
                 sum=None
-		for number in scannums:
+		for number in scannumbers:
 			data, motors, counters, edfmats = self.readscan(number)
                         if sum is None:
                                 sum = np.zeros(edfmats[0].shape ,"f") 

@@ -9,7 +9,7 @@ import myMaskImageWidget
 
 import numpy
 
-import roi
+import xrs_rois
 import spotdetection
 import match
 

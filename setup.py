@@ -52,6 +52,16 @@ class smart_install_data(install_data):
         install_cmd = self.get_finalized_command('install')
         self.install_dir = os.path.join(getattr(install_cmd, 'install_lib'),"xrstools"+version,"..","..","..","..","share","xrstools","data")
         print "DATA to be installed in %s" %  self.install_dir
+
+        install_lib_dir = os.path.join(getattr(install_cmd, 'install_lib'),"xrstools"+version )
+        if not os.path.exists(self.install_dir):
+            os.makedirs(self.install_dir)
+        print " QUI " 
+        for filein in glob.glob('xrstools/*ui'):
+            filedest = os.path.join(install_lib_dir, os.path.basename(filein))
+            print "cp %s %s"%(filein,filedest)
+            os.system("cp %s %s"%(filein,filedest))
+
         return install_data.run(self)
 
 ###########################################################################################################
