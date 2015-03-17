@@ -163,6 +163,50 @@ def divergenza( Ax,Ay, edge):
   return res 
 
 
+
+def threshold_mask(mask, image,  value  ) :
+  n=mask.max()
+  npix=3
+  
+  for i in range(1,n+1):
+  
+    icount=0
+    tmp_mask_old = 0
+    while(icount<100):
+      tmp_mask = np.equal( i,  mask  )
+      
+      if not np.any(tmp_mask):
+        continue
+
+      mask[:]=mask*(1-tmp_mask)
+      
+      massimo = (image*tmp_mask).max()
+      print " MASSIMO " , massimo
+      tmp_mask_2 =   morph.grey_dilation(tmp_mask,  footprint=np.ones([npix,npix]),
+                                         structure=np.zeros([npix,npix]))
+
+      print " Npunti , value " ,   tmp_mask.sum(), tmp_mask_2.sum() , value
+
+      tmp_mask = np.less( value*massimo,  image  )*tmp_mask_2
+
+      print " Npunti  " ,   tmp_mask.sum()
+     
+      
+      mask[:]+=tmp_mask*i
+     
+      if ( tmp_mask-tmp_mask_old).sum()==0:
+        break
+      tmp_mask_old = tmp_mask
+
+
+      print " ================ "
+      print mask.sum()
+
+      icount+=1
+
+  return mask
+
+
 def grow_mask(input, npix  ) :
   output =  morph.grey_dilation(input,  footprint=np.ones([npix,npix]),
                                 structure=np.zeros([npix,npix]))

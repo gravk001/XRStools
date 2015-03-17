@@ -9,6 +9,7 @@ import localfilesdialog
 import myMaskImageWidget
 
 import numpy
+import string
 
 try:
     import xrs_rois
@@ -29,6 +30,7 @@ except:
 @ui.UILoadable
 class spotdetectioncontrol(Qt.QDockWidget):
     def __init__(self, parent,flag,  detectionCallBack=None,  fatteningCallBack=None,
+                 thresholdCallBack=None,
                  annotateMaskCallBack=None,    relabeliseMaskCallBack=None,
                  resetMask           = None):
 
@@ -41,12 +43,22 @@ class spotdetectioncontrol(Qt.QDockWidget):
         self.fatteningCallBack = fatteningCallBack
         self.inflateButton.clicked.connect(self.callcallback)
 
+
+        self.thresholdCallBack = thresholdCallBack
+        self.thresholdButton.clicked.connect(self.callThrecallback)
+
+
         self.annotateButton.clicked.connect(annotateMaskCallBack)
         self.relabeliseButton.clicked.connect(relabeliseMaskCallBack)
         self.resetButton.clicked.connect(resetMask)
-        
+
         self.geo_informations = None
 
+    def callThrecallback(self):
+        print self.thresholdEdit.text()
+        print str(self.thresholdEdit.text())
+        value= string.atof(str(self.thresholdEdit.text()))
+        self.thresholdCallBack(value)
 
     def callcallback(self):
         value= self.fatteningSpinBox.value()
@@ -271,7 +283,6 @@ class mainwindow(Qt.QMainWindow):
     def annotateOneMaskCallBack(self):
         itab =  self.viewsTab.currentIndex()     
         if itab>0:
-            
             subset_infos = self.get_geo()
 
             if "3x4" in str(self.layouts[itab].currentText() ):
@@ -339,10 +350,39 @@ class mainwindow(Qt.QMainWindow):
                 mask[:]=0
                 mw.setSelectionMask( mask)
 
-    def fatteningCallBack(self,value):
+
+
+    def threshold(self,itab,value ):
+        globalMask = self.mws[0].getSelectionMask().astype("i")
+        name,geo,nofrois =   self.names_geos_nofrois[itab-1]
+
+        mw = self.mws[itab]
+        mask = mw.getSelectionMask( )
+        print mask.sum()
+
+        data = self.image[geo]
+
+        mask = spotdetection.threshold_mask(mask, data ,  value  ) 
+        mw.setSelectionMask(mask  )
+
+        globalMask[geo] = mask
+        self.mws[0].setSelectionMask( globalMask )
+        
+        print mask.sum()
+
+
+    def localThresholdCallBack(self,value):
         itab =  self.viewsTab.currentIndex()
         if itab==0: return 
-        self.fatten(itab,value)
+        self.threshold(itab,value)
+
+    def globalThresholdCallBack(self,value):
+        ret = self.warnForGloablChange()
+        print ret
+        if ret:
+            for itab in range(1, len(self.mws )  ) :
+                self.threshold(itab,value)
+
 
     def fatten(self, itab, value  ) :
         globalMask = self.mws[0].getSelectionMask().astype("i")
@@ -355,6 +395,22 @@ class mainwindow(Qt.QMainWindow):
 
         globalMask[geo] = mask
         self.mws[0].setSelectionMask( globalMask )
+
+
+    def fatteningCallBack(self,value):
+        itab =  self.viewsTab.currentIndex()
+        if itab==0: return 
+        self.fatten(itab,value)
+
+    def GlobalfatteningCallBack(self,value):
+        print " in  detectionCallBack ", value  
+        ret = self.warnForGloablChange()
+        print ret
+        if ret:
+            for itab in range(1, len(self.mws )  ) :
+                self.fatten(itab,value)
+
+
         
     def checkNspots(self,nspots, nofrois,name ) :
         if nspots != nofrois:
@@ -431,17 +487,11 @@ class mainwindow(Qt.QMainWindow):
         ret = msgBox.exec_();
         return ret==Qt.QMessageBox.Ok
         
-    def GlobalfatteningCallBack(self,value):
-        print " in  detectionCallBack ", value  
-        ret = self.warnForGloablChange()
-        print ret
-        if ret:
-            for itab in range(1, len(self.mws )  ) :
-                self.fatten(itab,value)
 
     def CreateSpotDetectionDockWidget(self):
         w = spotdetectioncontrol(self, QtCore.Qt.Widget,detectionCallBack=self.detectionCallBack,  
                                  fatteningCallBack=self.fatteningCallBack,
+                                 thresholdCallBack  =   self.localThresholdCallBack, 
                                  annotateMaskCallBack=self.annotateOneMaskCallBack,
                                  relabeliseMaskCallBack=self.relabeliseOneMaskCallBack,
                                  resetMask           = self.resetOneMask
@@ -532,6 +582,7 @@ class mainwindow(Qt.QMainWindow):
     def CreateGlobalSpotDetectionDockWidget(self):
         w = spotdetectioncontrol(self, QtCore.Qt.Widget,detectionCallBack=self.GlobaldetectionCallBack, 
                                  fatteningCallBack=self.GlobalfatteningCallBack,
+                                 thresholdCallBack  =   self.GlobalThresholdCallBack, 
                                  annotateMaskCallBack=self.annotateAllMasksCallBack,
                                  relabeliseMaskCallBack=self.relabeliseAllMasksCallBack,
                                  resetMask           = self.resetAllMasks
@@ -632,8 +683,8 @@ class mainwindow(Qt.QMainWindow):
                 roiob.prepare_rois(  len(numbers) ,  "%dx%d"%shape ) 
             roiob.process(image)
     
-        
-        self.showImage(roiob)
+        self.geo_informations=None
+        self.showImage(roiob.image)
         self.roiob = roiob
 
         if FASTDEBUG:
