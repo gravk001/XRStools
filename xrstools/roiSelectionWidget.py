@@ -10,7 +10,11 @@ import myMaskImageWidget
 
 import numpy
 
-import xrs_rois
+try:
+    import xrs_rois
+except:
+    import roi as xrs_rois
+
 import spotdetection
 import match
 import pickle
@@ -40,7 +44,8 @@ class spotdetectioncontrol(Qt.QDockWidget):
         self.annotateButton.clicked.connect(annotateMaskCallBack)
         self.relabeliseButton.clicked.connect(relabeliseMaskCallBack)
         self.resetButton.clicked.connect(resetMask)
-
+        
+        self.geo_informations = None
 
 
     def callcallback(self):
@@ -169,8 +174,7 @@ class mainwindow(Qt.QMainWindow):
         ## 
         pathtolima = "id20/xrs/mpx-ram"
         dev = PyTango.DeviceProxy(pathtolima ) 
-        self.recomposeGlobalMask()
-
+ 
         mask = self.getMasks()
 
         print " de mainWindow je vais pusher : " , masks
@@ -178,7 +182,7 @@ class mainwindow(Qt.QMainWindow):
         masks_string = pickle.dumps(masks)
         dev.setRoifromPickle( masks_string  )
 
-    def getMasks() :
+    def getMasks(self) :
         self.recomposeGlobalMask()
         globalMask = self.mws[0].getSelectionMask().astype("i")
         masks = [] 
@@ -257,12 +261,19 @@ class mainwindow(Qt.QMainWindow):
         self.detectSpotsSubMask( name,geo,nofrois, mw  , globalMask , offset )
         self.mws[0].setSelectionMask( globalMask )
 
+    def get_geo(self):
+        if self.geo_informations is None:
+            subset_infos = xrs_rois.get_geo_informations( self.image.shape )
+        else:
+            subset_infos = self.geo_informations 
+        return subset_infos
 
     def annotateOneMaskCallBack(self):
         itab =  self.viewsTab.currentIndex()     
         if itab>0:
+            
+            subset_infos = self.get_geo()
 
-            subset_infos = roi.get_geo_informations( self.roiob.image.shape )
             if "3x4" in str(self.layouts[itab].currentText() ):
                 a_ids = subset_infos["analyser_nIDs"][ subset_infos["subnames"][itab-1]] ["3x4"]
             else:
@@ -274,7 +285,7 @@ class mainwindow(Qt.QMainWindow):
         itab=1
         for (name,geo,nofrois), mw in    zip(self.names_geos_nofrois[:], self.mws[1:]):
 
-            subset_infos = roi.get_geo_informations( self.roiob.image.shape )
+            subset_infos = self.get_geo()
             if "3x4" in str(self.layouts[itab].currentText() ):
                 a_ids = subset_infos["analyser_nIDs"][ subset_infos["subnames"][itab-1]] ["3x4"]
             else:
@@ -360,7 +371,7 @@ class mainwindow(Qt.QMainWindow):
 
         itab =  self.viewsTab.currentIndex()
         if itab: 
-            subset_infos = roi.get_geo_informations( self.roiob.image.shape )
+            subset_infos = self.get_geo() 
             if "3x4" in str(self.layouts[itab].currentText() ):
                 a_ids = subset_infos["analyser_nIDs"][ subset_infos["subnames"][itab-1]] ["3x4"]
             else:
@@ -454,7 +465,7 @@ class mainwindow(Qt.QMainWindow):
             name,geo,nofrois = self.names_geos_nofrois[itab-1]
             self.registerSpots( self.mws[itab], self.layouts[itab].currentText(), name, nofrois )
 
-            subset_infos = roi.get_geo_informations( self.roiob.image.shape )
+            subset_infos = self.get_geo() 
             if "3x4" in str(self.layouts[itab].currentText() ):
                 a_ids = subset_infos["analyser_nIDs"][ subset_infos["subnames"][itab-1]]["3x4"]
             else:
@@ -559,7 +570,12 @@ class mainwindow(Qt.QMainWindow):
         view.roiContainerWidget.layout().addWidget(maskW)
         return view, maskW
             
-    def showImage(self, roiob, geo_informations):
+    def showImage(self, image, geo_informations=None):
+        if geo_informations is None:
+            geo_informations = self.get_geo()  
+        self.geo_informations = geo_informations
+
+        self.image=image
 
         subset_infos = geo_informations
 
@@ -610,7 +626,7 @@ class mainwindow(Qt.QMainWindow):
             image = [ edf.EdfFile(tok%n,"r").GetData(0)   for tok in template ] 
             image = numpy.concatenate(image, axis=0)
             if roiob is None:
-                roiob = roi.rois( ) 
+                roiob = xrs_rois.rois( ) 
                 shape = image.shape
                 roiob.prepare_rois(  len(numbers) ,  "%dx%d"%shape ) 
             roiob.process(image)

@@ -1,6 +1,13 @@
 from  PyMca5.PyMcaGui  import MaskImageWidget  as sole_MaskImageWidget
 from  PyQt4 import Qt, QtCore
 import numpy 
+import string
+
+from PyMca5.PyMcaGraph.Plot import Plot
+
+# from PyMca5.PyMcaGraph.backends.OpenGLBackend import OpenGLBackend
+# Plot.defaultBackend = OpenGLBackend 
+# Plot.defaultBackend = OpenGLBackend 
 
 class MaskImageWidget(sole_MaskImageWidget.MaskImageWidget):
     changeTagOn=False
@@ -53,28 +60,36 @@ class MaskImageWidget(sole_MaskImageWidget.MaskImageWidget):
  
     def dropEvent(self, e):
 
-        position = e.pos()    
-        print "POSITION ", position.x(), position.y()
-        x,y = position.x(), position.y()
-        
-        x,y = self.graph.displayXY2dataXY(x,y ) 
+   
+
+        localpos = self.graph.getWidgetHandle().mapFromGlobal( Qt.QCursor().pos()   )
+        x,y = localpos.x(), localpos.y()
+
+        x,y = self.graph.pixelToData(x,y ) 
+        print "POSITION ",x,y
     
         mask = self.getSelectionMask()
         
         Ct = mask[int(y), int(x)]
+        print " VALORE MASCHERA ", Ct
+
         if Ct:
-            bytearray = e.mimeData().data('application/x-qabstractitemmodeldatalist')
-            data = decode_data(bytearray)
-            Cc = (2-data[0])*4+data[1]
+            print str(e.mimeData().text())
+            Cc = string.atoi( str(e.mimeData().text()))
+            # bytearray = e.mimeData().data('application/x-qabstractitemmodeldatalist')
+            # data = decode_data(bytearray)
+            # print data
+            # Cc = (2-data[0])*4+data[1] + 1
+            # print Cc
             zonet = (mask==Ct)
             zonec = (mask==Cc)
             mask[zonet]=Cc
             mask[zonec]=Ct
-
+            self.setSelectionMask(mask)
             self.annotateSpots()
 
 
-    def annotateSpots(self):
+    def annotateSpots(self, a_ids = None):
 
         self.graph.clearMarkers()
         mask = self.getSelectionMask().astype("i")
@@ -89,8 +104,11 @@ class MaskImageWidget(sole_MaskImageWidget.MaskImageWidget):
                 py= (m.sum(axis=1)*numpy.arange(ny)).sum()/msum
 
                 print " ##################################    ", px, py
+                extra_info = ""
+                if a_ids is not None:
+                    extra_info = "(A%d)"% a_ids[i-1]
 
-                res=self.graph.insertMarker( px, py, "legend", "%d"%(i), color='black', selectable=False, draggable=False, searchFeature=True, 
+                res=self.graph.insertMarker( px, py, "legend"+str(i)+extra_info, "%d"%(i)+extra_info, color='black', selectable=False, draggable=False, searchFeature=True, 
                                            xytext = (-20, 0),
                                            textcoords = 'offset points',
                                            ha = 'right', va = 'bottom',

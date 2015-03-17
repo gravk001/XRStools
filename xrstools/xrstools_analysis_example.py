@@ -18,7 +18,7 @@ highq.extend(range(60,72))
 ##############################################################################
 
 repertorio = "/scisoft/users/mirone/WORKS/Christoph/for_alessandro"
-repertorio = "/home/alex/WORKS/Christoph/for_alessandro"
+# repertorio = "/home/alex/WORKS/Christoph/for_alessandro"
 # repertorio = "/home/christoph/data/ihr_feb15/"
 
 h2o = xrs_read.read_id20(repertorio + '/hydra',monitorcolumn='kapraman')
@@ -31,6 +31,8 @@ w4r.showImage( image4roi , xrs_rois.get_geo_informations(image4roi.shape) )
 w4r.show()
 app.exec_()
 
+masks = w4r.getMasks()
+print masks
 
 print image4roi.shape
 
