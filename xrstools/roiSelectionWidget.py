@@ -571,6 +571,7 @@ class mainwindow(Qt.QMainWindow):
         return view, maskW
             
     def showImage(self, image, geo_informations=None):
+        self.image=image
         if geo_informations is None:
             geo_informations = self.get_geo()  
         self.geo_informations = geo_informations
