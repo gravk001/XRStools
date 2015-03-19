@@ -431,6 +431,10 @@ class read_id20:
 		self.roi_obj = pickle.load(f)
 		f.close()
 
+	def set_roiObj(self,roiobj):
+		self.roi_obj = roiobj
+		self.roi_obj.load_rois_fromMasksDict(masksDict)
+
 	def show_rois(self):
 		"""
 		Produces an image of all selected ROIs and their according number.

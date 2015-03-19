@@ -113,6 +113,18 @@ class roi_object:
 		self.y_indices      = [] # list of numpy arrays of y-indices (for each ROI)
 		self.masks          = [] # 3D numpy array with slices of zeros and ones (same size as detector image) for each roi
 
+		
+	def load_rois_fromMasksDict(self, masksDict, newshape=None):
+		self.red_rois = masksDict
+		if newshape is not None:
+			self.roi_matrix = np.zeros(newshape)
+		self.roi_matrix = convert_redmatrix_to_matrix( masksDict,self.roi_matrix , offsetX=0, offsetY=0)
+
+		self.masks          = convert_roi_matrix_to_masks(self.roi_matrix)
+		self.indices        = convert_matrix_rois_to_inds(self.roi_matrix)
+		selfnumber_of_rois = np.amax(self.roi_matrix)
+		self.x_indices      = convert_inds_to_xinds(self.indices)
+		self.y_indices      = convert_inds_to_yinds(self.indices)
 
 
 	def show_rois(self):
@@ -733,6 +745,17 @@ def define_zoom_roi(input_image,verbose=False):
 		roi.append((indsy[n],indsx[n]))
 	return roi
 
+
+def convert_redmatrix_to_matrix( masksDict,mask, offsetX=0, offsetY=0):
+    for key, (pos,M)  in dict.iteritems():
+        num=int("".join([c for c in key if c.isdigit()]))
+        S = M.shape
+        inset =    (slice(offsetY+pos[0]  , offsetY+pos[0]+S[0]   ), slice(  offsetX+pos[1]  , offsetX+pos[1]+S[1] ) )
+        mask[  inset   ] =  num
+    return mask
+
+
+
 def convert_inds_to_matrix(ind_rois,image_shape):
     """
     Converts a ROI defined by a list of lists of tuples into a ROI
@@ -749,7 +772,18 @@ def convert_inds_to_matrix(ind_rois,image_shape):
         counter += 1
     return roi_matrix
 
-def convert_matrix_to_redmatrix(matrix_rois):
+
+def convert_redmatrix_to_matrix(masksDict,mask, offsetX=0, offsetY=0):
+        for key, (pos,M)  in dict.iteritems():
+		num=int("".join([c for c in key if c.isdigit()]))
+		Sy,Sx = M.shape
+		inset =    (slice(offsetY+pos[0]  , offsetY+pos[0]+S[0]   ), slice(  offsetX+pos[1]  , offsetX+pos[1]+S[1] ) )
+		mask[  inset   ] =  num
+	return num
+
+
+
+def convert_matrix_to_redmatrix(matrix_rois, labelformat= 'ROI%03d'):
 	"""
 	Converts a ROI defined by an array containing zeros, ones, twos, ..., n's, 
 	where n is the number of ROIs, into a dictionary with keys 'ROI00',
@@ -762,7 +796,7 @@ def convert_matrix_to_redmatrix(matrix_rois):
 		indices   = np.where(matrix_rois == ind+1)
 		origin    = (np.amin(indices[0]), np.amin(indices[1]))
 		bound_box = matrix_rois[np.amin(indices[0]):np.amax(indices[0]),np.amin(indices[1]):np.amax(indices[1])]
-		thekey    = 'ROI%02d' % ind
+		thekey    =labelformat % ind
 		redmatrix[thekey] = [origin,bound_box]
 	return redmatrix
 

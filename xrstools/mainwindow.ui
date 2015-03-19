@@ -77,6 +77,8 @@
     <addaction name="actionLoad_mask_from_file"/>
     <addaction name="actionRemote_load"/>
     <addaction name="actionWrite_mask_on_file"/>
+    <addaction name="actionWrite_masksDict_on_file"/>
+    <addaction name="actionLoad_masksDict_from_file"/>
    </widget>
    <addaction name="menuRemote"/>
    <addaction name="menuLocal"/>
@@ -160,6 +162,16 @@
   <action name="actionWrite_mask_on_file">
    <property name="text">
     <string>write mask on file</string>
+   </property>
+  </action>
+  <action name="actionWrite_masksDict_on_file">
+   <property name="text">
+    <string>write masksDict on file</string>
+   </property>
+  </action>
+  <action name="actionLoad_masksDict_from_file">
+   <property name="text">
+    <string>load masksDict from file</string>
    </property>
   </action>
  </widget>

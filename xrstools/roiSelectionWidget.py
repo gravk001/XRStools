@@ -145,8 +145,10 @@ class MyTableModel(Qt.QAbstractTableModel):
 
 @ui.UILoadable
 class mainwindow(Qt.QMainWindow):
-    def __init__(self, parent=None):
-        Qt.QMainWindow.__init__(self, parent)
+    def __init__(self, parent=None, labelformat="ROI%03d"):
+        self.labelformat = labelformat
+
+        Qt.QMainWindow.__init__(self, parent )
         self.loadUi()  # load the ui file
 
 
@@ -163,8 +165,10 @@ class mainwindow(Qt.QMainWindow):
         self.actionLoad_mask_from_file.triggered.connect(  self.read_mask_from_file  )
         ## self.actionRemote_load.triggered.connect(  self.remoteMaskload  )
         self.actionPush_mask_remotely.triggered.connect(  self.PushMask  )
+        self.actionWrite_masksDict_on_file.triggered.connect(  self.write_masksDict_on_file  )
+        self.actionLoad_masksDict_from_file.triggered.connect(  self.load_masksDict_from_file  )
         
-
+        
     def remoteMaskload(self):
         ## 
         pathtolima = "id20/xrs/mpx-ram"
@@ -212,6 +216,13 @@ class mainwindow(Qt.QMainWindow):
                     submask = globalMask[Y1:Y2, X1:X2 ]/n
                     masks.append(  ( n, [Y1,X1], submask  )  )
         return masks
+
+    def getMasksDict(self) :
+        masks = self.getMasks()
+        masksDict={}
+        for m in masks:
+            masksDict[ self.labelformat%m [0]  ]=[m[1],m[2]]
+        return masksDict
         
 
 
@@ -245,6 +256,31 @@ class mainwindow(Qt.QMainWindow):
             ef = edf.EdfFile( filename, "w+")
             ef.WriteImage( {}, globalMask )
 
+    def write_masksDict_on_file(self):
+        filename =  Qt.QFileDialog.getSaveFileName()
+        print filename
+        if filename is not None:
+            filename=str(filename)
+            maskDict = self.getMasksDict()
+            filename=str(filename)
+            f = open(filename, 'wb')
+            pickle.dump(masksDict ,  f)
+            f.close()
+            
+    def load_masksDict_from_file(self):
+        filename =  Qt.QFileDialog.getOpenFileName()
+        print filename
+        if filename is not None:
+            filename=str(filename)
+            f = open(filename, 'rb')
+            masksDict = pickle.load( f)
+            f.close()
+            self.recomposeGlobalMask()
+            mask  = self.mws[0].getSelectionMask().astype("i")
+            mask[:]=0
+            mask =   convert_redmatrix_to_matrix(masksDict,mask, offsetX=0, offsetY=0)
+            self.mws[0].setSelectionMask(mask)
+            self.decomposeGlobalMask()
 
     def read_mask_from_file(self):
         filename =  Qt.QFileDialog.getOpenFileName()
@@ -255,9 +291,6 @@ class mainwindow(Qt.QMainWindow):
             self.recomposeGlobalMask()
             self.mws[0].setSelectionMask(mask)
             self.decomposeGlobalMask()
-
-
-
  
     def detectionCallBack(self):
         print " in  detectionCallBack" 
@@ -582,7 +615,7 @@ class mainwindow(Qt.QMainWindow):
     def CreateGlobalSpotDetectionDockWidget(self):
         w = spotdetectioncontrol(self, QtCore.Qt.Widget,detectionCallBack=self.GlobaldetectionCallBack, 
                                  fatteningCallBack=self.GlobalfatteningCallBack,
-                                 thresholdCallBack  =   self.GlobalThresholdCallBack, 
+                                 thresholdCallBack  =   self.globalThresholdCallBack, 
                                  annotateMaskCallBack=self.annotateAllMasksCallBack,
                                  relabeliseMaskCallBack=self.relabeliseAllMasksCallBack,
                                  resetMask           = self.resetAllMasks
@@ -690,6 +723,13 @@ class mainwindow(Qt.QMainWindow):
         if FASTDEBUG:
             self.GlobaldetectionCallBack(warn=False)
 
+def convert_redmatrix_to_matrix( masksDict,mask, offsetX=0, offsetY=0):
+    for key, (pos,M)  in masksDict.iteritems():
+        num=int("".join([c for c in key if c.isdigit()]))
+        S = M.shape
+        inset =    (slice(offsetY+pos[0]  , offsetY+pos[0]+S[0]   ), slice(  offsetX+pos[1]  , offsetX+pos[1]+S[1] ) )
+        mask[  inset   ] =  num
+    return mask
 
 
 def getTemplateName(name):
