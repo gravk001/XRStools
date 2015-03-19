@@ -36,7 +36,7 @@ __copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
 
 
 #from helpers import *
-import xrs_rois, xrs_scans, xrs_utilities, math_functions
+import xrs_rois, xrs_scans, xrs_utilities, math_functions, xrs_fileIO
 
 from numpy import array
 import scipy.io
@@ -53,6 +53,14 @@ from scipy import signal
 from scipy.ndimage import measurements
 
 import matplotlib.pyplot as plt
+
+# try to import the fast PyMCA parsers
+try:
+    import PyMca.EdfFile as EdfIO
+    import PyMca.specfilewrapper as SpecIO
+    use_PyMca = True
+except:
+    use_PyMca = False
 
 __metaclass__ = type # new style classes
 
@@ -119,6 +127,50 @@ class read_id20:
 		# input
 		self.rois  = []	# object of a container class from the helpers module (old)
 		self.roi_obj = [] # an instance of the roi_object class from the xrs_rois module (new)
+
+	def readscan_new(self,scannumber,fromtofile=False):
+		"""
+		Returns the data, motors, counter-names, and edf-files from the SPEC file defined when
+        the xrs_read object was initiated.
+		There should be an alternative that uses the PyMca module if installed.
+        INPUT:
+        scannumber = number of the scan to be loaded
+        fromtofile = boolean flag, 'True' if the scan should be saved in a pickle-file (this is developmental)
+		"""
+		# first see if scan can be loaded from npz-file
+		if fromtofile:
+			scanname = 'Scan%03d' % scannumber
+			sub_path = os.path.split(self.path[:-1])[0]
+			fname    = sub_path + '/scans/' + scanname + '.npz'
+			return ReadScanFromFile(fname)
+		else:
+			print 'Parsing EDF- and SPEC-files of scan No. %s' % scannumber
+
+		# load SPEC-file
+		fn = self.path + self.filename
+		if use_PyMca == True:
+			data, motors, counters = xrs_fileIO.PyMcaSpecRead(fn,scannumber)
+		else:
+			data, motors, counters = xrs_fileIO.SpecRead(fn,scannumber)
+
+		# load EDF-files
+		if not self.single_image:
+			edfmats = xrs_fileIO.ReadEdfImages_TwoImages(counters['ccdno'], self.DET_PIXEL_NUMx, self.DET_PIXEL_NUMy, self.path, self.EDF_PREFIXh, self.EDF_PREFIXv, self.edfName, self.EDF_POSTFIX)
+		else:
+			edfmats = xrs_fileIO.ReadEdfImages(counters['ccdno'], self.DET_PIXEL_NUMx, self.DET_PIXEL_NUMy, self.path, self.EDF_PREFIX, self.edfName, self.EDF_POSTFIX)
+
+		# add the scannumber to self.scannumbers, if not already present
+		if not scannumber in self.scannumbers:
+			self.scannumbers.extend([scannumber])
+
+		# store scan in numpy zip-archive, if desired
+		if fromtofile:			
+			scanname = 'Scan%03d' % scannumber
+			sub_path = os.path.split(self.path[:-1])[0]
+			fname = sub_path + '/scans/' + scanname
+			xrs_fileIO.WriteScanToFile(fname,data,motors,counters,edfmats)
+
+		return data, motors, counters, edfmats #<type 'list'> <type 'list'> <type 'dict'> <type 'numpy.ndarray'
 
 	def readscan(self,scannumber,fromtofile=False):
 		"""
@@ -264,7 +316,6 @@ class read_id20:
         fromtofile = boolean flag, 'True' if the scan should be saved in a pickle-file (this is developmental)
 		"""
 		self.loadscan(scann,'long',fromtofile)
-
         
 	def get_zoom_rois(self,scannumbers,logscaling=True,colormap='jet',interpolation='nearest'):
 		"""
@@ -278,6 +329,22 @@ class read_id20:
 		                supported by matplotlib, 'nearest' by default)
 		"""
 		image = xrs_rois.create_sum_image(self.scans,scannumbers)
+		roi_finder_obj = xrs_rois.roi_finder()
+		roi_finder_obj.get_zoom_rois(image,logscaling=logscaling,colormap=colormap,interpolation=interpolation)
+		self.roi_obj = roi_finder_obj.roi_obj
+
+	def get_zoom_rois_edge(self,scannumbers,energy_keV,logscaling=True,colormap='jet',interpolation='nearest'):
+		"""
+		Define ROIs by zooming into an image constructed from the sum of all edf-files 
+		in 'scannumbers'
+		scannumbers = either single scannumber or list of scannumbers
+		logscaling  = set to 'True' if images is to be shown on log-scale (default is True)
+		colormap    = string to define the colormap which is to be used for display (anything 
+		              supported by matplotlib, 'jet' by default)
+		interpolation = interpolation scheme to be used for displaying the image (anything
+		                supported by matplotlib, 'nearest' by default)
+		"""
+		image = xrs_rois.create_diff_image(self.scans,scannumbers,energy_keV)
 		roi_finder_obj = xrs_rois.roi_finder()
 		roi_finder_obj.get_zoom_rois(image,logscaling=logscaling,colormap=colormap,interpolation=interpolation)
 		self.roi_obj = roi_finder_obj.roi_obj
