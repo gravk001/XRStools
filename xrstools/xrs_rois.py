@@ -752,9 +752,6 @@ def convert_redmatrix_to_matrix( masksDict,mask, offsetX=0, offsetY=0):
         num=int("".join([c for c in key if c.isdigit()]))
         S = M.shape
         inset =    (slice(offsetY+pos[0]  , offsetY+pos[0]+S[0]   ), slice(  offsetX+pos[1]  , offsetX+pos[1]+S[1] ) )
-	print inset
-	print num
-
         mask[  inset   ] =  num+1
     return mask
 

@@ -1,5 +1,7 @@
 from xrstools import xrs_read, theory, extraction, roiSelectionWidget, xrs_rois
 from pylab import *
+import pickle
+
 ion()
 import numpy as np
 from scipy import interpolate, signal, integrate, constants, optimize, ndimage
@@ -32,11 +34,8 @@ w4r.show()
 app.exec_()
 
 masks = w4r.getMasksDict()
-print masks
 
-print image4roi.shape
 
-import pickle
 
 if(0):
     h2o.load_rois(repertorio +'/rois/as_2m_72_big.txt')

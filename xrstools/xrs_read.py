@@ -56,12 +56,13 @@ import matplotlib.pyplot as plt
 
 # try to import the fast PyMCA parsers
 try:
-    import PyMca.EdfFile as EdfIO
-    import PyMca.specfilewrapper as SpecIO
+    import PyMca5.PyMcaIO.EdfFile as EdfIO
+    import PyMca5.PyMcaIO.specfilewrapper as SpecIO
     use_PyMca = True
 except:
     use_PyMca = False
 
+print " >>>>>>>>  use_PyMca " , use_PyMca
 __metaclass__ = type # new style classes
 
 class read_id20:
