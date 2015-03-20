@@ -433,7 +433,6 @@ class read_id20:
 
 	def set_roiObj(self,roiobj):
 		self.roi_obj = roiobj
-		self.roi_obj.load_rois_fromMasksDict(masksDict)
 
 	def show_rois(self):
 		"""

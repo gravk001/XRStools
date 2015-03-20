@@ -31,35 +31,37 @@ w4r.showImage( image4roi , xrs_rois.get_geo_informations(image4roi.shape) )
 w4r.show()
 app.exec_()
 
-masks = w4r.getMasks()
+masks = w4r.getMasksDict()
 print masks
 
 print image4roi.shape
 
 import pickle
-f = open(repertorio +'/rois/as_2m_72_big.txt','rb')
-roi_obj = pickle.load(f)
 
-print roi_obj.red_rois
+if(0):
+    h2o.load_rois(repertorio +'/rois/as_2m_72_big.txt')
+else:
+    roiob = xrs_rois.roi_object()
+    roiob.load_rois_fromMasksDict(masks ,  newshape = image4roi.shape, kind="zoom")
+    h2o.set_roiObj(roiob)
 
+    f = open(repertorio +'/rois/as_2m_72_big.txt','rb')
+    roi_obj = pickle.load(f)
 # f = open(  repertorio +'/rois/as_2m_72_Dict.pick','wb'    )
 # pickle.dump(roi_obj.red_rois, f)
 # f.close()
-
-
-raise "OK"
-
-
-h2o.load_rois(repertorio +'/rois/as_2m_72_big.txt')
-print "OK "
 # h2o.getautorois_eachdet([623],thresfrac=10)
 # h2o.get_zoom_rois([623])
 # h2o.save_rois('/home/christoph/data/ihr_feb15/rois/h2o_72_big.txt')
+
+
 h2o.loadelasticdirect([623])
 
 
 h2o.loadloopdirect([625,629,633,637,641],1)
 h2o.loadlongdirect(624)
+
+
 print " OK " 
 # h2o.getrawdata()
 h2o.getspectrum()

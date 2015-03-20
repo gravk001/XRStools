@@ -145,7 +145,7 @@ class MyTableModel(Qt.QAbstractTableModel):
 
 @ui.UILoadable
 class mainwindow(Qt.QMainWindow):
-    def __init__(self, parent=None, labelformat="ROI%03d"):
+    def __init__(self, parent=None, labelformat="ROI%02d"):
         self.labelformat = labelformat
 
         Qt.QMainWindow.__init__(self, parent )
@@ -221,7 +221,7 @@ class mainwindow(Qt.QMainWindow):
         masks = self.getMasks()
         masksDict={}
         for m in masks:
-            masksDict[ self.labelformat%m [0]  ]=[m[1],m[2]]
+            masksDict[ self.labelformat% (m[0]-1)  ]=[m[1],m[2]]
         return masksDict
         
 
@@ -728,7 +728,7 @@ def convert_redmatrix_to_matrix( masksDict,mask, offsetX=0, offsetY=0):
         num=int("".join([c for c in key if c.isdigit()]))
         S = M.shape
         inset =    (slice(offsetY+pos[0]  , offsetY+pos[0]+S[0]   ), slice(  offsetX+pos[1]  , offsetX+pos[1]+S[1] ) )
-        mask[  inset   ] =  num
+        mask[  inset   ] =  num+1
     return mask
 
 
