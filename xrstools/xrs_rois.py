@@ -891,6 +891,36 @@ def test_roifinder(roi_type_str, imagesize = [512,768], scan = None ):
 
 
 
+def create_diff_image(scans,scannumbers,energy_keV):
+	"""
+	Returns a summed image from all scans with numbers 'scannumbers'.
+	scans       = dictionary of objects from the scan-class
+	scannumbers = single scannumber, or list of scannumbers from which an image should be constructed
+	"""
+	# make 'scannumbers' iterable (even if it is just an integer)
+	numbers = []
+	if not isinstance(scannumbers,list):
+		numbers.append(scannumbers)
+	else:
+		numbers = scannumbers
+
+	key = 'Scan%03d' % numbers[0]
+	below_image = np.zeros_like(scans[key].edfmats[0,:,:])
+	above_image = np.zeros_like(scans[key].edfmats[0,:,:])
+
+	# find indices below and above 'energy'
+	below_inds = scans[key].energy < energy_keV
+	above_inds = scans[key].energy > energy_keV
+	for number in numbers:
+		key = 'Scan%03d' % number
+		for ii in below_inds:
+			below_image += scans[key].edfmats[ii,:,:]
+		for ii in above_inds:
+			above_image += scans[key].edfmats[ii,:,:]
+
+	return (above_image - below_image)
+
+
 def break_down_det_image(image,pixel_num):
 	"""
 	Desomposes a Detector image into subimages. Returns a 3D matrix. 
