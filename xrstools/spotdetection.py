@@ -237,7 +237,7 @@ def get_spots_mask( A, median_size=None, nofroi=12,  give_borders=False) :
 
 
 def relabelise(filled, A , nofroi):
-      labels, nlabs = meas.label(filled)
+      labels, nlabs = meas.label(filled, structure=np.ones([3,3]))
       aves = meas.mean(A ,labels=labels, index = range(1,nlabs+1) )
       avlabs = zip(aves, np.arange(1,nlabs+1))  
       avlabs.sort()
