@@ -242,8 +242,8 @@ def relabelise(filled, A , nofroi):
       labels, nlabs = meas.label(filled, structure=np.ones([3,3]))
       print " nlabs ", nlabs
       aves = meas.mean(A ,labels=labels, index = range(1,nlabs+1) )
-      if type(aves)!=type([]):
-        aves=[aves]
+      # if type(aves)!=type([]):
+      #   aves=[aves]
       avlabs = zip(aves, np.arange(1,nlabs+1))  
       avlabs.sort()
       intes = [ a for a,l in avlabs[-nofroi:]]

@@ -19,8 +19,8 @@ highq.extend(range(60,72))
 # H2o example
 ##############################################################################
 
-repertorio = "/scisoft/users/mirone/WORKS/Christoph/for_alessandro"
-# repertorio = "/home/alex/WORKS/Christoph/for_alessandro"
+# repertorio = "/scisoft/users/mirone/WORKS/Christoph/for_alessandro"
+repertorio = "/home/alex/WORKS/Christoph/for_alessandro"
 # repertorio = "/home/christoph/data/ihr_feb15/"
 
 h2o = xrs_read.read_id20(repertorio + '/hydra',monitorcolumn='kapraman')
@@ -34,24 +34,39 @@ w4r.show()
 app.exec_()
 
 masks = w4r.getMasksDict()
-
+roiob = xrs_rois.roi_object()
+roiob.load_rois_fromMasksDict(masks ,  newshape = image4roi.shape, kind="zoom")
 
 
 if(0):
     h2o.load_rois(repertorio +'/rois/as_2m_72_big.txt')
-else:
     roiob = xrs_rois.roi_object()
     roiob.load_rois_fromMasksDict(masks ,  newshape = image4roi.shape, kind="zoom")
-    h2o.set_roiObj(roiob)
 
-    f = open(repertorio +'/rois/as_2m_72_big.txt','rb')
-    roi_obj = pickle.load(f)
-# f = open(  repertorio +'/rois/as_2m_72_Dict.pick','wb'    )
-# pickle.dump(roi_obj.red_rois, f)
-# f.close()
+    if(0):
+        f = open(repertorio +'/rois/as_2m_72_big.txt','rb')
+        roiobj = pickle.load(f)
+        h2o.set_roiObj(roiob)
+    else:
+        f = open(repertorio +'/rois/as_2m_72_big.txt','rb')
+        roiobj = pickle.load(f)
+        f = open(repertorio +'/rois/Bas_2m_72_big.txt','w')
+        pickle.dump(roiobj, f)
+        f.close()
+
+
+
+
+
+
+    # f = open(  repertorio +'/rois/as_2m_72_Dict.pick','wb'    )
+    # pickle.dump(roi_obj.red_rois, f)
+    # f.close()
 # h2o.getautorois_eachdet([623],thresfrac=10)
 # h2o.get_zoom_rois([623])
 # h2o.save_rois('/home/christoph/data/ihr_feb15/rois/h2o_72_big.txt')
+
+h2o.set_roiObj(roiob)
 
 
 h2o.loadelasticdirect([623])
