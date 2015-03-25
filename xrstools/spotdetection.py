@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.misc
 from scipy import signal
+import scipy
 
 from scipy.ndimage import maximum_filter
 import scipy.ndimage.morphology as morph
@@ -218,6 +219,7 @@ def get_spots_mask( A, median_size=None, nofroi=12,  give_borders=False) :
 
       A = signal.medfilt2d(A, kernel_size=median_size)
   
+      A=scipy.ndimage.filters.gaussian_filter(A, 3.0) # order=0, output=None, mode='reflect', cval=0.0, truncate=4.0)[source]
 
       mask=np.zeros(A.shape,"i")
       cerchi = CercaAnelli(A)
@@ -238,7 +240,10 @@ def get_spots_mask( A, median_size=None, nofroi=12,  give_borders=False) :
 
 def relabelise(filled, A , nofroi):
       labels, nlabs = meas.label(filled, structure=np.ones([3,3]))
+      print " nlabs ", nlabs
       aves = meas.mean(A ,labels=labels, index = range(1,nlabs+1) )
+      if type(aves)!=type([]):
+        aves=[aves]
       avlabs = zip(aves, np.arange(1,nlabs+1))  
       avlabs.sort()
       intes = [ a for a,l in avlabs[-nofroi:]]

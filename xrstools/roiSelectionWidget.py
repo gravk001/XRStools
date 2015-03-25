@@ -66,11 +66,20 @@ class spotdetectioncontrol(Qt.QDockWidget):
    
 @ui.UILoadable
 class imageview(Qt.QWidget):
+    all_layouts=[]
     def __init__(self, parent=None, isglobal=False):
         Qt.QWidget.__init__(self, parent)
         self.loadUi()  # load the ui file
         if not isglobal:
             self.registeringLayoutComboBox.addItems(["3x4 layout", "Vertical layout" ])
+            self.all_layouts.append(self.registeringLayoutComboBox)
+        else:
+            self.registeringLayoutComboBox.addItems(["3x4 layout", "Vertical layout" ])
+            self.registeringLayoutComboBox.currentIndexChanged.connect(self.changeAll)
+    
+    def changeAll(self,index):
+        for t in self.all_layouts:
+            t.setCurrentIndex(index)
 
    
 @ui.UILoadable
@@ -191,7 +200,7 @@ class mainwindow(Qt.QMainWindow):
         pathtolima = "id20/xrs/mpx-ram"
         dev = PyTango.DeviceProxy(pathtolima ) 
  
-        mask = self.getMasks()
+        masks = self.getMasks()
 
         print " de mainWindow je vais pusher : " , masks
         print " ========================================" 
@@ -213,7 +222,7 @@ class mainwindow(Qt.QMainWindow):
                     Y2 = rawindices[0].max()+1
                     X1 = rawindices[1].min()
                     X2 = rawindices[1].max()+1
-                    submask = globalMask[Y1:Y2, X1:X2 ]/n
+                    submask = (globalMask[Y1:Y2, X1:X2 ] == n).astype("i")
                     masks.append(  ( n, [Y1,X1], submask  )  )
         return masks
 
