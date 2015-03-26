@@ -173,6 +173,7 @@ class mainwindow(Qt.QMainWindow):
         self.actionWrite_mask_on_file.triggered.connect(  self.write_mask_on_file  )
         self.actionLoad_mask_from_file.triggered.connect(  self.read_mask_from_file  )
         ## self.actionRemote_load.triggered.connect(  self.remoteMaskload  )
+        self.actionRemote_load.triggered.connect(  self.remoteMaskload  )
         self.actionPush_mask_remotely.triggered.connect(  self.PushMask  )
         self.actionWrite_masksDict_on_file.triggered.connect(  self.write_masksDict_on_file  )
         self.actionLoad_masksDict_from_file.triggered.connect(  self.load_masksDict_from_file  )
@@ -183,16 +184,12 @@ class mainwindow(Qt.QMainWindow):
         pathtolima = "id20/xrs/mpx-ram"
         dev = PyTango.DeviceProxy(pathtolima ) 
 
-        string =dev.getLinRoifrompickle()
+        string =dev.getRoifrompickle()
         rois = pickle.loads(string)
 
-        therois = rois.inds
-        mask = self.mws[0].getSelectionMask()
-        mask[:]=0
-        for i,inds in enumerate(therois):
-            mask[inds] = i+1
-        self.mws[0].setSelectionMask(mask)
-        self.decomposeGlobalMask()
+        print rois
+        
+        self.load_masksDict(rois)
             
 
     def PushMask(self):
@@ -205,6 +202,7 @@ class mainwindow(Qt.QMainWindow):
         print " de mainWindow je vais pusher : " , masks
         print " ========================================" 
         masks_string = pickle.dumps(masks)
+        open("mask","w").write(masks_string)
         dev.setRoifromPickle( masks_string  )
 
     def getMasks(self) :
@@ -270,7 +268,7 @@ class mainwindow(Qt.QMainWindow):
         print filename
         if filename is not None:
             filename=str(filename)
-            maskDict = self.getMasksDict()
+            masksDict = self.getMasksDict()
             filename=str(filename)
             f = open(filename, 'wb')
             pickle.dump(masksDict ,  f)
@@ -284,6 +282,10 @@ class mainwindow(Qt.QMainWindow):
             f = open(filename, 'rb')
             masksDict = pickle.load( f)
             f.close()
+            self.load_masksDict( masksDict)
+
+
+    def load_masksDict(self, masksDict):
             self.recomposeGlobalMask()
             mask  = self.mws[0].getSelectionMask().astype("i")
             mask[:]=0
