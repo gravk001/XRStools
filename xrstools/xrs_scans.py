@@ -456,4 +456,3 @@ def create_diff_image(scans,scannumbers,energy_keV):
 			above_image += scans[key].edfmats[ii,:,:]
 
 	return (above_image - below_image)
-

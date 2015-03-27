@@ -19,8 +19,8 @@ highq.extend(range(60,72))
 # H2o example
 ##############################################################################
 
-# repertorio = "/scisoft/users/mirone/WORKS/Christoph/for_alessandro"
-repertorio = "/home/alex/WORKS/Christoph/for_alessandro"
+repertorio = "/scisoft/users/mirone/WORKS/Christoph/for_alessandro"
+# repertorio = "/home/alex/WORKS/Christoph/for_alessandro"
 # repertorio = "/home/christoph/data/ihr_feb15/"
 
 h2o = xrs_read.read_id20(repertorio + '/hydra',monitorcolumn='kapraman')
@@ -36,6 +36,8 @@ app.exec_()
 masks = w4r.getMasksDict()
 roiob = xrs_rois.roi_object()
 roiob.load_rois_fromMasksDict(masks ,  newshape = image4roi.shape, kind="zoom")
+print roiob.roi_matrix.max()
+raise
 
 
 if(0):

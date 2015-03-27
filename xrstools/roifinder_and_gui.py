@@ -2,13 +2,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from matplotlib.path import Path
-from xrs_utilities import *
-from math_functions import *
+import  xrs_utilities 
+import math_functions 
 from matplotlib.widgets import Cursor, Button
 from scipy.ndimage import measurements
 from scipy import signal
-from xrs_rois import *
-
+import  xrs_rois 
+import xrs_scans
 		
 
 def findroisColumns(scans,scannumbers,roi_obj, whichroi,logscaling=False):
@@ -84,7 +84,7 @@ def get_auto_rois_eachdet(scans,DET_PIXEL_NUM ,scannumbers,kernel_size=5,thresho
             return
 
     # create a big image
-    image = xrs_rois.create_sum_image(scans,scannumbers)
+    image = xrs_scans.create_sum_image(scans,scannumbers)
 
     # break down the image into 256x256 pixel images
     det_images, offsets = xrs_rois.break_down_det_image(image,DET_PIXEL_NUM)
@@ -92,7 +92,7 @@ def get_auto_rois_eachdet(scans,DET_PIXEL_NUM ,scannumbers,kernel_size=5,thresho
     # create one roi_object per sub-image
     temp_objs = []
     for ii in range(det_images.shape[0]):
-            temp = xrs_rois.roi_finder()
+            temp = roi_finder()
             temp.get_auto_rois(det_images[ii,:,:],kernel_size=kernel_size,threshold=threshold,logscaling=logscaling,colormap=colormap,interpolation=interpolation)
             temp_objs.append(temp)
 
@@ -115,7 +115,7 @@ def get_polygon_rois_eachdet(scans,DET_PIXEL_NUM,  scannumbers,logscaling=True,c
         """
 
         # create a big image
-        image = xrs_rois.create_sum_image(scans,scannumbers)
+        image = xrs_scans.create_sum_image(scans,scannumbers)
 
         # break down the image into 256x256 pixel images
         det_images, offsets = xrs_rois.break_down_det_image(image,DET_PIXEL_NUM)
@@ -123,7 +123,7 @@ def get_polygon_rois_eachdet(scans,DET_PIXEL_NUM,  scannumbers,logscaling=True,c
         # create one roi_object per sub-image
         temp_objs = []
         for modind in range(det_images.shape[0]):
-                temp = xrs_rois.roi_finder()
+                temp = roi_finder()
                 temp.get_polygon_rois( det_images[modind,:,:],modind,logscaling=logscaling,colormap=colormap,interpolation=interpolation)
                 temp_objs.append(temp)
 
@@ -142,13 +142,13 @@ class roi_finder:
 	"""
 
 	def __init__(self):
-		self.roi_obj = roi_object() # empty roi object
+		self.roi_obj = xrs_rois.roi_object() # empty roi object
 
 	def deleterois(self):
 		"""
 		Clear the existing ROIs by creating a fresh roi_object.
 		"""
-		self.roi_obj = roi_object()
+		self.roi_obj = xrs_rois.roi_object()
 
 	def get_linear_rois(self,input_image,logscaling=True,height=5,colormap='jet',interpolation='nearest'):
 		"""
@@ -237,13 +237,13 @@ class roi_finder:
 		plt.show()
 
 		# assign the defined rois to the roi_object class
-		self.roi_obj.roi_matrix     = convert_inds_to_matrix(rois,input_image.shape)
-		self.roi_obj.red_rois       = convert_matrix_to_redmatrix(self.roi_obj.roi_matrix)
+		self.roi_obj.roi_matrix     = xrs_rois.convert_inds_to_matrix(rois,input_image.shape)
+		self.roi_obj.red_rois       = xrs_rois.convert_matrix_to_redmatrix(self.roi_obj.roi_matrix)
 		self.roi_obj.indices        = rois 
 		self.roi_obj.kind           = 'linear'
-		self.roi_obj.x_indices      = convert_inds_to_xinds(rois)
-		self.roi_obj.y_indices      = convert_inds_to_yinds(rois)
-		self.roi_obj.masks          = convert_roi_matrix_to_masks(self.roi_obj.roi_matrix)
+		self.roi_obj.x_indices      = xrs_rois.convert_inds_to_xinds(rois)
+		self.roi_obj.y_indices      = xrs_rois.convert_inds_to_yinds(rois)
+		self.roi_obj.masks          = xrs_rois.convert_roi_matrix_to_masks(self.roi_obj.roi_matrix)
 		self.roi_obj.number_of_rois = np.amax(self.roi_obj.roi_matrix)
 
 	def get_zoom_rois(self,input_image,logscaling=True,colormap='jet',interpolation='nearest'):
@@ -381,13 +381,13 @@ class roi_finder:
 		plt.show()
 
 		# assign the defined rois to the roi_object class
-		self.roi_obj.roi_matrix     = (convert_inds_to_matrix(rois,input_image.shape))
-		self.roi_obj.red_rois       = convert_matrix_to_redmatrix(self.roi_obj.roi_matrix)
+		self.roi_obj.roi_matrix     = (xrs_rois.convert_inds_to_matrix(rois,input_image.shape))
+		self.roi_obj.red_rois       = xrs_rois.convert_matrix_to_redmatrix(self.roi_obj.roi_matrix)
 		self.roi_obj.indices        = rois 
 		self.roi_obj.kind           = 'zoom'
-		self.roi_obj.x_indices      = convert_inds_to_xinds(rois)
-		self.roi_obj.y_indices      = convert_inds_to_yinds(rois)
-		self.roi_obj.masks          = convert_roi_matrix_to_masks(self.roi_obj.roi_matrix)
+		self.roi_obj.x_indices      = xrs_rois.convert_inds_to_xinds(rois)
+		self.roi_obj.y_indices      = xrs_rois.convert_inds_to_yinds(rois)
+		self.roi_obj.masks          = xrs_rois.convert_roi_matrix_to_masks(self.roi_obj.roi_matrix)
 		self.roi_obj.number_of_rois = np.amax(self.roi_obj.roi_matrix)
 
 	def get_auto_rois(self,input_image,kernel_size=5,threshold=100.0,logscaling=True,colormap='jet',interpolation='bilinear'):
@@ -484,12 +484,12 @@ class roi_finder:
 		plt.show()
 
 		# assign the defined rois to the roi_object class
-		self.roi_obj.red_rois       = convert_matrix_to_redmatrix(self.roi_obj.roi_matrix)
-		self.roi_obj.indices        = convert_matrix_rois_to_inds(self.roi_obj.roi_matrix)
+		self.roi_obj.red_rois       = xrs_rois.convert_matrix_to_redmatrix(self.roi_obj.roi_matrix)
+		self.roi_obj.indices        = xrs_rois.convert_matrix_rois_to_inds(self.roi_obj.roi_matrix)
 		self.roi_obj.kind           = 'auto'
-		self.roi_obj.x_indices      = convert_inds_to_xinds(self.roi_obj.indices)
-		self.roi_obj.y_indices      = convert_inds_to_yinds(self.roi_obj.indices)
-		self.roi_obj.masks          = convert_roi_matrix_to_masks(self.roi_obj.roi_matrix)
+		self.roi_obj.x_indices      = xrs_rois.convert_inds_to_xinds(self.roi_obj.indices)
+		self.roi_obj.y_indices      = xrs_rois.convert_inds_to_yinds(self.roi_obj.indices)
+		self.roi_obj.masks          = xrs_rois.convert_roi_matrix_to_masks(self.roi_obj.roi_matrix)
 		self.roi_obj.number_of_rois = np.amax(self.roi_obj.roi_matrix)
 
 	def get_polygon_rois(self,input_image,modind=-1,logscaling=True,colormap='jet',interpolation='nearest'):
@@ -596,13 +596,13 @@ class roi_finder:
 		callback.next(self)		
 
 		# assign the defined rois to the roi_object class
-		self.roi_obj.roi_matrix     = convert_inds_to_matrix(rois,input_image.shape)
-		self.roi_obj.red_rois       = convert_matrix_to_redmatrix(self.roi_obj.roi_matrix)
+		self.roi_obj.roi_matrix     = xrs_rois.convert_inds_to_matrix(rois,input_image.shape)
+		self.roi_obj.red_rois       = xrs_rois.convert_matrix_to_redmatrix(self.roi_obj.roi_matrix)
 		self.roi_obj.indices        = rois 
 		self.roi_obj.kind           = 'polygon'
-		self.roi_obj.x_indices      = convert_inds_to_xinds(rois)
-		self.roi_obj.y_indices      = convert_inds_to_yinds(rois)
-		self.roi_obj.masks          = convert_roi_matrix_to_masks(self.roi_obj.roi_matrix)
+		self.roi_obj.x_indices      = xrs_rois.convert_inds_to_xinds(rois)
+		self.roi_obj.y_indices      = xrs_rois.convert_inds_to_yinds(rois)
+		self.roi_obj.masks          = xrs_rois.convert_roi_matrix_to_masks(self.roi_obj.roi_matrix)
 		self.roi_obj.number_of_rois = np.amax(self.roi_obj.roi_matrix)
 
 	def show_rois(self):
@@ -850,24 +850,3 @@ def define_polygon_roi(image_shape,verbose=False):
 
 	return roi
 
-def create_sum_image(scans,scannumbers):
-	"""
-	Returns a summed image from all scans with numbers 'scannumbers'.
-	scans       = dictionary of objects from the scan-class
-	scannumbers = single scannumber, or list of scannumbers from which an image should be constructed
-	"""
-	# make 'scannumbers' iterable (even if it is just an integer)
-	numbers = []
-	if not isinstance(scannumbers,list):
-		numbers.append(scannumbers)
-	else:
-		numbers = scannumbers
-
-	key = 'Scan%03d' % numbers[0]
-	image = np.zeros_like(scans[key].edfmats[0,:,:])
-	for number in numbers:
-		key = 'Scan%03d' % number
-		for ii in range(scans[key].edfmats.shape[0]):
-			image += scans[key].edfmats[ii,:,:]
-
-	return image
