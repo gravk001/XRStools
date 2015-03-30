@@ -36,8 +36,8 @@ app.exec_()
 masks = w4r.getMasksDict()
 roiob = xrs_rois.roi_object()
 roiob.load_rois_fromMasksDict(masks ,  newshape = image4roi.shape, kind="zoom")
+print masks
 print roiob.roi_matrix.max()
-raise
 
 
 if(0):
@@ -74,13 +74,17 @@ h2o.set_roiObj(roiob)
 h2o.loadelasticdirect([623])
 
 
-h2o.loadloopdirect([625,629,633,637,641],1)
+# h2o.loadloopdirect([625,629,633,637,641],1)
+h2o.loadloopdirect([625],1)
 h2o.loadlongdirect(624)
 
 
 print " OK " 
 # h2o.getrawdata()
 h2o.getspectrum()
+print h2o.signals
+
+
 h2o.geteloss()
 h2o.gettths(rvd=-41,rvu=85,rvb=121.8,rhl=41.0,rhr=41.0,rhb=121.8,order=[0,1,2,3,4,5])
 

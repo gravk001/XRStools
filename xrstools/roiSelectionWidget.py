@@ -226,24 +226,24 @@ class mainwindow(Qt.QMainWindow):
                 masks.append(  ( n, [-1,-1], numpy.array([[1]])  )  )
         return masks
 
-    def getMasks(self) :
-        totnofrois = self.recomposeGlobalMask()
-        globalMask = self.mws[0].getSelectionMask().astype("i")
-        masks = [] 
-        nrois = globalMask.max()
-        nummaxroi = (globalMask).max()
-        masks = []
-        for n in range(1, nummaxroi+1):
-            rawindices = numpy.nonzero( globalMask == n )
-            if(len(rawindices)):
-                if(len(rawindices[0])):
-                    Y1 = rawindices[0].min()
-                    Y2 = rawindices[0].max()+1
-                    X1 = rawindices[1].min()
-                    X2 = rawindices[1].max()+1
-                    submask = (globalMask[Y1:Y2, X1:X2 ] == n).astype("i")
-                    masks.append(  ( n, [Y1,X1], submask  )  )
-        return masks
+    # def getMasks(self) :
+    #     totnofrois = self.recomposeGlobalMask()
+    #     globalMask = self.mws[0].getSelectionMask().astype("i")
+    #     masks = [] 
+    #     nrois = globalMask.max()
+    #     nummaxroi = (globalMask).max()
+    #     masks = []
+    #     for n in range(1, nummaxroi+1):
+    #         rawindices = numpy.nonzero( globalMask == n )
+    #         if(len(rawindices)):
+    #             if(len(rawindices[0])):
+    #                 Y1 = rawindices[0].min()
+    #                 Y2 = rawindices[0].max()+1
+    #                 X1 = rawindices[1].min()
+    #                 X2 = rawindices[1].max()+1
+    #                 submask = (globalMask[Y1:Y2, X1:X2 ] == n).astype("i")
+    #                 masks.append(  ( n, [Y1,X1], submask  )  )
+    #     return masks
 
     def getMasksDict(self) :
         masks = self.getMasks()
@@ -252,8 +252,8 @@ class mainwindow(Qt.QMainWindow):
     def masks2MasksDict(self,masks):
         masksDict={}
         for m in masks:
-            if(ma[1][0]>=0 and ma[1][1]>=0  ):
-            masksDict[ self.labelformat% (m[0]-1)  ]=[m[1],m[2]]
+            if(m[1][0]>=0 and m[1][1]>=0  ):
+                masksDict[ self.labelformat% (m[0]-1)  ]=[m[1],m[2]]
         return masksDict
         
 
@@ -765,7 +765,8 @@ def convert_redmatrix_to_matrix( masksDict,mask, offsetX=0, offsetY=0):
         num=int("".join([c for c in key if c.isdigit()]))
         S = M.shape
         inset =    (slice(offsetY+pos[0]  , offsetY+pos[0]+S[0]   ), slice(  offsetX+pos[1]  , offsetX+pos[1]+S[1] ) )
-        mask[  inset   ] =  num+1
+        M=numpy.less(0,M)
+        mask[  inset   ] =  (num+1)*M
     return mask
 
 
