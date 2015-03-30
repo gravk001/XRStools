@@ -185,11 +185,10 @@ class mainwindow(Qt.QMainWindow):
         dev = PyTango.DeviceProxy(pathtolima ) 
 
         string =dev.getRoifrompickle()
-        rois = pickle.loads(string)
+        masks = pickle.loads(string)
+        masksDict = self.masks2MasksDict(masks)
 
-        print rois
-        
-        self.load_masksDict(rois)
+        self.load_masksDict(masksDict)
             
 
     def PushMask(self):
@@ -206,7 +205,29 @@ class mainwindow(Qt.QMainWindow):
         dev.setRoifromPickle( masks_string  )
 
     def getMasks(self) :
-        self.recomposeGlobalMask()
+        totnofrois = self.recomposeGlobalMask()
+        globalMask = self.mws[0].getSelectionMask().astype("i")
+        masks = [] 
+        nrois = globalMask.max()
+        nummaxroi = (globalMask).max()
+        masks = []
+        for n in range(1,totnofrois +1):
+            rawindices = numpy.nonzero( globalMask == n )
+            if(len(rawindices)):
+                if(len(rawindices[0])):
+                    Y1 = rawindices[0].min()
+                    Y2 = rawindices[0].max()+1
+                    X1 = rawindices[1].min()
+                    X2 = rawindices[1].max()+1
+                    submask = (globalMask[Y1:Y2, X1:X2 ] == n).astype("i")
+                    # submask = (globalMask[Y1:Y2, X1:X2 ] / n).astype("i"
+                    masks.append(  ( n, [Y1,X1], submask  )  )
+            else:
+                masks.append(  ( n, [-1,-1], numpy.array([[1]])  )  )
+        return masks
+
+    def getMasks(self) :
+        totnofrois = self.recomposeGlobalMask()
         globalMask = self.mws[0].getSelectionMask().astype("i")
         masks = [] 
         nrois = globalMask.max()
@@ -226,8 +247,12 @@ class mainwindow(Qt.QMainWindow):
 
     def getMasksDict(self) :
         masks = self.getMasks()
+        return self.masks2MasksDict(masks)
+
+    def masks2MasksDict(self,masks):
         masksDict={}
         for m in masks:
+            if(ma[1][0]>=0 and ma[1][1]>=0  ):
             masksDict[ self.labelformat% (m[0]-1)  ]=[m[1],m[2]]
         return masksDict
         
@@ -241,6 +266,7 @@ class mainwindow(Qt.QMainWindow):
           globalMask[geo] =  offset*localmask +  mw.getSelectionMask()
           offset += nofrois
       self.mws[0].setSelectionMask(globalMask  )
+      return offset
 
     
     def decomposeGlobalMask(self):
