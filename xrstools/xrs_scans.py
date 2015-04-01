@@ -123,7 +123,7 @@ class scan:
 				for pixelind in range(len(self.signals_pw[roiind])): # each pixel in the ROI
 					oneroi_cenom.append(xrs_utilities.find_center_of_mass(self.energy,self.signals_pw[roiind][:,pixelind]))
 					try: 
-						FWHM,x0 = fwhm((self.energy - oneroi_cenom[roiind][pixelind])*1e3,self.signals_pw[roiind][:,pixelind])
+						FWHM,x0 = xrs_utilities.fwhm((self.energy - oneroi_cenom[roiind][pixelind])*1e3,self.signals_pw[roiind][:,pixelind])
 						oneroi_resolution.append(FWHM)
 					except:
 						oneroi_resolution.append(0.0)

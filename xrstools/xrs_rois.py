@@ -96,7 +96,6 @@ def get_geo_informations(shape):
     return geo_informations[shape]
 
 
-
 class roi_object:
 	"""
 	Container class to hold all relevant information about given ROIs.

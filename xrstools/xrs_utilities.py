@@ -43,6 +43,8 @@ import numpy as np
 import array as arr
 import matplotlib.pyplot as plt
 import pickle
+import traceback
+import sys
 
 from matplotlib.widgets import Cursor
 from itertools import groupby
@@ -212,6 +214,8 @@ def fwhm(x,y):
 	i1 = np.where(np.logical_and(y>y/3.0, x<x0))
 	i2 = np.where(np.logical_and(y>y/3.0, x>x0))
 
+	if len(y[i1])==0 or len(y[i2])==0:
+		return 0,0
 	f  = interpolate.interp1d(y[i1],x[i1], bounds_error=False, fill_value=0.0)
 	x1 = f(y0/2.0)
 	f  = interpolate.interp1d(y[i2],x[i2], bounds_error=False, fill_value=0.0)
@@ -1078,7 +1082,15 @@ def find_center_of_mass(x,y):
 	"""
 	Returns the center of mass (first moment) for the given curve y(x)
 	"""
-	return np.trapz(y*x,x)/np.trapz(y,x)
+	deno = np.trapz(y,x)
+	print deno
+	if deno==0.0:
+		return 0.0
+		# print "*** print_tb:"
+		# traceback.print_stack()
+		# print " DENO==0!"
+		# return 0.0
+	return np.trapz(y*x,x)/deno
 
 
 def odefctn(y,t,abb0,abb1,abb7,abb8,lex,sgbeta,y0,c1):

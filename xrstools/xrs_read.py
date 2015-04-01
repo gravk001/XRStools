@@ -40,7 +40,8 @@ import xrs_rois, xrs_scans, xrs_utilities, math_functions, xrs_fileIO
 
 from numpy import array
 import scipy.io
-
+import traceback
+import sys
 import os
 import numpy as np
 import array as arr
@@ -126,8 +127,11 @@ class read_id20:
 		# tth offsets in the other direction (horizontal for H-boxes, vertical for V-boxes)
 		self.TTH_OFFSETS2   = np.array([-9.71, -9.75, -9.71, -3.24, -3.25, -3.24, 3.24, 3.25, 3.24, 9.71, 9.75, 9.71]) 
 		# input
-		self.rois  = []	# object of a container class from the helpers module (old)
 		self.roi_obj = [] # an instance of the roi_object class from the xrs_rois module (new)
+
+
+        def there_is_a_valid_roi_at(self,n):
+            return n<len(self.roi_obj.indices) and len(self.roi_obj.indices[n])
 
 	def readscan_new(self,scannumber,fromtofile=False):
 		"""
@@ -541,12 +545,17 @@ class read_id20:
 				# find the center of mass for each ROI
 				self.cenom.append(xrs_utilities.find_center_of_mass(self.groups['elastic'].energy,self.groups['elastic'].signals_orig[:,n]))
 				# try finden the FWHM/resolution for each ROI
-				try:
-					FWHM,x0 = fwhm((self.groups['elastic'].energy - self.cenom[n])*1e3,self.groups['elastic'].signals_orig[:,n])
-					self.resolution.append(FWHM)
-				# append a zero if the FWHM routine fails
-				except:
-					self.resolution.append(0.0) # need a more sofisticated way of finding the FWHM
+                                FWHM,x0 = xrs_utilities.fwhm((self.groups['elastic'].energy - self.cenom[n])*1e3,self.groups['elastic'].signals_orig[:,n])
+				# try:
+				# 	FWHM,x0 = xrs_utilities.fwhm((self.groups['elastic'].energy - self.cenom[n])*1e3,self.groups['elastic'].signals_orig[:,n])
+				# 	self.resolution.append(FWHM)
+				# # append a zero if the FWHM routine fails
+				# except:
+                                #     exc_type, exc_value, exc_traceback = sys.exc_info()
+                                #     print "*** print_tb:"
+                                #     traceback.print_tb(exc_traceback, limit=None, file=sys.stdout)
+                                #     print " need a more sofisticated way of finding the FWHM " 
+                                #     self.resolution.append(0.0) # need a more sofisticated way of finding the FWHM
 			self.E0 = np.mean(self.cenom)
 			# define the first eloss scale as the 'master' scale for all ROIs
 			self.eloss = (self.energy - self.cenom[0])*1e3 # energy loss in eV

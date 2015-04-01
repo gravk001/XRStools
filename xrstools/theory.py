@@ -277,23 +277,23 @@ class HFspectrum:
 		self.V = np.zeros(np.shape(data.signals))
 		self.q = np.zeros(np.shape(data.signals))
 		if not correctasym_pertth:
-			for n in range(len(data.signals[0,:])):
-				el,j,c,v,q = makeprofile_compds(formulas,concentrations,E0=self.cenom[n],tth=data.tth[n],correctasym=self.correctasym)
-				f = interpolate.interp1d(el,j, bounds_error=False, fill_value=0.0)
-				self.J[:,n] = f(data.eloss)
-				f = interpolate.interp1d(el,c, bounds_error=False, fill_value=0.0)
-				self.C[:,n] = f(data.eloss)
-				f = interpolate.interp1d(el,v, bounds_error=False, fill_value=0.0)
-				self.V[:,n] = f(data.eloss)
-				f = interpolate.interp1d(el,q, bounds_error=False, fill_value=0.0)
-				self.q[:,n] = f(data.eloss)
+			for n in [ nn for nn in range(len(data.signals[0,:])) if  data.there_is_a_valid_roi_at(nn) ]:
+					el,j,c,v,q = makeprofile_compds(formulas,concentrations,E0=self.cenom[n],tth=data.tth[n],correctasym=self.correctasym)
+					f = interpolate.interp1d(el,j, bounds_error=False, fill_value=0.0)
+					self.J[:,n] = f(data.eloss)
+					f = interpolate.interp1d(el,c, bounds_error=False, fill_value=0.0)
+					self.C[:,n] = f(data.eloss)
+					f = interpolate.interp1d(el,v, bounds_error=False, fill_value=0.0)
+					self.V[:,n] = f(data.eloss)
+					f = interpolate.interp1d(el,q, bounds_error=False, fill_value=0.0)
+					self.q[:,n] = f(data.eloss)
 		else:
 			if len(correctasym_pertth) != len(self.tth):
 				print 'Please provide a Python list of one scaling factor [0,1] per scattering angle!'
 				print 'Currently %d scattering angles defined, but %d scaling factors provided!' % (len(self.tth), len(correctasym_pertth))
 				return
 			else:
-				for n in range(len(data.signals[0,:])):
+				for n in [ nn for nn in  range(len(data.signals[0,:])) if  data.there_is_a_valid_roi_at(nn) ]:
 					print self.correctasym, correctasym_pertth[n]
 					el,j,c,v,q = makeprofile_compds(formulas,concentrations,E0=self.cenom[n],tth=data.tth[n],correctasym=np.array(self.correctasym)*correctasym_pertth[n])
 					f = interpolate.interp1d(el,j, bounds_error=False, fill_value=0.0)
@@ -306,8 +306,12 @@ class HFspectrum:
 					self.q[:,n] = f(data.eloss)
 
 		# correct interpolation errors in q (first couple of values are 0.0, replace by smallest value) THIS NEEDS TO BE FIXED
-		for n in range(len(data.signals[0,:])):
+		for n in [ nn for nn in range(len(data.signals[0,:])) if  data.there_is_a_valid_roi_at(nn) ]:
+			print n
+			print self.q[:,n]
 			inds = np.where(self.q[:,n] == 0)
+			print inds
+			print np.where(self.q[:,n]>0)
 			self.q[inds,n] = self.q[np.where(self.q[:,n]>0)[0][0],n]
 
 	def plotHFC(self):
