@@ -131,10 +131,7 @@ class read_id20:
 
 
         def there_is_a_valid_roi_at(self,n):
-            print n
-            print self.roi_obj.indices
-            print " ------ " 
-            return n<len(self.roi_obj.indices) and len(self.roi_obj.indices[n])
+             return n<len(self.roi_obj.indices) and len(self.roi_obj.indices[n])
 
 	def readscan_new(self,scannumber,fromtofile=False):
 		"""

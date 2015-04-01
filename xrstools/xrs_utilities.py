@@ -1083,7 +1083,6 @@ def find_center_of_mass(x,y):
 	Returns the center of mass (first moment) for the given curve y(x)
 	"""
 	deno = np.trapz(y,x)
-	print deno
 	if deno==0.0:
 		return 0.0
 		# print "*** print_tb:"
