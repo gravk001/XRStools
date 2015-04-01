@@ -131,6 +131,9 @@ class read_id20:
 
 
         def there_is_a_valid_roi_at(self,n):
+            print n
+            print self.roi_obj.indices
+            print " ------ " 
             return n<len(self.roi_obj.indices) and len(self.roi_obj.indices[n])
 
 	def readscan_new(self,scannumber,fromtofile=False):
@@ -540,25 +543,34 @@ class read_id20:
 			# reset values, in case this is run several times
 			self.cenom = []
 			self.resolution = []
-			self.E0 = []
+                        Origin=None
+                        valid_cenoms = []
+
 			for n in range(len(self.roi_obj.indices)):
-				# find the center of mass for each ROI
-				self.cenom.append(xrs_utilities.find_center_of_mass(self.groups['elastic'].energy,self.groups['elastic'].signals_orig[:,n]))
-				# try finden the FWHM/resolution for each ROI
-                                FWHM,x0 = xrs_utilities.fwhm((self.groups['elastic'].energy - self.cenom[n])*1e3,self.groups['elastic'].signals_orig[:,n])
-				# try:
-				# 	FWHM,x0 = xrs_utilities.fwhm((self.groups['elastic'].energy - self.cenom[n])*1e3,self.groups['elastic'].signals_orig[:,n])
-				# 	self.resolution.append(FWHM)
-				# # append a zero if the FWHM routine fails
-				# except:
-                                #     exc_type, exc_value, exc_traceback = sys.exc_info()
-                                #     print "*** print_tb:"
-                                #     traceback.print_tb(exc_traceback, limit=None, file=sys.stdout)
-                                #     print " need a more sofisticated way of finding the FWHM " 
-                                #     self.resolution.append(0.0) # need a more sofisticated way of finding the FWHM
-			self.E0 = np.mean(self.cenom)
+                            # find the center of mass for each ROI
+
+                            cofm = xrs_utilities.find_center_of_mass(self.groups['elastic'].energy,self.groups['elastic'].signals_orig[:,n])
+                            self.cenom.append(cofm)
+                            if self.there_is_a_valid_roi_at(n)  :
+                                valid_cenoms.append(cofm)
+                                if Origin is None :
+                                    Origin = cofm
+
+                            # try finden the FWHM/resolution for each ROI
+                            FWHM,x0 = xrs_utilities.fwhm((self.groups['elastic'].energy - self.cenom[n])*1e3,self.groups['elastic'].signals_orig[:,n])
+                            # try:
+                            # 	FWHM,x0 = xrs_utilities.fwhm((self.groups['elastic'].energy - self.cenom[n])*1e3,self.groups['elastic'].signals_orig[:,n])
+                            # 	self.resolution.append(FWHM)
+                            # # append a zero if the FWHM routine fails
+                            # except:
+                            #     exc_type, exc_value, exc_traceback = sys.exc_info()
+                            #     print "*** print_tb:"
+                            #     traceback.print_tb(exc_traceback, limit=None, file=sys.stdout)
+                            #     print " need a more sofisticated way of finding the FWHM " 
+                            #     self.resolution.append(0.0) # need a more sofisticated way of finding the FWHM
+			self.E0 = np.mean(valid_cenoms)
 			# define the first eloss scale as the 'master' scale for all ROIs
-			self.eloss = (self.energy - self.cenom[0])*1e3 # energy loss in eV
+			self.eloss = (self.energy - cofm)*1e3 # energy loss in eV
 			# define eloss-scale for each ROI and interpolate onto the 'master' eloss-scale 
 			for n in range(len(self.roi_obj.indices)):
 				# inserting zeros at beginning and end of the vectors to avoid interpolation errors

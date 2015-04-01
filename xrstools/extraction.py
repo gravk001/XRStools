@@ -15,6 +15,7 @@ class extraction:
 	class for extraction of S(q,w) from an instance of the id20 class "data" and the predictthings class "theory"
 	"""
 	def __init__(self,data,theory,prenormrange=[5,np.inf]):
+		self.data=data
 		# the data	
 		self.eloss   = data.eloss
 		self.signals = data.signals
@@ -46,7 +47,8 @@ class extraction:
 		self.avqvals    = np.array([])
 
 		# rough normalization over range given by prenormrange
-		for n in range(len(self.signals[0,:])):
+		for n in [ nn for nn in  range(len(self.signals[0,:])) if  self.data.there_is_a_valid_roi_at(nn) ]:
+		# for n in range(len(self.signals[0,:])):
 			HFnorm = np.trapz(self.J[:,n],self.eloss)
 			inds   = np.where(np.logical_and(self.eloss>=prenormrange[0],self.eloss<=prenormrange[1]))[0]
 			EXPnorm = np.trapz(self.signals[inds,n],self.eloss[inds])
@@ -106,7 +108,7 @@ class extraction:
 		averr = np.zeros((len(self.eloss),len(columns)))
 		avC   = np.zeros((len(self.eloss),len(columns)))
 		avqvals = np.zeros((len(self.eloss),len(columns)))
-		for n in range(len(columns)):
+		for n in [ nn for nn in  range(len(columns)) if  self.data.there_is_a_valid_roi_at(nn) ]:
 			# find data points with error = 0.0 and replace by 1.0
 			inds = np.where(self.errors[:,columns[n]] == 0.0)[0]
 			for ind in inds:
