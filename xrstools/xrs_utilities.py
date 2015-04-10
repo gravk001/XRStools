@@ -260,50 +260,21 @@ def spline2(x,y,x2):
 	y2[i] = y[imax]
 	return y2
 
-def e2pz(w1,w2,th):
-	"""
-	Calculates the momentum scale and the relativistic Compton cross section 
-	correction according to P. Holm, PRA 37, 3706 (1988).
-	from KH 29.05.96
-	input:
-	w1 = incident energy  [keV]
-	w2 = scattered energy [keV]
-	th = scattering angle [deg]
-	returns:
-	pz = momentum scale   [a.u.]
-	cf = cross section correction factor such that:
-	J(pz) = cf * d^2(sigma)/d(w2)*d(Omega) [barn/atom/keV/srad]
-	"""
-	w1  = np.array(w1)    # make sure arrays are used
-	w2  = np.array(w2)           
-	m   = constants.value('electron mass energy equivalent in MeV')*1e3 #511.003      # Mass in natural units
-	th  = math.radians(th) # th/180.0*np.pi  # Angle to radians
-	alp = constants.value('fine-structure constant') #1.0/137.036  # Fine structure constant
-	r0  = constants.value('classical electron radius') #2.8179e-15   # Electron radius
-	q   = np.sqrt(w1**2 + w2**2-2*w1*w2*np.cos(th))                        # Momentum transfer    
-	pz  = q/2.0 - (w1-w2) * np.sqrt(1/4.0 + m**2/(2*w1*w2*(1-np.cos(th)))) # In natural units
-	E   = np.sqrt(m**2+pz**2)
-	A   = ((w1-w2)*E-w1*w2*(1-np.cos(th)))/q
-	D   = (w1-w2*np.cos(th))*A/q
-	R   = w1*(E-D)
-	R2  = R-w1*w2*(1-np.cos(th))
-	chi = R/R2 + R2/R + 2.0*m**2 * (1/R-1/R2) + m**4 * (1/R-1/R2)**2
-	cf  = 2.0*w1*q*E/(m**2*r0**2*w2*chi)
-	cf  = cf*(1e-28*(m*alp))			                             # Cross section now in barns/atom/keV/srad
-	pz  = pz/(m*alp)                                                 # pz to atomic units (a.u.)
-	return pz, cf
-
 def pz2e1(w2,pz,th):
-	"""
-	Calculates the incident energy value corresponding
-	specific scattered photon and momentum value.
-	from KH 29.05.96
-	input: 
-	w2 = scattered energy [keV]
-	pz = momentum value   [a.u.]
-	th = scattering angle [deg]
-	returns:
-	w1 = incident energy  [keV]
+	"""Calculates the incident energy for a specific scattered photon and momentum value.
+
+	Returns the incident energy for a given photon energy and scattering angle.
+	This function is translated from Keijo Hamalainen's Matlab implementation (KH 29.05.96).
+
+	Args:
+	-----
+	w2 (float): scattered photon energy in [keV]
+	pz (np.array): pz scale in [a.u.]
+	th (float): scattering angle two theta in [deg]
+
+	Returns:
+	--------
+	w1 (np.array): incident energy in [keV]
 	"""
 	pz  = np.array(pz)
 	w   = np.array(np.arange(w2/4.0,4.0*w2,w2/5000.0))
@@ -313,18 +284,20 @@ def pz2e1(w2,pz,th):
 	return w1
 
 def e2pz(w1,w2,th):
-	"""
-	Calculates the momentum scale and the relativistic Compton cross section 
+	"""Calculates the momentum scale and the relativistic Compton cross section 
 	correction according to P. Holm, PRA 37, 3706 (1988).
-	from KH 29.05.96
-	input:
-	w1 = incident energy  [keV]
-	w2 = scattered energy [keV]
-	th = scattering angle [deg]
+
+	This function is translated from Keijo Hamalainen's Matlab implementation (KH 29.05.96).
+
+	Args:
+	-----
+	w1 (float or np.array): incident energy in [keV]
+	w2 (float or np.array): scattered energy in [keV]
+	th (float): scattering angle two theta in [deg]
 	returns:
-	pz = momentum scale   [a.u.]
-	cf = cross section correction factor such that:
-	J(pz) = cf * d^2(sigma)/d(w2)*d(Omega) [barn/atom/keV/srad]
+	pz (float or np.array): momentum scale in [a.u.]
+	cf (float or np.array): cross section correction factor such that:
+	    J(pz) = cf * d^2(sigma)/d(w2)*d(Omega) [barn/atom/keV/srad]
 	"""
 	w1  = np.array(w1)    # make sure arrays are used
 	w2  = np.array(w2)           
@@ -332,31 +305,37 @@ def e2pz(w1,w2,th):
 	th  = math.radians(th) # th/180.0*np.pi  # Angle to radians
 	alp = constants.value('fine-structure constant') #1.0/137.036  # Fine structure constant
 	r0  = constants.value('classical electron radius') #2.8179e-15   # Electron radius
-	q   = np.sqrt(w1**2 + w2**2-2*w1*w2*np.cos(th))                        # Momentum transfer    
-	pz  = q/2.0 - (w1-w2) * np.sqrt(1/4.0 + m**2/(2*w1*w2*(1-np.cos(th)))) # In natural units
-	E   = np.sqrt(m**2+pz**2)
-	A   = ((w1-w2)*E-w1*w2*(1-np.cos(th)))/q
+	q   = np.sqrt(w1**2.0 + w2**2.0-2.0*w1*w2*np.cos(th))                        # Momentum transfer    
+	pz  = q/2.0 - (w1-w2) * np.sqrt(1.0/4.0 + m**2.0/(2.0*w1*w2*(1.0-np.cos(th)))) # In natural units
+	E   = np.sqrt(m**2.0+pz**2.0)
+	A   = ((w1-w2)*E-w1*w2*(1.0-np.cos(th)))/q
 	D   = (w1-w2*np.cos(th))*A/q
 	R   = w1*(E-D)
 	R2  = R-w1*w2*(1-np.cos(th))
-	chi = R/R2 + R2/R + 2.0*m**2 * (1/R-1/R2) + m**4 * (1/R-1/R2)**2
-	cf  = 2.0*w1*q*E/(m**2*r0**2*w2*chi)
-	cf  = cf*(1e-28*(m*alp))			                             # Cross section now in barns/atom/keV/srad
-	pz  = pz/(m*alp)                                                 # pz to atomic units (a.u.)
+	chi = R/R2 + R2/R + 2.0*m**2.0 * (1.0/R-1.0/R2) + m**4.0 * (1.0/R-1.0/R2)**2.0
+	cf  = 2.0*w1*q*E/(m**2.0*r0**2.0*w2*chi)
+	cf  = cf*(1.0e-28*(m*alp)) # Cross section now in barns/atom/keV/srad
+	pz  = pz/(m*alp)           # pz to atomic units (a.u.)
 	return pz, cf
 
 def momtrans_au(e1,e2,tth):
+	""" Returns the momentum transfer (in a.u.).
+
+	Calculates the momentum transfer in atomic units for two given
+	energies e1 and e1 (in keV) and the scattering angle tth (two theta).
+
+	Args:
+	----- 
+	e1 (float or np.array): incident energy in [keV], can be a single value or a vector
+	e2 (float or np.array): scattered energy in [keV], can be a single value or a vector
+	tth (float): scattering angle two theta in [deg]
+
+	Returns:
+	--------
+	q (float or np.array): momentum transfer [a.u.], single value or vector depending on input
 	"""
-	Calculates the momentum transfer in atomic units
-	input: 
-	e1  = incident energy  [keV]	
-	e2  = scattered energy [keV]
-	tth = scattering angle [deg]
-	returns:
-	q   = momentum transfer [a.u.] (corresponding to sin(th)/lambda)
-	"""
-	e1    = np.array(e1*1e3/13.60569172/2)
-	e2    = np.array(e2*1e3/13.60569172/2)
+	e1    = np.array(e1*1.0e3/13.60569172/2.0)
+	e2    = np.array(e2*1.0e3/13.60569172/2.0)
 	th    = math.radians(tth)#tth/180.0*np.pi
 	hbarc = 137.03599976
 	q     = 1/hbarc*np.sqrt(e1**2.0+e2**2.0-2.0*e1*e2*np.cos(th));
@@ -562,13 +541,19 @@ def makeprofile_compds(formulas,concentrations=None,filename=os.path.join(instal
 	return eloss,J,C,V,q
 
 def HRcorrect(pzprofile,occupation,q):
-	"""
-	returns first correction to a 1s, 2s, and 2p compton profiles after Holm and
-	Ribberfors. 
-	INPUT: pzprofile (e.g. tabulated from Biggs), 
-	       occupation (electron configuration), 
-	       q (momentum transfer in a.u. )
-	OUTPUT: asymmetries to be added to the raw profiles (normalized to the number of electrons on pz scale)
+	""" Returns the first order correction to filled 1s, 2s, and 2p Compton profiles.
+
+	Implementation after Holm and Ribberfors (citation ...).
+
+	Args: 
+	-----
+	pzprofile (np.array): Compton profile (e.g. tabulated from Biggs) to be corrected (2D matrix). 
+	occupation (list): electron configuration.
+	q (float or np.array): momentum transfer in [a.u.].
+
+	Returns:
+	--------
+	asymmetry (np.array):  asymmetries to be added to the raw profiles (normalized to the number of electrons on pz scale)
 	"""
 	# prepare output matrix
 	if len(occupation) == 1:
@@ -585,7 +570,7 @@ def HRcorrect(pzprofile,occupation,q):
     
 	# 1s 
 	if occupation[0] < 2:
-		print 'WARNING: cannot calculate HR correction for unfilled 1s shell!'
+		pass
 	else:
 		# find gamma1s lambda x: (x[0] - 1)**2 + (x[1] - 2.5)**2
 		fitfct  = lambda a: (np.absolute(np.max(pzprofile[:,1])-np.max(occupation[0]*8.0*a**5.0/3.0/np.pi/(a**2.0+pzprofile[:,0]**2.0)**3.0)))
@@ -599,7 +584,7 @@ def HRcorrect(pzprofile,occupation,q):
 	# 2s
 	if len(occupation)>1:
 		if occupation[1] < 2:
-			print 'WARNING: cannot calculate HR correction for unfilled 2s shell!'
+			pass
 		else:
 			# find gamma2s
 			fitfct  = lambda a: (np.absolute(np.max(pzprofile[:,2])-np.max(occupation[1]*((a**4.0-10.0*a**2.0*pzprofile[:,0]**2 + 40.0*pzprofile[:,0]**4.0)*128.0*a**5.0/15.0/np.pi/(a**2.0 + 4.0*pzprofile[:,0]**2.0)**5.0))))
@@ -613,7 +598,7 @@ def HRcorrect(pzprofile,occupation,q):
 	# 2p
 	if len(occupation)>2:
 		if occupation[2] < 6:
-			print 'WARNING: cannot calculate HR correction for unfilled 2p shell!'
+			pass
 		else:
 			forgamma = 3.0*pzprofile[:,3]/np.trapz(pzprofile[:,3],pzprofile[:,0]) # 2p correction is defined for 3 electrons in the 2p shell
 			# find gamma2p
@@ -628,13 +613,19 @@ def HRcorrect(pzprofile,occupation,q):
 	return asymmetry
 
 def parseformula(formula):
-	"""
-	parses the constituing elements and stoichiometries from a given formula
-	input:
-	formula = string of a chemical formula (e.g. 'SiO2', 'Ba8Si46', etc.)
-	returns:
-	elements        = list of constituting elemental symbols
-	stoichiometries = list of according stoichiometries in same order as 'elements'
+	"""Parses a chemical sum formula.
+
+	Parses the constituing elements and stoichiometries from a given 
+	chemical sum formula.
+
+	Args:
+	-----
+	formula (string): string of a chemical formula (e.g. 'SiO2', 'Ba8Si46', etc.)
+
+	Returns:
+	--------
+	elements (list): list of strings of constituting elemental symbols.
+	stoichiometries (list): list of according stoichiometries in the same order as 'elements'.
 	"""
 	elements = []
 	stoichiometries = []
@@ -644,9 +635,17 @@ def parseformula(formula):
 	return elements,stoichiometries
 
 def element(z):
-	"""
+	"""Converts atomic number into string of the element symbol and vice versa.
+
 	Returns atomic number of given element, if z is a string of the 
 	element symbol or string of element symbol of given atomic number z.
+
+	Args:
+	-----
+	z (string or int): string of the element symbol or atomic number. 
+
+	Returns:
+	Z (string or int): string of the element symbol or atomic number.
 	"""
 	zs = ['H','He','Li','Be','B','C','N','O','F','Ne','Na','Mg','Al',
               'Si','P','S','Cl','Ar','K','Ca','Sc','Ti','V','Cr','Mn','Fe','Co','Ni',
@@ -661,27 +660,34 @@ def element(z):
 			Z = zs.index(z)+1
 		except:
 			Z = None
-			print 'Given element ' + z + ' unknown'
+			print 'Given element ' + z + ' unknown.'
 	elif isinstance(z,int):
 		if z > 0 and z < 105:
 			Z = zs[z-1]
 		else:
-			print 'Element Z = '+ str(z) +' unknown'
+			print 'Element Z = '+ str(z) +' unknown.'
 	else:
-		print 'type '+ type(z) + 'not supported'	
+		print 'type '+ type(z) + 'not supported.'	
 	return Z
 
 def myprho(energy,Z,logtablefile=os.path.join(installation_dir,'xrstools/data/logtable.dat')):
-	"""
-	calculates the photoelectric, elastic, and inelastic absorption of 
-	an element Z (can be atomic number or symbol) on the energyscal e1
-	input:
-	energy = energy scale [keV] (i am guessing keV only right now)
-	Z      = atomic number or string of element symbol
-	returns: 
-	murho = absorption coefficient normalized by the density
-	rho   = density
-	m     = atomic mass
+	"""Calculates the photoelectric, elastic, and inelastic absorption of 
+	an element Z 
+
+	Calculates the photelectric , elastic, and inelastic absorption of an element Z. 
+	Z can be atomic number or element symbol.
+
+	Args:
+	-----
+	energy (np.array): energy scale in [keV].
+	Z (string or int): atomic number or string of element symbol.
+
+	Returns:
+	--------
+	murho (np.array): absorption coefficient normalized by the density.
+	rho (float): density in UNITS?
+	m (float): atomic mass in UNITS?
+
 	"""
 	en = np.array([])
 	en = np.append(en,energy) 
@@ -714,19 +720,26 @@ def myprho(energy,Z,logtablefile=os.path.join(installation_dir,'xrstools/data/lo
 	m = c[0,4] # atomic mass
 	murho = mu*0.602252/m # mu/rho
 	rho = c[0,5]
-	return murho,rho,m
+	return murho, rho, m
 
 def mpr(energy,compound):
-	"""
-	calculates the photoelectric, elastic, and inelastic absorption of 
-	an element Z (can be atomic number or symbol) on the energyscal e1
-	input:
-	energy = energy scale [keV]
-	Z      = atomic number or string of element symbol
-	returns: 
-	murho = absorption coefficient normalized by the density
-	rho   = density
-	m     = atomic mass
+	"""Calculates the photoelectric, elastic, and inelastic absorption of 
+	a chemical compound.
+
+	Calculates the photoelectric, elastic, and inelastic absorption of a
+	chemical compound.
+
+	Args:
+	-----
+	energy (np.array): energy scale in [keV].
+	compound (string): chemical sum formula (e.g. 'SiO2')
+
+	Returns:
+	-------- 
+	murho (np.array): absorption coefficient normalized by the density.
+	rho (float): density in UNITS?
+	m (float): atomic mass in UNITS?
+
 	"""
 	en   = np.array([])
 	en   = np.append(en,energy) # turn energy into an iterable array
@@ -743,20 +756,26 @@ def mpr(energy,compound):
 	mtot = sum(mv)
 	mr   = mr/mtot
 	mr 	 = np.sum(mr,1)
-	return mr,rhov,mv
+	return mr, rhov, mv
 
 def mpr_compds(energy,formulas,concentrations,E0,rho_formu):
-	"""
-	calculates the photoelectric, elastic, and inelastic absorption of 
-	a mix of compounds (list of strings with chemical formulas and list 
-	of concentrations) on the energyscal e1
-	input:
-	energy = energy scale [keV]
-	Z      = atomic number or string of element symbol
-	returns: 
-	murho = absorption coefficient normalized by the density
-	rho   = density
-	m     = atomic mass
+	"""Calculates the photoelectric, elastic, and inelastic absorption of 
+	a mix of compounds.
+
+	Returns the photoelectric absorption for a sum of different chemical 
+	compounds.
+
+	Args:
+	-----
+	energy (np.array): energy scale in [keV].
+	formulas (list of strings): list of chemical sum formulas
+
+	Returns:
+	--------
+	murho (np.array): absorption coefficient normalized by the density.
+	rho (float): density in UNITS?
+	m (float): atomic mass in UNITS?
+
 	"""
 	en  = np.array([]) # turn energy into an iterable array
 	en  = np.append(en,energy)
@@ -770,17 +789,24 @@ def mpr_compds(energy,formulas,concentrations,E0,rho_formu):
 	return mu_tot_in, mu_tot_out
 
 def abscorr2(mu1,mu2,alpha,beta,samthick):
-	"""
-	Calculates absorption correction for given mu1 and mu2
-	Multiply the measured spectrum with this correction factor
-	corrfac= abscorr2(mu1,mu2,alpha,beta,l)
-	mu1    = absorption coefficient for the incident energy (1/cm)
-	mu2    = absorption coefficient for the scattered energy (1/cm)
-	alpha  = incident angle relative to plane normal (deg)
-	beta   = exit angle relative to plane normal (deg)
-	           (for transmission geometry use beta < 0)
-	l      = sample thickness (cm)
-	KH 30.05.96
+	"""Calculates absorption correction for given mu1 and mu2.
+	Multiply the measured spectrum with this correction factor.
+
+	This is a translation of Keijo Hamalainen's Matlab function (KH 30.05.96).
+
+	Args:
+	-----
+	mu1 (np.array): absorption coefficient for the incident energy in [1/cm].
+	mu2 (np.array): absorption coefficient for the scattered energy in [1/cm].
+	alpha (float): incident angle relative to plane normal in [deg].
+	beta (float): exit angle relative to plane normal [deg]
+	              (for transmission geometry use beta < 0).
+	samthick (float): sample thickness in [cm].
+
+	Returns:
+	--------
+	ac (np.array): absorption correction factor. Multiply this with your measured spectrum.
+
 	"""
 	cosa = math.cos(math.radians(alpha))
 	cosb = math.cos(math.radians(beta))
