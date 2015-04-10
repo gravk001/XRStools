@@ -27,13 +27,19 @@ except:
 __metaclass__ = type # new style classes
 
 def SpecRead(filename,nscan):
-	"""
-	reads scan "nscan" from SPEC-file "filename"
-	INPUT: 	filename = string with the SPEC-file name
-		   	nscan    = number (int) of desired scan 
-	OUTPUT: data     =
-			motors   =
-			counters = dictionary
+	"""Parses a SPEC file and returns a specified scan.
+
+	Args:
+	-----
+	filename (string): SPEC file name (inlc. path)
+	nscan (int): Number of the desired scan.
+ 
+	Returns:
+	--------
+	data (np.array): array of the data from the specified scan.
+	motors (list): list of all motor positions from the header of the specified scan.
+	counters (dict): all counters in a dictionary with the counter names as keys.
+
 	"""
 	scannid   = '#S'
 	countid   = '#L'
@@ -202,3 +208,59 @@ def ReadEdfImages(ccdcounter, num_pix_x, num_pix_y, path, EdfPrefix, EdfName, Ed
         else:
             edfmats[m,:,:] = EdfRead(fname)
     return edfmats
+
+def readbiggsdata(filename,element):
+	"""
+	Reads Hartree-Fock Profile of element 'element' from values tabulated 
+	by Biggs et al. (Atomic Data and Nuclear Data Tables 16, 201-309 (1975))
+	as provided by the DABAX library (http://ftp.esrf.eu/pub/scisoft/xop2.3/DabaxFiles/ComptonProfiles.dat).
+	input:
+	filename = path to the ComptonProfiles.dat file (the file should be distributed with this package)
+	element  = string of element name
+	returns:
+	data     = the data for the according element as in the file:
+		#UD  Columns: 
+		#UD  col1: pz in atomic units 
+		#UD  col2: Total compton profile (sum over the atomic electrons
+		#UD  col3,...coln: Compton profile for the individual sub-shells
+	occupation = occupation number of the according shells
+	bindingen  = binding energies of the accorting shells
+	colnames   = strings of column names as used in the file
+	"""
+	elementid = '#S'
+	sizeid    = '#N'
+	occid     = '#UOCCUP'
+	bindingid = '#UBIND'
+	colnameid = '#L'
+	data = []
+	f = open(filename,'r')
+	istrue = True
+	while istrue:
+		line = f.readline()
+		if line[0:2] == elementid:
+			if line.split()[-1] == element:
+				line = f.readline()
+				while line[0:2] != elementid:
+					if line[0:2] == sizeid:
+						arraysize = int(line.split()[-1])
+						line = f.readline()
+					if line[0:7] == occid:
+						occupation = line.split()[1:]
+						line = f.readline()
+					if line[0:6] == bindingid:
+						bindingen = line.split()[1:]	
+						line = f.readline()
+					if line[0:2] == colnameid:
+						colnames = line.split()[1:]
+						line = f.readline()
+					if line[0]== ' ':
+						data.append([float(n) for n in line.strip().split()])
+						#data = np.zeros((31,arraysize))
+						line = f.readline()
+				break
+	length = len(data)
+	data = (np.reshape(np.array(data),(length,arraysize)))
+	return data, occupation, bindingen, colnames
+
+
+
