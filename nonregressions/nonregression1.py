@@ -19,9 +19,9 @@ highq.extend(range(60,72))
 # H2o example
 ##############################################################################
 
-repertorio = "/scisoft/users/mirone/WORKS/Christoph/for_alessandro"
+# repertorio = "/scisoft/users/mirone/WORKS/Christoph/for_alessandro"
 # repertorio = "/home/alex/WORKS/Christoph/for_alessandro"
-# repertorio = "/home/christoph/data/ihr_feb15/"
+repertorio = open("conf.txt","r").readlines()[0].strip()
 
 h2o = xrs_read.read_id20(repertorio + '/hydra',monitorcolumn='kapraman')
 

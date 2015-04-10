@@ -19,9 +19,9 @@ highq.extend(range(60,72))
 # H2o example
 ##############################################################################
 
-repertorio = "/scisoft/users/mirone/WORKS/Christoph/for_alessandro"
+# repertorio = "/scisoft/users/mirone/WORKS/Christoph/for_alessandro"
 # repertorio = "/home/alex/WORKS/Christoph/for_alessandro"
-# repertorio = "/home/christoph/data/ihr_feb15/"
+repertorio = open("conf.txt","r").readlines()[0].strip()
 
 h2o = xrs_read.read_id20(repertorio + '/hydra',monitorcolumn='kapraman')
 
@@ -38,23 +38,6 @@ roiob = xrs_rois.roi_object()
 roiob.load_rois_fromMasksDict(masks ,  newshape = image4roi.shape, kind="zoom")
 print masks
 print roiob.roi_matrix.max()
-
-
-if(0):
-    h2o.load_rois(repertorio +'/rois/as_2m_72_big.txt')
-    roiob = xrs_rois.roi_object()
-    roiob.load_rois_fromMasksDict(masks ,  newshape = image4roi.shape, kind="zoom")
-
-    if(0):
-        f = open(repertorio +'/rois/as_2m_72_big.txt','rb')
-        roiobj = pickle.load(f)
-        h2o.set_roiObj(roiob)
-    else:
-        f = open(repertorio +'/rois/as_2m_72_big.txt','rb')
-        roiobj = pickle.load(f)
-        f = open(repertorio +'/rois/Bas_2m_72_big.txt','w')
-        pickle.dump(roiobj, f)
-        f.close()
 
 
 
@@ -74,8 +57,7 @@ h2o.set_roiObj(roiob)
 h2o.loadelasticdirect([623])
 
 
-# h2o.loadloopdirect([625,629,633,637,641],1)
-h2o.loadloopdirect([625],1)
+h2o.loadloopdirect([626,630,634,638,642],1)
 h2o.loadlongdirect(624)
 
 
@@ -97,6 +79,8 @@ extr1.analyzerAverage(lowq,errorweighing=False)
 #extr1.removePearsonAv2([480.0,533.0],[550.0,555.0],scale=3.6,hfcoreshift=0.0)
 extr1.removeLinearAv([520.0,532.0],scale=0.052)
 extr1.savetxtsqwav(repertorio+'/as_abs/low_q/h2o_OK.txt', emin=500.0, emax=700.0)
+ioff()
+show()
 
 x= raw_input()
 

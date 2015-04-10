@@ -47,6 +47,10 @@ class SqwPredict:
     -----------
     sampleStr (list of strings): one string per compound (e.g. ['C','SiO2'])
     concentrations (list of floats): relative compositional weight for each compound
+    """
+    pass
+    
+    
 class ComptonProfile:
     """Class to construct and handle Hartree-Fock atomic Compton Profiles.
 

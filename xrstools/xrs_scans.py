@@ -399,6 +399,7 @@ def appendScans(groups,include_elastic):
 	grouptypes = [key for key in groups.keys()]
 	
 	if 'long' in grouptypes:
+        print " going to refine "
 		return catScansLong(groups,include_elastic)
 	else: 
 		return catScans(groups,include_elastic)
