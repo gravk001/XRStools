@@ -40,6 +40,7 @@ import xrs_fileIO
 
 from scipy import interpolate, integrate, constants
 
+
 class SqwPredict:
     """Class to build a S(q,w) prediction based on HF Compton Profiles.
 
@@ -70,16 +71,26 @@ class ComptonProfile:
     def __init__(self, element, filename):
         self.filename  = filename
         self.element   = element
-        self.elementNr = xrs_utilities.element(z)
-
-        self.shells    = []
-        self.edges     = []
-        self.C         = []
-        self.J         = []
-        self.V         = []
+        self.elementNr = xrs_utilities.element(element)
+        self.CP_profile, self.edges, self.occupation_num, self.shells = PzProfile(element,filename) 
+        self.eloss     = []
+        self.C_total   = []
+        self.J_total   = []
+        self.V_total   = []
         self.CperShell = {}
         self.JperShell = {}
         self.VperShell = {}
+
+    def get_elossProfiles(self,E0, twotheta):
+        enScale, J_total, C_total, V_total, q, J_shell, C_shell, V_shell = elossProfiles(element,filename,E0,twotheta,correctasym=None,valence_cutoff=20.0)
+        self.eloss     = enscle
+        self.C_total   = C_total
+        self.J_total   = J_total
+        self.V_total   = V_total
+        self.CperShell = C_shell
+        self.JperShell = J_shell
+        self.VperShell = V_shell
+
 
 class ComptonProfiles:
     """Class for multiple HF Compton profiles.
@@ -211,7 +222,7 @@ def elossProfile(element,filename,E0,tth,correctasym=None,valence_cutoff=20.0):
 
     # calculate asymmetry after Holm and Ribberfors for filles 1s and 2p shells
     # if correctasym == True
-    asymmetry = np.flipud(xrs_utilities.HRcorrect(CP_profile, occupation_num, q))
+    asymmetry = np.flipud(HRcorrect(CP_profile, occupation_num, q))
     if correctasym:
         CP_profile[:,1:4] = CP_profile[:1:4] + asymmetry * correctasym
 
@@ -263,3 +274,92 @@ def elossProfile(element,filename,E0,tth,correctasym=None,valence_cutoff=20.0):
             counter += 1
 
     return enScale, J_total, C_total, V_total, q, J_shell, C_shell, V_shell
+
+
+def mapShellNames(shell_str):
+
+    all_names  = ['pz', 'total', 'Shell_1', 'Shell_2', 'Shell_3', 'Shell_4', 'Shell_5', 
+                  'Shell_6', 'Shell_7', 'Shell_8', 'Shell_9', 'Shell_10', 'Shell_11', 
+                  'Shell_12', 'Shell_13', 'Shell_14', 'Shell_15', 'Shell_16', 'Shell_17', 
+                  'Shell_18', 'Shell_19', 'Shell_20', 'Shell_21', 'Shell_22', 'Shell_23', 
+                  'Shell_24', 'Shell_25', 'Shell_26', 'Shell_27']
+    all_shells = ['pz', 'total', '1s', '2s', '2p1/2', '2p3/2', '3s', '3p1/2', '3p3/2', '3d', '4s', '4p', '4d ']
+    all_spectro = ['pz', 'total', 'K', 'L1', 'L2', 'L3', 'M1', 'M2', 'M3', 'M4']
+
+
+# 1s, 2s, 2p, 3s, 3p, 4s, 3d, 4p, 5s, 4d, 5p, 6s, 4f, 5d, 6p, 7s, 5f, 6d, 7p, (8s, 5g, 6f, 7d, 8p, and 9s)
+
+
+
+
+def HRcorrect(pzprofile,occupation,q):
+	""" Returns the first order correction to filled 1s, 2s, and 2p Compton profiles.
+
+	Implementation after Holm and Ribberfors (citation ...).
+
+	Args: 
+	-----
+	pzprofile (np.array): Compton profile (e.g. tabulated from Biggs) to be corrected (2D matrix). 
+	occupation (list): electron configuration.
+	q (float or np.array): momentum transfer in [a.u.].
+
+	Returns:
+	--------
+	asymmetry (np.array):  asymmetries to be added to the raw profiles (normalized to the number of electrons on pz scale)
+	"""
+	# prepare output matrix
+	if len(occupation) == 1:
+		asymmetry = np.zeros((len(pzprofile[:,0]),1))
+	elif len(occupation) == 2:
+		asymmetry = np.zeros((len(pzprofile[:,0]),2))
+	elif len(occupation) >= 3:
+		asymmetry = np.zeros((len(pzprofile[:,0]),3))
+
+	# take care for the cases where 2p levels have spin-orbit split taken into account in the Biggs table
+	if len(occupation)>3 and occupation[2]==2 and occupation[3]==4:
+		pzprofile[:,3] = pzprofile[:,3] + pzprofile[:,4]
+		occupation[2] = 6
+    
+	# 1s 
+	if occupation[0] < 2:
+		pass
+	else:
+		# find gamma1s lambda x: (x[0] - 1)**2 + (x[1] - 2.5)**2
+		fitfct  = lambda a: (np.absolute(np.max(pzprofile[:,1])-np.max(occupation[0]*8.0*a**5.0/3.0/np.pi/(a**2.0+pzprofile[:,0]**2.0)**3.0)))
+		res = optimize.leastsq(fitfct,np.sum(occupation))
+		gamma1s = res[0][0]
+		# calculate j0 and j1
+		j0 = occupation[0]*8.0*gamma1s**5.0/3.0/np.pi/((gamma1s**2.0+pzprofile[:,0]**2.0)**3.0)
+		j1 = 2.0*gamma1s*np.arctan2(pzprofile[:,0],gamma1s)-3.0/2.0*pzprofile[:,0] 
+		j1 = j1/q*j0
+		asymmetry[:,0] = j1
+	# 2s
+	if len(occupation)>1:
+		if occupation[1] < 2:
+			pass
+		else:
+			# find gamma2s
+			fitfct  = lambda a: (np.absolute(np.max(pzprofile[:,2])-np.max(occupation[1]*((a**4.0-10.0*a**2.0*pzprofile[:,0]**2 + 40.0*pzprofile[:,0]**4.0)*128.0*a**5.0/15.0/np.pi/(a**2.0 + 4.0*pzprofile[:,0]**2.0)**5.0))))
+			res = optimize.leastsq(fitfct,np.sum(occupation)*2.0/3.0)
+			gamma2s = res[0][0]
+			# calculate j0 and j1
+			j0 = occupation[1]*(gamma2s**4.0-10.0*gamma2s**2.0*pzprofile[:,0]**2.0+40.0*pzprofile[:,0]**4.0)*128.0*gamma2s**5.0/15.0/np.pi/(gamma2s**2.0 + 4.0*pzprofile[:,0]**2.0)**5.0
+			j1 = 2.0*gamma2s*np.arctan2(2.0*pzprofile[:,0],gamma2s)-5.0/4.0*(gamma2s**4.0+48.0*pzprofile[:,0]**4.0)/(gamma2s**4.0-10.0*gamma2s**2.0*pzprofile[:,0]**2.0+40.0*pzprofile[:,0]**4.0)*pzprofile[:,0] 
+			j1 = j1/q*j0
+			asymmetry[:,1] = j1
+	# 2p
+	if len(occupation)>2:
+		if occupation[2] < 6:
+			pass
+		else:
+			forgamma = 3.0*pzprofile[:,3]/np.trapz(pzprofile[:,3],pzprofile[:,0]) # 2p correction is defined for 3 electrons in the 2p shell
+			# find gamma2p
+			fitfct = lambda a: (np.absolute(np.max(forgamma)-np.max(((a**2.0+20.0*pzprofile[:,0]**2.0)*64.0*a**7.0/5.0/np.pi/(a**2.0+4.0*pzprofile[:,0]**2.0)**5.0))))
+			res = optimize.leastsq(fitfct,np.sum(occupation)*1.0/3.0)
+			gamma2p = res[0][0]
+			# calculate j0 and j1
+			j0 = 2.0*(gamma2p**2.0+20.0*pzprofile[:,0]**2.0)*64.0*gamma2p**7.0/5.0/np.pi/(gamma2p**2.0+4.0*pzprofile[:,0]**2.0)**5.0
+			j1 = 2.0*gamma2p*np.arctan2(2.0*pzprofile[:,0],gamma2p)-2.0/3.0*pzprofile[:,0]*(10.0*gamma2p**2.0+60.0*pzprofile[:,0]**2.0)/(gamma2p**2.0+20.0*pzprofile[:,0]**2.0)
+			j1 = j1/q*j0
+			asymmetry[:,2] = j1
+	return asymmetry

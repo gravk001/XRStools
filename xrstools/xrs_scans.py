@@ -391,18 +391,19 @@ def catScans(groups,include_elastic):
 		return spectrum.energy, spectrum.signals, spectrum.errors
 
 def appendScans(groups,include_elastic):
-	"""
-	try including different background scans... 
-	append groups of scans ordered by their first energy value. long scans are inserted into gaps that at greater than two times the grid of the finer scans
-	"""
-	# find all types of groups	
-	grouptypes = [key for key in groups.keys()]
-	
-	if 'long' in grouptypes:
+    """
+    try including different background scans... 
+    append groups of scans ordered by their first energy value.
+    long scans are inserted into gaps that at greater than two times the grid of the finer scans
+    """
+    # find all types of groups	
+    grouptypes = [key for key in groups.keys()]
+
+    if 'long' in grouptypes:
         print " going to refine "
-		return catScansLong(groups,include_elastic)
-	else: 
-		return catScans(groups,include_elastic)
+        return catScansLong(groups,include_elastic)
+    else: 
+        return catScans(groups,include_elastic)
 
 
 
