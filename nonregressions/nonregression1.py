@@ -1,4 +1,4 @@
-from xrstools import xrs_read, theory, extraction, roiSelectionWidget, xrs_rois,roifinder_and_gui
+from XRStools import xrs_read, theory, extraction, roiSelectionWidget, xrs_rois,roifinder_and_gui
 from pylab import *
 import pickle
 

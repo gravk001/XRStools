@@ -1,0 +1,4 @@
+#!python
+import XRStools
+import XRStools.XRS_swissknife
+XRStools.XRS_swissknife.main()
