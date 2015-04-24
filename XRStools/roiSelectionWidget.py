@@ -19,6 +19,8 @@ except:
 import spotdetection
 import match
 import pickle
+import h5py
+
 
 FASTDEBUG=False
 try:
@@ -155,6 +157,10 @@ class MyTableModel(Qt.QAbstractTableModel):
 @ui.UILoadable
 class mainwindow(Qt.QMainWindow):
     def __init__(self, parent=None, labelformat="ROI%02d"):
+
+
+        self.geo_informations=None
+        self.isOK=0
         self.labelformat = labelformat
 
         Qt.QMainWindow.__init__(self, parent )
@@ -179,6 +185,23 @@ class mainwindow(Qt.QMainWindow):
         self.actionLoad_masksDict_from_file.triggered.connect(  self.load_masksDict_from_file  )
         
         
+        self.actionExit.triggered.connect(self.Exit)
+        self.actionConfirm_And_Exit.triggered.connect(self.confirm_and_Exit)
+
+        self.actionLoad_image_from_hdf5.triggered.connect(self.load_image_from_hdf5)
+
+        self.actionLoad_maskDict_from_hdf5.triggered.connect(self.load_maskDict_from_hdf5)
+
+
+
+
+    def Exit(self):
+        self.isOK=0
+        self.close()
+    def confirm_and_Exit(self):
+        self.isOK=1
+        self.close()
+
     def remoteMaskload(self):
         ## 
         pathtolima = "id20/xrs/mpx-ram"
@@ -759,6 +782,105 @@ class mainwindow(Qt.QMainWindow):
 
         if FASTDEBUG:
             self.GlobaldetectionCallBack(warn=False)
+
+
+    def load_maskDict_from_hdf5(self):
+        filename =  Qt.QFileDialog.getOpenFileName()
+        filename=str(filename)
+        print filename
+        if len(filename):
+            import PyMca5.PyMcaGui.HDF5Widget as HDF5Widget
+            storage=[None]
+            def mySlot(ddict):
+                name = ddict["name"]
+                storage[0]=name
+            # browse
+            self.__hdf5Dialog = hdf5dialog()
+            self.__hdf5Dialog.setWindowTitle('Select your data set by a double click')
+            self.__hdf5Dialog.mainLayout =  self.__hdf5Dialog.verticalLayout_2
+            fileModel = HDF5Widget.FileModel()
+            fileView = HDF5Widget.HDF5Widget(fileModel)
+            hdf5File = fileModel.openFile(filename)
+            shiftsDataset = None
+            fileView.sigHDF5WidgetSignal.connect(mySlot)
+            self.__hdf5Dialog.mainLayout.addWidget(fileView)
+            self.__hdf5Dialog.resize(400, 200)
+
+            ret = self.__hdf5Dialog.exec_()
+            print ret
+            hdf5File.close()
+            
+            if ret:
+                print " Obtained " 
+                name =  storage[0]
+                print name
+                file= h5py.File(filename,"r")
+                datagroup = file[name]
+                masks={}
+                load_rois_fromh5(datagroup,masks)
+                file.close()
+                self.load_masksDict(masks)
+
+    def load_image_from_hdf5(self):
+        print " load " 
+        filename =  Qt.QFileDialog.getOpenFileName()
+        print " OK " 
+        filename=str(filename)
+        print filename
+        if len(filename):
+            import PyMca5.PyMcaGui.HDF5Widget as HDF5Widget
+
+            storage=[None]
+
+            def mySlot(ddict):
+                name = ddict["name"]
+                storage[0]=name
+                print " MY SLOT " 
+                print name
+
+            # browse
+            self.__hdf5Dialog = hdf5dialog()
+            self.__hdf5Dialog.setWindowTitle('Select your data set by a double click')
+            self.__hdf5Dialog.mainLayout =  self.__hdf5Dialog.verticalLayout_2
+            fileModel = HDF5Widget.FileModel()
+            fileView = HDF5Widget.HDF5Widget(fileModel)
+            hdf5File = fileModel.openFile(filename)
+            shiftsDataset = None
+            fileView.sigHDF5WidgetSignal.connect(mySlot)
+            self.__hdf5Dialog.mainLayout.addWidget(fileView)
+            self.__hdf5Dialog.resize(400, 200)
+            
+            # self.__hdf5Dialog.setModal(True)
+            # self.__hdf5Dialog.show()
+
+            ret = self.__hdf5Dialog.exec_()
+
+            hdf5File.close()
+            
+            if ret:
+                print " Obtained " 
+                name =  storage[0]
+                file= h5py.File(filename,"r")
+                image4roi = file[name][:]
+                file.close()
+
+                self.showImage(image4roi)
+
+
+
+def  load_rois_fromh5(h5group,md):
+    for key in h5group.keys():
+        md[key]=[]
+        md[key].append(h5group[key]["origin"][:])
+        md[key].append(h5group[key]["mask"][:])
+    
+
+@ui.UILoadable
+class hdf5dialog(Qt.QDialog):
+    def __init__(self, parent=None):
+        Qt.QDialog.__init__(self, parent)
+        self.loadUi()  # load the ui file
+       
 
 def convert_redmatrix_to_matrix( masksDict,mask, offsetX=0, offsetY=0):
     for key, (pos,M)  in masksDict.iteritems():
