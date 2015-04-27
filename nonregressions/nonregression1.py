@@ -43,7 +43,7 @@ h2o.set_roiObj(roiob)
 h2o.loadelasticdirect([623])
 
 
-h2o.loadloopdirect([625,629,633,637,641],1)
+h2o.loadloopdirect([625,629,633,637,641],4)
 h2o.loadlongdirect(624)
 
 

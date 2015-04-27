@@ -130,6 +130,99 @@ class read_id20:
 		self.roi_obj = [] # an instance of the roi_object class from the xrs_rois module (new)
 
 
+
+        def save_state_hdf5(self, filename, groupname, comment=""):
+            import h5py
+            h5 = h5py.File(filename,"a")
+
+            h5.require_group(groupname)
+            h5group =  h5[groupname]
+            if(   "eloss" in h5group.keys() ):
+                raise Exception, (" Read data already present in  " + filename+":"+groupname)
+            for key in [ 
+		"eloss",
+		"energy",    
+		"signals",   
+		"errors",    
+		"qvalues",   
+		########### "groups",    
+		"cenom",     
+		"E0",        
+		"tth",       
+		"VDtth",     
+		"VUtth",     
+		"VBtth",     
+		"HRtth",     
+		"HLtth",     
+		"HBtth",     
+		"resolution",
+		"signals_orig",
+		"errors_orig"
+                ]:
+                h5group[key]  = getattr(self,key)
+            h5group["comment"]  = comment
+            h5.flush()
+            h5.close()
+
+        def load_state_hdf5(self, filename, groupname):
+            import h5py
+            h5 = h5py.File(filename,"r")
+
+            h5group =  h5[groupname]
+
+            for key in [ 
+		"eloss",
+		"energy",    
+		"signals",   
+		"errors",    
+		"qvalues",   
+		########### "groups",    
+		"cenom",     
+		"E0",        
+		"tth",       
+		"VDtth",     
+		"VUtth",     
+		"VBtth",     
+		"HRtth",     
+		"HLtth",     
+		"HBtth",     
+		"resolution",
+		"signals_orig",
+		"errors_orig"
+                ]:
+                setattr(self,key, h5group[key][:])
+            
+            h5.flush()
+            h5.close()
+
+            
+        def save_state(self):
+            d={}
+            for key in [ 
+		"eloss",
+		"energy",    
+		"signals",   
+		"errors",    
+		"qvalues",   
+		"groups",    
+		"cenom",     
+		"E0",        
+		"tth",       
+		"VDtth",     
+		"VUtth",     
+		"VBtth",     
+		"HRtth",     
+		"HLtth",     
+		"HBtth",     
+		"resolution",
+		"signals_orig",
+		"errors_orig"
+                ]:
+                d[key]  = getattr(self,key)
+            f=open("datas.pick","w")
+            pickle.dump(d,f)
+            f.close()
+
         def there_is_a_valid_roi_at(self,n):
              return n<len(self.roi_obj.indices) and len(self.roi_obj.indices[n])
 
@@ -740,4 +833,8 @@ class read_id20:
 				backnorm   = np.trapz(self.signals[inds,backroinum],self.eloss[inds])
 				background = self.signals[:,backroinum]/backnorm*expnorm
 				self.signals[:,ii] -= background # subtract background roi
+
+
+
+
 

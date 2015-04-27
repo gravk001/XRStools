@@ -817,7 +817,7 @@ class mainwindow(Qt.QMainWindow):
                 file= h5py.File(filename,"r")
                 datagroup = file[name]
                 masks={}
-                load_rois_fromh5(datagroup,masks)
+                xrs_rois.load_rois_fromh5(datagroup,masks)
                 file.close()
                 self.load_masksDict(masks)
 
@@ -868,11 +868,6 @@ class mainwindow(Qt.QMainWindow):
 
 
 
-def  load_rois_fromh5(h5group,md):
-    for key in h5group.keys():
-        md[key]=[]
-        md[key].append(h5group[key]["origin"][:])
-        md[key].append(h5group[key]["mask"][:])
     
 
 @ui.UILoadable
