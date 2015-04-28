@@ -243,7 +243,10 @@ class HFspecpredict_series:
 		pylab.show(block=False)
 
 class HFspectrum:
-	def __init__(self,data,formulas,concentrations,correctasym=None,correctasym_pertth=None):
+
+
+
+	def __init__(self,data,formulas,concentrations,correctasym=None,correctasym_pertth=None, initialise=True):
 		"""
 		class for building S(q,w) from tabulated Hartree-Fock Compton profiles to use in
 		the extraction algorithm.
@@ -257,6 +260,8 @@ class HFspectrum:
 				a momentum transfer dependent asymmetry correction is possible (i.e. no 
 				correction for low q, finite correction for high q data) 
 		"""
+		if not initialise:
+			return
 		# from raw data
 		self.eloss = data.eloss
 		self.tth   = data.tth
@@ -277,7 +282,7 @@ class HFspectrum:
 		self.V = np.zeros(np.shape(data.signals))
 		self.q = np.zeros(np.shape(data.signals))
 		if not correctasym_pertth:
-			for n in [ nn for nn in range(len(data.signals[0,:])) if  data.there_is_a_valid_roi_at(nn) ]:
+			for n in [ nn for nn in range(len(data.signals[0,:])) if  ((data.signals[:,nn]).sum()>0) ]:
 				
 
 				el,j,c,v,q = makeprofile_compds(formulas,concentrations,E0=self.cenom[n],tth=data.tth[n],correctasym=self.correctasym)
@@ -295,7 +300,7 @@ class HFspectrum:
 				print 'Currently %d scattering angles defined, but %d scaling factors provided!' % (len(self.tth), len(correctasym_pertth))
 				return
 			else:
-				for n in [ nn for nn in  range(len(data.signals[0,:])) if  data.there_is_a_valid_roi_at(nn) ]:
+				for n in [ nn for nn in  range(len(data.signals[0,:])) if  ((data.signals[:,nn]).sum()>0)     ]:
 					print self.correctasym, correctasym_pertth[n]
 
 					el,j,c,v,q = makeprofile_compds(formulas,concentrations,E0=self.cenom[n],tth=data.tth[n],correctasym=np.array(self.correctasym)*correctasym_pertth[n])
@@ -309,9 +314,47 @@ class HFspectrum:
 					self.q[:,n] = f(data.eloss)
 
 		# correct interpolation errors in q (first couple of values are 0.0, replace by smallest value) THIS NEEDS TO BE FIXED
-		for n in [ nn for nn in range(len(data.signals[0,:])) if  data.there_is_a_valid_roi_at(nn) ]:
+		for n in [ nn for nn in range(len(data.signals[0,:])) if  ((data.signals[:,nn]).sum()>0) ]:
 			inds = np.where(self.q[:,n] == 0)
 			self.q[inds,n] = self.q[np.where(self.q[:,n]>0)[0][0],n]
+
+        def save_state_hdf5(self, filename, groupname, comment=""):
+            import h5py
+            h5 = h5py.File(filename,"a")
+
+            h5.require_group(groupname)
+            h5group =  h5[groupname]
+            if(   "J" in h5group.keys() ):
+                raise Exception, (" Read data already present in  " + filename+":"+groupname)
+
+            for key in ["eloss" ,"tth" ,"E0" ,"cenom","formulas" ,"concentrations" ,"correctasym" ,"J" ,"C" ,"V", "q"]: 
+		    data = getattr(self,key)
+		    if key == "concentrations":
+			    s=data[0]
+			    for t in data[1:]:
+				    s=s+" "+t
+			    data=s
+		    h5group[key]  =  data
+
+            h5group["comment"]  = comment
+            h5.flush()
+            h5.close()
+
+        def load_state_hdf5(self, filename, groupname):
+            import h5py
+            h5 = h5py.File(filename,"r")
+
+            h5group =  h5[groupname]
+
+            for key in  ["eloss" ,"tth" ,"E0" ,"cenom","formulas" ,"concentrations" ,"correctasym" ,"J" ,"C" ,"V", "q"]: 
+                setattr(self,key, h5group[key][:])
+		if key== "concentrations":
+			data=str(h5group[key])
+			data=string.split(data," ")
+			setattr(self,key, data)
+            h5.flush()
+            h5.close()
+
 
 	def plotHFC(self):
 		pylab.clf()

@@ -82,14 +82,17 @@ class read_id20:
 	"""
 	def __init__(self,absfilename,energycolumn='energy',monitorcolumn='kap4dio',edfName=None,single_image=True):
 		self.scans         = {} # was a dictionary before
-		if not os.path.isfile(absfilename):
-			raise Exception('IOError! No such file, please check filename.')
-		self.path          = os.path.split(absfilename)[0] + '/'
-		self.filename = os.path.split(absfilename)[1]
-		if not edfName:
-			self.edfName = os.path.split(absfilename)[1]
-		else:
-			self.edfName = edfName
+                
+                if absfilename is not None:
+                    if not os.path.isfile(absfilename):
+                            raise Exception('IOError! No such file, please check filename.')
+                    self.path          = os.path.split(absfilename)[0] + '/'
+                    self.filename = os.path.split(absfilename)[1]
+                    if not edfName:
+                            self.edfName = os.path.split(absfilename)[1]
+                    else:
+                            self.edfName = edfName
+
 		self.single_image  = single_image
 		self.scannumbers   = []
 		self.EDF_PREFIXh   = 'edf/h_'
@@ -170,27 +173,29 @@ class read_id20:
 
             h5group =  h5[groupname]
 
-            for key in [ 
-		"eloss",
-		"energy",    
-		"signals",   
-		"errors",    
-		"qvalues",   
-		########### "groups",    
-		"cenom",     
-		"E0",        
-		"tth",       
-		"VDtth",     
-		"VUtth",     
-		"VBtth",     
-		"HRtth",     
-		"HLtth",     
-		"HBtth",     
-		"resolution",
-		"signals_orig",
-		"errors_orig"
-                ]:
-                setattr(self,key, h5group[key][:])
+            chiavi = {"eloss":array,
+                      "energy":array,    
+                      "signals":array,   
+                      "errors":array,    
+                      "qvalues":array,   
+                      ########### "groups":array,    
+                      "cenom":array,     
+                      "E0":float,        
+                      "tth":array,       
+                      "VDtth":array,     
+                      "VUtth":array,     
+                      "VBtth":array,     
+                      "HRtth":array,     
+                      "HLtth":array,     
+                      "HBtth":array,     
+                      "resolution":array,
+                      "signals_orig":array,
+                      "errors_orig":array
+                      }
+
+            for key in chiavi:
+                print key
+                setattr(self,key,chiavi[key]( array(h5group[key])))
             
             h5.flush()
             h5.close()

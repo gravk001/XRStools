@@ -10,7 +10,7 @@ import h5py
 import sys
 import xrs_rois
 import xrs_read
-
+import theory
 inputtext=""
 
 def main():
@@ -49,7 +49,48 @@ def help(yamlData):
 
 
 
+def  HFspectrum(yamlData):
+    """
+		class for building S(q,w) from tabulated Hartree-Fock Compton profiles to use in
+		the extraction algorithm.
 
+    EXAMPLE :
+
+    dataadress : "hdf5filename:full_nameof_signals_group"   # where load_scans wrote data
+    formulas   :  ['O']     # list of strings of chemical sum formulas of which the sample is made up
+    concentrations : [1.0]  # list of concentrations of how the different chemical formulas are mixed (sum should be 1)
+    correctasym    : [[0.0,0.0,0.0]]  #  single value or list of scaling values for the HR-correction to 
+			              # the 1s, 2s, and 2p shells. one value per element in the list of formulas
+    hfspectrum_address : "nameofgroup" # Target group for writing Relative to dataadress (and in the same file)!!!!
+
+ 
+    """
+
+    mydata = yamlData["HFspectrum"]
+    if mydata is not None and mydata.has_key("active") :
+        if mydata["active"]==0:
+            return   
+    
+    dataadress = mydata["dataadress"]
+    pos = dataadress.rfind(":")
+    if ( pos==-1):
+        raise Exception, """
+roiaddress   must be given in the form  roiaddress : "myfile.hdf5:/path/to/hdf5/group"
+but : was not found
+"""
+    filename, groupname = dataadress[:pos],dataadress [pos+1:]
+
+    reader = xrs_read.read_id20(None)
+    reader.load_state_hdf5( filename, groupname+"/"+"datas")
+
+    hf   = theory.HFspectrum(reader ,   
+                             mydata["formulas"]     ,
+                             mydata["concentrations"]     ,
+                             mydata["correctasym"]  
+                             )
+
+    hf.save_state_hdf5( filename, groupname+"/"+ mydata["hfspectrum_address"]+"/"+"datas", comment = inputtext )
+    
 
 def load_scans(yamlData):
     """
@@ -65,7 +106,7 @@ def load_scans(yamlData):
     n_loop           : 4
     long_scan        : 624
 
-    signaladdress : "nameofsignalgroup"  # Target group fro writing Relative to ROI (and in the same file)!!!!
+    signaladdress : "nameofsignalgroup"  # Target group for writing Relative to ROI (and in the same file)!!!!
 
     #############################################################
     # OPTIONALS
@@ -85,7 +126,6 @@ def load_scans(yamlData):
     if mydata is not None and mydata.has_key("active") :
         if mydata["active"]==0:
             return
-
 
     roiaddress=None
     roiaddress = mydata["roiaddress"]
@@ -136,7 +176,7 @@ but : was not found
         order = gvord(mydata,"order",        [0,1,2,3,4,5])
         )
 
-    reader.save_state_hdf5( filename, groupname+"/"+ mydata["signaladdress"], comment = inputtext )
+    reader.save_state_hdf5( filename, groupname+"/"+ mydata["signaladdress"]+"/"+"datas", comment = inputtext )
 
 #det value or default
 def gvord(yamldata, key, default=None):
@@ -251,7 +291,9 @@ swissknife_operations={
     "help"        :  help,
     "create_rois" :  create_rois,
     "load_scans" :  load_scans,
+    "HFspectrum"          : HFspectrum
 }
 
 if __name__=="__main__":
     main()
+
