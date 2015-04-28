@@ -48,10 +48,97 @@ def help(yamlData):
         print func.__doc__
 
 
+def Extraction(yamlData):
+    """ 
+    Function to extract the interesting signal after removal of Compton profile,
+    linear baselines,  Pearson profile
+    Example :
+
+    active : 1
+    dataadress   : "pippo.h5:/ROI_A/loaded_datas"         # where load_scans wrote data
+    HFaddress    : "pippo.h5:/ROI_A/loaded_datas/HF_O"    # where compton profiles have been calculated
+    # prenormrange : [ 5 , .inf ]		
+
+    analyzerAverage :                                     #  averaging over analysers
+        active : 1
+        which : [0,11  , 36,59   ]
+        errorweighing  : False
+
+    removeLinearAv :                                      #  fit a linear baseline and remove it
+        active  : 1
+        region1 :  [520.0,532.0]   
+        region2 :  None 
+        ewindow : 100 
+        scale : 1
+
+    removePearsonAv:                                      # fit a Pearson and remove it
+        active  : 0
+        region1 :  [520.0,532.0]   
+        region2 :  None  
+        guess :
+            Peak_position : 600.0
+            FWHM          :  10
+            Shape         : "Lorentzian" 
+            Peak_intensity: 100.0
+            linear_slope  : 1
+            linear_background : 0
+            scaling_factor : 1
+            
+    view   :   0
+    target :   "myextraction"                            # path relative to dataadress where extracted signal will be written
+
+    """
+
+    mydata = yamlData["Extraction"]
+    if  mydata.has_key("active") :
+        if mydata["active"]==0:
+            return   
+    reader , filename, groupname= read_reader(mydata, name="dataadress")
+    HF     = read_reader(mydata, name="hfspectrum_address")
+
+    extr  = extraction.extraction(reader , HF)
+    extr .analyzerAverage(lowq,errorweighing=False)
+
+    if mydata.has_key("analyzerAverage"):
+        aa_data = mydata["analyzerAverage"]
+        if gvord(aa_data,"active",True):
+            which = aa_data["which"]
+            errorweighing  = gvord(aa_data,"errorweighing",False)
+            extr .analyzerAverage(which,errorweighing=errorweighing)
+
+    if mydata.has_key("removeLinearAv"):
+        rla_data = mydata["removeLinearAv"]
+        if gvord(rla_data,"active",True):
+            region1 = rla_data["region1"]
+            region2 = gvord( rla_data,"region2",None)
+            ewindow = gvord( rla_data,"ewindow",100)
+            scale = gvord( rla_data,"scale",100)
+            extr .removeLinearAv(region1, region2=region2,ewindow=ewindow, 
+                                 scale=scale, view = gvord(rla_data,"view",False),                                 
+                             ) 
+
+    extr.save_state_hdf5( filename, groupname+"/"+ mydata["target"]+"/"+"datas", comment = inputtext )
+   
+
+
+def read_HF(mydata, name="hfspectrum_address")
+
+    dataadress = mydata[name]
+    pos = dataadress.rfind(":")
+    if ( pos==-1):
+        raise Exception, """
+hfspectrum_address   must be given in the form  roiaddress : "myfile.hdf5:/path/to/hdf5/group"
+but : was not found
+"""
+    filename, groupname = dataadress[:pos],dataadress [pos+1:]
+    HF = theory.HFspectrum(None,None,None, initialise=False)
+    HF.load_state_hdf5( filename, groupname+"/"+"datas")
+    return HF
+
 
 def  HFspectrum(yamlData):
     """
-		class for building S(q,w) from tabulated Hartree-Fock Compton profiles to use in
+		function for building S(q,w) from tabulated Hartree-Fock Compton profiles to use in
 		the extraction algorithm.
 
     EXAMPLE :
@@ -70,25 +157,14 @@ def  HFspectrum(yamlData):
     if mydata is not None and mydata.has_key("active") :
         if mydata["active"]==0:
             return   
-    
-    dataadress = mydata["dataadress"]
-    pos = dataadress.rfind(":")
-    if ( pos==-1):
-        raise Exception, """
-roiaddress   must be given in the form  roiaddress : "myfile.hdf5:/path/to/hdf5/group"
-but : was not found
-"""
-    filename, groupname = dataadress[:pos],dataadress [pos+1:]
 
-    reader = xrs_read.read_id20(None)
-    reader.load_state_hdf5( filename, groupname+"/"+"datas")
+    reader , filename, groupname= read_reader(mydata, name="dataadress")
 
     hf   = theory.HFspectrum(reader ,   
                              mydata["formulas"]     ,
                              mydata["concentrations"]     ,
                              mydata["correctasym"]  
                              )
-
     hf.save_state_hdf5( filename, groupname+"/"+ mydata["hfspectrum_address"]+"/"+"datas", comment = inputtext )
     
 
@@ -285,7 +361,22 @@ but : was not found
             h5.flush()
             h5.close()
 
-             
+           
+def read_reader(mydata, name="dataadress")
+
+    dataadress = mydata[name]
+    pos = dataadress.rfind(":")
+    if ( pos==-1):
+        raise Exception, """
+dataaddress   must be given in the form  roiaddress : "myfile.hdf5:/path/to/hdf5/group"
+but : was not found
+"""
+    filename, groupname = dataadress[:pos],dataadress [pos+1:]
+    reader = xrs_read.read_id20(None)
+    reader.load_state_hdf5( filename, groupname+"/"+"datas")
+    return reader, filename, groupname
+
+  
 
 swissknife_operations={
     "help"        :  help,
