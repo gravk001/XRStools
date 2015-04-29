@@ -1,14 +1,15 @@
-# help: "create_rois"
+help:
+   "load_scans"
 
 create_rois:
     active : 0
     expdata :  "/scisoft/users/mirone/WORKS/Christoph/for_alessandro/hydra" 
     scans   : [623]                  
-    roiaddress : "myfile.hdf5:/ROI_A"
+    roiaddress : "test.hdf5:/ROI_A"
 
 load_scans :
     active : 0
-    roiaddress :  "pippo.h5:/ROI_A"  
+    roiaddress :  "test.hdf5:/ROI_A"  
     expdata    :  "/scisoft/users/mirone/WORKS/Christoph/for_alessandro/hydra"  
     elastic_scans    : [623]
     fine_scans       : [625,629,633,637,641]
@@ -28,8 +29,8 @@ load_scans :
 
 
 HFspectrum :
-    active : 0
-    dataadress : "pippo.h5:/ROI_A/loaded_datas"   # where load_scans wrote data
+    active : 1
+    dataadress : "test.hdf5:/ROI_A/loaded_datas"   # where load_scans wrote data
     formulas   :  ['O']     # list of strings of chemical sum formulas of which the sample is made up
     concentrations : [1.0]  # list of concentrations of how the different chemical formulas are mixed (sum should be 1)
     correctasym    : [[0.0,0.0,0.0]]  #  single value or list of scaling values for the HR-correction to 
@@ -40,8 +41,8 @@ HFspectrum :
 Extraction :	       
     active : 0
 
-    dataadress   : "pippo.h5:/ROI_A/loaded_datas"   # where load_scans wrote data
-    HFaddress    : "pippo.h5:/ROI_A/loaded_datas/HF_O"
+    dataadress   : "test.hdf5:/ROI_A/loaded_datas"   # where load_scans wrote data
+    hfspectrum_address    : "test.hdf5:/ROI_A/loaded_datas/HF_O"
     # prenormrange : [ 5 , .inf ]		
 
     analyzerAverage :
@@ -69,9 +70,7 @@ Extraction :
             linear_background : 0
             scaling_factor : 1
             
-    view :
-        emin : 500.0 
-        emax : 700.0
-        normrange :  None
+    view : True
+   
 
     target :   "myextraction"

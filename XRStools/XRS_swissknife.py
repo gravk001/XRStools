@@ -11,6 +11,7 @@ import sys
 import xrs_rois
 import xrs_read
 import theory
+import extraction
 inputtext=""
 
 def main():
@@ -94,10 +95,9 @@ def Extraction(yamlData):
         if mydata["active"]==0:
             return   
     reader , filename, groupname= read_reader(mydata, name="dataadress")
-    HF     = read_reader(mydata, name="hfspectrum_address")
+    HF     = read_HF(mydata, name="hfspectrum_address")
 
     extr  = extraction.extraction(reader , HF)
-    extr .analyzerAverage(lowq,errorweighing=False)
 
     if mydata.has_key("analyzerAverage"):
         aa_data = mydata["analyzerAverage"]
@@ -114,14 +114,15 @@ def Extraction(yamlData):
             ewindow = gvord( rla_data,"ewindow",100)
             scale = gvord( rla_data,"scale",100)
             extr .removeLinearAv(region1, region2=region2,ewindow=ewindow, 
-                                 scale=scale, view = gvord(rla_data,"view",False),                                 
+                                 scale=scale, view = gvord(mydata,"view",False),                                 
                              ) 
-
+    print gvord(mydata,"view",False)
+  
     extr.save_state_hdf5( filename, groupname+"/"+ mydata["target"]+"/"+"datas", comment = inputtext )
    
 
 
-def read_HF(mydata, name="hfspectrum_address")
+def read_HF(mydata, name="hfspectrum_address"):
 
     dataadress = mydata[name]
     pos = dataadress.rfind(":")
@@ -362,7 +363,7 @@ but : was not found
             h5.close()
 
            
-def read_reader(mydata, name="dataadress")
+def read_reader(mydata, name="dataadress"):
 
     dataadress = mydata[name]
     pos = dataadress.rfind(":")
@@ -382,7 +383,8 @@ swissknife_operations={
     "help"        :  help,
     "create_rois" :  create_rois,
     "load_scans" :  load_scans,
-    "HFspectrum"          : HFspectrum
+    "HFspectrum"          : HFspectrum,
+    "Extraction"    :  Extraction
 }
 
 if __name__=="__main__":

@@ -47,7 +47,7 @@ class extraction:
 		self.avqvals    = np.array([])
 
 		# rough normalization over range given by prenormrange
-		for n in [ nn for nn in  range(len(self.signals[0,:])) if  self.data.there_is_a_valid_roi_at(nn) ]:
+		for n in [ nn for nn in  range(len(self.signals[0,:])) if   ((self.signals[:,nn]).sum()>0)  ]:
 		# for n in range(len(self.signals[0,:])):
 			HFnorm = np.trapz(self.J[:,n],self.eloss)
 			inds   = np.where(np.logical_and(self.eloss>=prenormrange[0],self.eloss<=prenormrange[1]))[0]
@@ -108,7 +108,7 @@ class extraction:
 		averr = np.zeros((len(self.eloss),len(columns)))
 		avC   = np.zeros((len(self.eloss),len(columns)))
 		avqvals = np.zeros((len(self.eloss),len(columns)))
-		for n in [ nn for nn in  range(len(columns)) if  self.data.there_is_a_valid_roi_at(nn) ]:
+		for n in [ nn for nn in  range(len(columns)) if  ((self.signals[:,nn]).sum()>0)   ]:
 			# find data points with error = 0.0 and replace by 1.0
 			inds = np.where(self.errors[:,columns[n]] == 0.0)[0]
 			for ind in inds:
@@ -378,7 +378,7 @@ class extraction:
 		self.sqwaverr = newerrs
 
                 self.yres = yres
-                self.newspec
+                self.newspec = newspec
 
                 if view:
                         plt.ion()
@@ -391,6 +391,7 @@ class extraction:
                         plt.xlim(region1[0]-ewindow,region1[-1]+ewindow) 
                         plt.autoscale(enable=True, axis='y')
                         plt.draw()
+			raw_input()
 
 
 	def removepoly(self,whichq,emin,emax,polyorder=2.0,ewindow=100.0):
@@ -1741,8 +1742,8 @@ class extraction:
             h5.require_group(groupname)
             h5group =  h5[groupname]
             for key in ["eloss" ,"sqwav" ,"sqwaverr" ,"avsignals","avC" ,"yres" ,"newspec" ]: 
-                    if data.has_key( key ) :
-                            data = getattr(self,key)
+                    if hasattr( self, key ) :
+			    data= getattr(self,key)
                             h5group[key]  =  data
 
             h5group["comment"]  = comment

@@ -3,8 +3,9 @@
 
 from xrs_utilities import *
 from math_functions import *
-
+import string
 import numpy as np
+from numpy import array
 import pylab 
 import math
 from scipy import interpolate, signal, integrate, constants, optimize
@@ -345,13 +346,27 @@ class HFspectrum:
             h5 = h5py.File(filename,"r")
 
             h5group =  h5[groupname]
-
-            for key in  ["eloss" ,"tth" ,"E0" ,"cenom","formulas" ,"concentrations" ,"correctasym" ,"J" ,"C" ,"V", "q"]: 
-                setattr(self,key, h5group[key][:])
+	    chiavi = {
+	    "eloss":array ,
+	    "tth":array ,
+	    "E0":float ,
+	    "cenom":array,
+	    "formulas":array ,
+	    "concentrations":array ,
+	    "correctasym":array ,
+	    "J":array ,
+	    "C":array ,
+	    "V":array, 
+	    "q":array
+	    }
+	    
+            for key in  chiavi: 
 		if key== "concentrations":
 			data=str(h5group[key])
 			data=string.split(data," ")
 			setattr(self,key, data)
+		else:
+			setattr(self,key, chiavi[key](array(h5group[key]))  )
             h5.flush()
             h5.close()
 

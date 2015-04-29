@@ -169,6 +169,10 @@ class read_id20:
 
         def load_state_hdf5(self, filename, groupname):
             import h5py
+
+            print  "filename  " , filename
+            print  "groupname  " , groupname
+
             h5 = h5py.File(filename,"r")
 
             h5group =  h5[groupname]
@@ -194,7 +198,7 @@ class read_id20:
                       }
 
             for key in chiavi:
-                print key
+                # print key
                 setattr(self,key,chiavi[key]( array(h5group[key])))
             
             h5.flush()
