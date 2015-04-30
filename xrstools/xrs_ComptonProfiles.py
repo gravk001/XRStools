@@ -38,8 +38,39 @@ import numpy as np
 import xrs_utilities
 import xrs_fileIO
 
-from scipy import interpolate, integrate, constants
+from scipy import interpolate, integrate, constants, optimize
+from re import findall
+from collections import defaultdict
 
+def list_duplicates(seq):
+    tally = defaultdict(list)
+    for i,item in enumerate(seq):
+        tally[item].append(i)
+    return [(key,locs) for key,locs in tally.items()] # if len(locs)>1]
+
+def parseChemFormula(ChemFormula):
+    """
+    """
+    # parse single formula
+    all_elements  = []
+    all_stoichios = []
+    splitted = findall(r'([A-Z][a-z]*)(\d*)',ChemFormula)
+    all_elements.extend([element[0] for element in splitted])
+    all_stoichios.extend([(int(element[1]) if element[1] else 1) for element in splitted])
+    # sort out double appearances of elements
+    elements = []
+    stoichiometries = []
+    duplicates = list_duplicates(all_elements)
+    for pair in duplicates:
+        elements.append(pair[0])
+        stoich = 0
+        stoichiometries.append(sum( [all_stoichios[ii] for ii in pair[1]]) )
+    return elements, stoichiometries
+
+def getAtomicWeight(Z):
+    """Returns the atomic weight.
+    """
+    return xrs_utilities.myprho(1.0,'Si')[2]
 
 class SqwPredict:
     """Class to build a S(q,w) prediction based on HF Compton Profiles.
@@ -52,8 +83,8 @@ class SqwPredict:
     pass
     
     
-class ComptonProfile:
-    """Class to construct and handle Hartree-Fock atomic Compton Profiles.
+class AtomProfile:
+    """Class to construct and handle Hartree-Fock atomic Compton Profile of a single atoms.
 
     Attributes:
     -----------
@@ -68,7 +99,7 @@ class ComptonProfile:
       JperShell (dict. of np.arrays):
       VperShell (dict. of np.arrays):
     """
-    def __init__(self, element, filename):
+    def __init__(self, element, filename, stoichiometry=1):
         self.filename  = filename
         self.element   = element
         self.elementNr = xrs_utilities.element(element)
@@ -80,16 +111,76 @@ class ComptonProfile:
         self.CperShell = {}
         self.JperShell = {}
         self.VperShell = {}
+        self.stoichiometry = stoichiometry
+        self.atomic_weight = getAtomicWeight(element)
 
-    def get_elossProfiles(self,E0, twotheta):
-        enScale, J_total, C_total, V_total, q, J_shell, C_shell, V_shell = elossProfiles(element,filename,E0,twotheta,correctasym=None,valence_cutoff=20.0)
-        self.eloss     = enscle
+    def get_elossProfiles(self,E0, twotheta,correctasym=None,valence_cutoff=20.0):
+        enScale, J_total, C_total, V_total, q, J_shell, C_shell, V_shell = elossProfile(self.element,self.filename,E0,twotheta,correctasym,valence_cutoff)
+        self.eloss     = enScale
         self.C_total   = C_total
         self.J_total   = J_total
         self.V_total   = V_total
         self.CperShell = C_shell
         self.JperShell = J_shell
         self.VperShell = V_shell
+
+class FormulaProfile:
+    """Class to construct and handle Hartree-Fock atomic Compton Profile of a single chemical compound.
+    """
+    def __init__(self, formula, filename):
+        self.filename  = filename
+        self.formula   = formula
+        self.elements, self.stoichiometries = parseChemFormula(formula)
+        self.element_Nrs = [xrs_utilities.element(element) for element in self.elements]
+        self.AtomProfiles = []
+        for element,stoichio in zip(self.elements,self.stoichiometries):
+            CP = AtomProfile(element,filename,stoichiometry=stoichio)
+            self.AtomProfiles.append(CP)
+        self.eloss     = []
+        self.C_total   = []
+        self.J_total   = []
+        self.V_total   = []
+
+    def get_elossProfiles(self,E0, twotheta,correctasym=None,valence_cutoff=20.0):
+        for AtomProfile in self.AtomProfiles:
+            AtomProfile.get_elossProfiles(E0, twotheta,correctasym,valence_cutoff)
+        self.eloss = self.AtomProfiles[0].eloss
+        self.C_total = np.zeros_like(self.AtomProfiles[0].C_total)
+        self.J_total = np.zeros_like(self.AtomProfiles[0].J_total)
+        self.V_total = np.zeros_like(self.AtomProfiles[0].V_total)
+        for AP, ii in zip(self.AtomProfiles,range(len(self.AtomProfiles))):
+            self.C_total += np.interp(self.eloss,AP.eloss,AP.C_total)*self.stoichiometries[ii]
+            self.J_total += np.interp(self.eloss,AP.eloss,AP.J_total)*self.stoichiometries[ii]
+            self.V_total += np.interp(self.eloss,AP.eloss,AP.V_total)*self.stoichiometries[ii]
+
+
+class SampleProfile:
+    """Class to construct and handle Hartree-Fock atomic Compton Profile of sample composed of several chemical compounds.
+    """
+    def __init__(self, formulas, stoich_weights, filename):
+        self.filename  = filename
+        self.formulas   = formulas
+        self.FormulaProfiles = []
+        for formula in self.formulas:
+            CP = FormulaProfile(formula,filename)
+            self.FormulaProfiles.append(CP)
+        self.eloss     = []
+        self.C_total   = []
+        self.J_total   = []
+        self.V_total   = []
+
+    def get_elossProfiles(self,E0, twotheta):
+        for AtomProfile in self.AtomProfiles:
+            AtomProfile.get_elossProfiles(E0, twotheta)
+        self.eloss = self.AtomProfiles[0].eloss
+        self.C_total = np.zeros_like(self.AtomProfiles[0].C_total)
+        self.J_total = np.zeros_like(self.AtomProfiles[0].J_total)
+        self.V_total = np.zeros_like(self.AtomProfiles[0].V_total)
+        for AP, ii in zip(self.AtomProfiles,range(len(self.AtomProfiles))):
+            self.C_total += np.interp(self.eloss,AP.eloss,AP.C_total)*self.stoichiometries[ii]
+            self.J_total += np.interp(self.eloss,AP.eloss,AP.J_total)*self.stoichiometries[ii]
+            self.V_total += np.interp(self.eloss,AP.eloss,AP.V_total)*self.stoichiometries[ii]
+
 
 
 class ComptonProfiles:

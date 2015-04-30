@@ -56,8 +56,8 @@ from scipy.optimize import leastsq, fmin
 from scipy.interpolate import Rbf, RectBivariateSpline
 from scipy.integrate import odeint
 
-data_installation_dir = os.path.join( os.path.dirname(os.path.abspath(__file__)),"..","..","..","..","share","xrstools","data")
-#  installation_dir = os.path.abspath('.')
+# data_installation_dir = os.path.join( os.path.dirname(os.path.abspath(__file__)),"..","..","..","..","share","xrstools","data")
+data_installation_dir = os.path.abspath('.')
 # os.path.join(getattr(install_cmd, 'install_lib'),"xrstools"+version,"..","..","..","..","share","xrstools","data")
 
 
