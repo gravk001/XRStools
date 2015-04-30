@@ -1,4 +1,4 @@
-from xrstools import xrs_read, theory, extraction, roiSelectionWidget, xrs_rois,roifinder_and_gui
+from XRStools import xrs_read, theory, extraction, roiSelectionWidget, xrs_rois,roifinder_and_gui
 from pylab import *
 import pickle
 
@@ -43,7 +43,7 @@ h2o.set_roiObj(roiob)
 h2o.loadelasticdirect([623])
 
 
-h2o.loadloopdirect([625,629,633,637,641],1)
+h2o.loadloopdirect([625,629,633,637,641],4)
 h2o.loadlongdirect(624)
 
 

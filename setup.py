@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 #-*- coding: utf-8 -*-
 #
-#    Project: xrstools
+#    Project: XRStools
 #
 
 """
-Installer script for xrstools
+Installer script for XRStools
 """
 
 __authors__   = ["Ch.J. Sahle"]
@@ -50,14 +50,14 @@ class smart_install_data(install_data):
     def run(self):
         global  version
         install_cmd = self.get_finalized_command('install')
-        self.install_dir = os.path.join(getattr(install_cmd, 'install_lib'),"xrstools"+version,"..","..","..","..","share","xrstools","data")
+        self.install_dir = os.path.join(getattr(install_cmd, 'install_lib'),"XRStools"+version,"..","..","..","..","share","XRStools","data")
         print "DATA to be installed in %s" %  self.install_dir
 
-        install_lib_dir = os.path.join(getattr(install_cmd, 'install_lib'),"xrstools"+version )
+        install_lib_dir = os.path.join(getattr(install_cmd, 'install_lib'),"XRStools"+version )
         if not os.path.exists(self.install_dir):
             os.makedirs(self.install_dir)
         print " QUI " 
-        for filein in glob.glob('xrstools/*ui'):
+        for filein in glob.glob('XRStools/*ui'):
             filedest = os.path.join(install_lib_dir, os.path.basename(filein))
             print "cp %s %s"%(filein,filedest)
             os.system("cp %s %s"%(filein,filedest))
@@ -75,8 +75,8 @@ class smart_install_scripts(install_scripts):
         self.install_lib_dir = getattr(install_cmd, 'install_lib')
             
         self.outfiles = []
-        for filein in glob.glob('xrstools/scripts/*'):
-            if filein in glob.glob('xrstools/scripts/*~'): continue
+        for filein in glob.glob('XRStools/scripts/*'):
+            if filein in glob.glob('XRStools/scripts/*~'): continue
             
             print "INSTALLO ", filein
             
@@ -90,7 +90,7 @@ class smart_install_scripts(install_scripts):
                 os.remove(filedest)
                 
             text = open(filein, 'r').read()
-            text=string.replace(text,"import xrstools", "import xrstools"+version)
+            text=string.replace(text,"import XRStools", "import XRStools"+version)
             text=string.replace(text,"python", sys.executable)
 
             f=open(filedest, 'w')
@@ -127,10 +127,10 @@ if sys.platform == "win32":
     #        shutil.copyfile(filein, filein + ".py")
     #        script_files.append(filein + ".py")
 else:
-    script_files = glob.glob("xrstools/scripts/*")
+    script_files = glob.glob("XRStools/scripts/*")
 
-version = '' #[eval(l.split("=")[1]) for l in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "xrstools", "__init__.py")) if l.strip().startswith("version")][0]
-# version = '0.0' #[eval(l.split("=")[1]) for l in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "xrstools", "__init__.py")) if l.strip().startswith("version")][0]
+version = '' #[eval(l.split("=")[1]) for l in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "XRStools", "__init__.py")) if l.strip().startswith("version")][0]
+# version = '0.0' #[eval(l.split("=")[1]) for l in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "XRStools", "__init__.py")) if l.strip().startswith("version")][0]
 
 # We subclass the build_ext class in order to handle compiler flags
 # for openmp and opencl etc in a cross platform way
@@ -267,18 +267,18 @@ cython_ext2 = Extension(name="spotpicker_cy",
 cmdclass['install_scripts'] = smart_install_scripts
 cmdclass['install_data'] = smart_install_data
 
-# setup(name          = 'xrstools',
+# setup(name          = 'XRStools',
 #       version       = version,
 #       author        = "Christoph J. Sahle",
 #       author_email  = "christoph.sahle@esrf.fr",
 #       description   = 'An XRS data analysis package.',
 #       url           = "christoph.sahle@esrf.fr",
 #       download_url  = "",
-#       ext_package   = "xrstools"+version,
+#       ext_package   = "XRStools"+version,
 #       scripts       = script_files,
-#       packages      = ["xrstools"+version],
-#       package_dir   = {"xrstools"+version:"xrstools" },
-#       package_data  = {"xrstools"+version: ['data/*.dat','data/chitables/*.dat','data/refl_database/*.dat','docs/*.txt','examples/*.*']},
+#       packages      = ["XRStools"+version],
+#       package_dir   = {"XRStools"+version:"XRStools" },
+#       package_data  = {"XRStools"+version: ['data/*.dat','data/chitables/*.dat','data/refl_database/*.dat','docs/*.txt','examples/*.*']},
 #       test_suite    = "test",
 #       cmdclass      = cmdclass,
 #       ext_modules   = ext_modules
@@ -289,18 +289,18 @@ cmdclass['install_data'] = smart_install_data
 
 
 
-setup(name='xrstools',
+setup(name='XRStools',
       version=version,
       author="Christoph Sahal",
       author_email="",
       description='descrizione da farsi qui',
       url="christoph.sahle@esrf.fr",
       download_url="",
-      ext_package="xrstools"+version,
+      ext_package="XRStools"+version,
       scripts=script_files,
       # ext_modules=[Extension(**dico) for dico in ext_modules],
-      packages=["xrstools"+version],
-      package_dir={"xrstools"+version:"xrstools" },
+      packages=["XRStools"+version],
+      package_dir={"XRStools"+version:"XRStools" },
       test_suite="test",
       cmdclass=cmdclass,
       data_files=data_files,

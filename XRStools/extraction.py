@@ -47,7 +47,7 @@ class extraction:
 		self.avqvals    = np.array([])
 
 		# rough normalization over range given by prenormrange
-		for n in [ nn for nn in  range(len(self.signals[0,:])) if  self.data.there_is_a_valid_roi_at(nn) ]:
+		for n in [ nn for nn in  range(len(self.signals[0,:])) if   ((self.signals[:,nn]).sum()>0)  ]:
 		# for n in range(len(self.signals[0,:])):
 			HFnorm = np.trapz(self.J[:,n],self.eloss)
 			inds   = np.where(np.logical_and(self.eloss>=prenormrange[0],self.eloss<=prenormrange[1]))[0]
@@ -108,7 +108,7 @@ class extraction:
 		averr = np.zeros((len(self.eloss),len(columns)))
 		avC   = np.zeros((len(self.eloss),len(columns)))
 		avqvals = np.zeros((len(self.eloss),len(columns)))
-		for n in [ nn for nn in  range(len(columns)) if  self.data.there_is_a_valid_roi_at(nn) ]:
+		for n in [ nn for nn in  range(len(columns)) if  ((self.signals[:,nn]).sum()>0)   ]:
 			# find data points with error = 0.0 and replace by 1.0
 			inds = np.where(self.errors[:,columns[n]] == 0.0)[0]
 			for ind in inds:
@@ -352,7 +352,7 @@ class extraction:
 		self.sqwav    = self.avsignals - yres
 		self.sqwaverr = self.averrors
 
-	def removeLinearAv(self,region1,region2=None,ewindow=100.0,scale=1):
+	def removeLinearAv(self,region1,region2=None,ewindow=100.0,scale=1, view=False):
 		"""
 		fits a linear function as background in the range emin-emax from averaged data and saves the result in self.sqwav and self.sqwerrav
 		"""
@@ -367,25 +367,32 @@ class extraction:
 		else:
 			region = range1
 
-		plt.ion()
-		plt.cla()
 
 		res  = np.polyfit(self.eloss[region],self.avsignals[region], 1)
 		yres = np.polyval(res, self.eloss)
 
 		newspec = (self.avsignals-yres)*scale
 		newerrs = self.averrors*scale
-		plt.plot(self.eloss,self.avsignals,self.eloss,yres,self.eloss,newspec,self.eloss,self.avC)
-		plt.legend(('signal','linear fit','signal - linear','av. core Compton'))
-		plt.xlabel('energy loss [eV]')
-		plt.ylabel('signal [a.u.]')
-		plt.grid(False)
-		plt.xlim(region1[0]-ewindow,region1[-1]+ewindow) 
-		plt.autoscale(enable=True, axis='y')
-		plt.draw()
 
 		self.sqwav    = newspec
 		self.sqwaverr = newerrs
+
+                self.yres = yres
+                self.newspec = newspec
+
+                if view:
+                        plt.ion()
+                        plt.cla()
+                        plt.plot(self.eloss,self.avsignals,self.eloss,yres,self.eloss,newspec,self.eloss,self.avC)
+                        plt.legend(('signal','linear fit','signal - linear','av. core Compton'))
+                        plt.xlabel('energy loss [eV]')
+                        plt.ylabel('signal [a.u.]')
+                        plt.grid(False)
+                        plt.xlim(region1[0]-ewindow,region1[-1]+ewindow) 
+                        plt.autoscale(enable=True, axis='y')
+                        plt.draw()
+			raw_input()
+
 
 	def removepoly(self,whichq,emin,emax,polyorder=2.0,ewindow=100.0):
 		"""
@@ -1724,6 +1731,24 @@ class extraction:
 		else: 
 			self.sqwav    = np.sum(av,axis=1)
 			self.sqwaverr = np.sqrt(np.sum(np.absolute(self.errors)**2.0,axis=1)) # check this again
+
+
+        def save_state_hdf5(self,  filename, groupname, comment ="" ):
+            import h5py
+            h5 = h5py.File(filename,"a")
+            if(  groupname  in h5.keys() ):
+                del h5[groupname]
+
+            h5.require_group(groupname)
+            h5group =  h5[groupname]
+            for key in ["eloss" ,"sqwav" ,"sqwaverr" ,"avsignals","avC" ,"yres" ,"newspec" ]: 
+                    if hasattr( self, key ) :
+			    data= getattr(self,key)
+                            h5group[key]  =  data
+
+            h5group["comment"]  = comment
+            h5.flush()
+            h5.close()
 
 	def savetxtsqwav(self,filename, emin=None, emax=None, normrange=None):
 		"""

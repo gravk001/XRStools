@@ -79,7 +79,17 @@
     <addaction name="actionWrite_mask_on_file"/>
     <addaction name="actionWrite_masksDict_on_file"/>
     <addaction name="actionLoad_masksDict_from_file"/>
+    <addaction name="actionLoad_maskDict_from_hdf5"/>
    </widget>
+   <widget class="QMenu" name="menuFIle">
+    <property name="title">
+     <string>FIle</string>
+    </property>
+    <addaction name="actionExit"/>
+    <addaction name="actionConfirm_And_Exit"/>
+    <addaction name="actionLoad_image_from_hdf5"/>
+   </widget>
+   <addaction name="menuFIle"/>
    <addaction name="menuRemote"/>
    <addaction name="menuLocal"/>
    <addaction name="menuActions"/>
@@ -172,6 +182,31 @@
   <action name="actionLoad_masksDict_from_file">
    <property name="text">
     <string>load masksDict from file</string>
+   </property>
+  </action>
+  <action name="actionExit">
+   <property name="text">
+    <string>Exit</string>
+   </property>
+  </action>
+  <action name="actionConfirm_And_Exit">
+   <property name="text">
+    <string>Confirm And Exit</string>
+   </property>
+  </action>
+  <action name="actionLoad_image_from_hdf5_file">
+   <property name="text">
+    <string>load image from hdf5 file</string>
+   </property>
+  </action>
+  <action name="actionLoad_image_from_hdf5">
+   <property name="text">
+    <string>load image from hdf5</string>
+   </property>
+  </action>
+  <action name="actionLoad_maskDict_from_hdf5">
+   <property name="text">
+    <string>load maskDict from hdf5</string>
    </property>
   </action>
  </widget>

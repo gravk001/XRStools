@@ -82,14 +82,17 @@ class read_id20:
 	"""
 	def __init__(self,absfilename,energycolumn='energy',monitorcolumn='kap4dio',edfName=None,single_image=True):
 		self.scans         = {} # was a dictionary before
-		if not os.path.isfile(absfilename):
-			raise Exception('IOError! No such file, please check filename.')
-		self.path          = os.path.split(absfilename)[0] + '/'
-		self.filename = os.path.split(absfilename)[1]
-		if not edfName:
-			self.edfName = os.path.split(absfilename)[1]
-		else:
-			self.edfName = edfName
+                
+                if absfilename is not None:
+                    if not os.path.isfile(absfilename):
+                            raise Exception('IOError! No such file, please check filename.')
+                    self.path          = os.path.split(absfilename)[0] + '/'
+                    self.filename = os.path.split(absfilename)[1]
+                    if not edfName:
+                            self.edfName = os.path.split(absfilename)[1]
+                    else:
+                            self.edfName = edfName
+
 		self.single_image  = single_image
 		self.scannumbers   = []
 		self.EDF_PREFIXh   = 'edf/h_'
@@ -129,6 +132,105 @@ class read_id20:
 		# input
 		self.roi_obj = [] # an instance of the roi_object class from the xrs_rois module (new)
 
+
+
+        def save_state_hdf5(self, filename, groupname, comment=""):
+            import h5py
+            h5 = h5py.File(filename,"a")
+
+            h5.require_group(groupname)
+            h5group =  h5[groupname]
+            if(   "eloss" in h5group.keys() ):
+                raise Exception, (" Read data already present in  " + filename+":"+groupname)
+            for key in [ 
+		"eloss",
+		"energy",    
+		"signals",   
+		"errors",    
+		"qvalues",   
+		########### "groups",    
+		"cenom",     
+		"E0",        
+		"tth",       
+		"VDtth",     
+		"VUtth",     
+		"VBtth",     
+		"HRtth",     
+		"HLtth",     
+		"HBtth",     
+		"resolution",
+		"signals_orig",
+		"errors_orig"
+                ]:
+                h5group[key]  = getattr(self,key)
+            h5group["comment"]  = comment
+            h5.flush()
+            h5.close()
+
+        def load_state_hdf5(self, filename, groupname):
+            import h5py
+
+            print  "filename  " , filename
+            print  "groupname  " , groupname
+
+            h5 = h5py.File(filename,"r")
+
+            h5group =  h5[groupname]
+
+            chiavi = {"eloss":array,
+                      "energy":array,    
+                      "signals":array,   
+                      "errors":array,    
+                      "qvalues":array,   
+                      ########### "groups":array,    
+                      "cenom":array,     
+                      "E0":float,        
+                      "tth":array,       
+                      "VDtth":array,     
+                      "VUtth":array,     
+                      "VBtth":array,     
+                      "HRtth":array,     
+                      "HLtth":array,     
+                      "HBtth":array,     
+                      "resolution":array,
+                      "signals_orig":array,
+                      "errors_orig":array
+                      }
+
+            for key in chiavi:
+                # print key
+                setattr(self,key,chiavi[key]( array(h5group[key])))
+            
+            h5.flush()
+            h5.close()
+
+            
+        def save_state(self):
+            d={}
+            for key in [ 
+		"eloss",
+		"energy",    
+		"signals",   
+		"errors",    
+		"qvalues",   
+		"groups",    
+		"cenom",     
+		"E0",        
+		"tth",       
+		"VDtth",     
+		"VUtth",     
+		"VBtth",     
+		"HRtth",     
+		"HLtth",     
+		"HBtth",     
+		"resolution",
+		"signals_orig",
+		"errors_orig"
+                ]:
+                d[key]  = getattr(self,key)
+            f=open("datas.pick","w")
+            pickle.dump(d,f)
+            f.close()
 
         def there_is_a_valid_roi_at(self,n):
              return n<len(self.roi_obj.indices) and len(self.roi_obj.indices[n])
@@ -740,4 +842,8 @@ class read_id20:
 				backnorm   = np.trapz(self.signals[inds,backroinum],self.eloss[inds])
 				background = self.signals[:,backroinum]/backnorm*expnorm
 				self.signals[:,ii] -= background # subtract background roi
+
+
+
+
 

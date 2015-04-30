@@ -367,3 +367,26 @@ def swap_indices_old_rois(old_indices):
 
 
 
+
+
+def  load_rois_fromh5(h5group_tot,md):
+    
+    h5group = h5group_tot["rois_definition/rois_dict"]
+    for key in h5group.keys():
+        md[key]=[]
+        md[key].append(h5group[key]["origin"][:])
+        md[key].append(h5group[key]["mask"][:])
+
+    h5data = h5group_tot["rois_definition/image"]
+    shape = h5data.shape
+
+    return shape
+
+
+
+def  write_rois_toh5(h5group,md):
+    for key in md.keys():
+        h5group.require_group(key)
+        h5group[key]["origin"]=md[key][0]
+        h5group[key]["mask"]=md[key][1]
+    
