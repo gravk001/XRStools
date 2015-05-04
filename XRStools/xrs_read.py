@@ -330,12 +330,18 @@ class read_id20:
 				edfmats[m,self.DET_PIXEL_NUMy/2:,:]  = edfmatsh[m,:,:]
 		else:
 			# initiate arrays for the edf-files
-			edfmats  = np.array(np.zeros((len(counters['ccdno']),self.DET_PIXEL_NUMy,self.DET_PIXEL_NUMx)))
+			#edfmats  = np.array(np.zeros((len(counters['ccdno']),self.DET_PIXEL_NUMy,self.DET_PIXEL_NUMx)))
+			#edfmats = np.array([])
 			# load edf-files
 			for m in range(len(counters['ccdno'])):
 				ccdnumber = counters['ccdno'][m]
 				edfname   = self.path + self.EDF_PREFIX + self.edfName + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
-				edfmats[m,:,:] = (xrs_utilities.edfread_test(edfname))
+				if m == 0:
+					edfshape = xrs_fileIO.EdfRead(edfname).shape
+					edfmats = np.zeros((  len(counters['ccdno']), edfshape[0] ,  edfshape[1] ))
+					edfmats[m,:,:] = (xrs_fileIO.EdfRead(edfname))
+				else:
+					edfmats[m,:,:] = (xrs_fileIO.EdfRead(edfname))
 
 		# add the scannumber to self.scannumbers, if not already present
 		if not scannumber in self.scannumbers:

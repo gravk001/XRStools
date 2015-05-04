@@ -132,7 +132,15 @@ def get_polygon_rois_eachdet(scans,DET_PIXEL_NUM,  scannumbers,logscaling=True,c
         roi_obj = merged_obj
         return roi_obj
 
+def get_zoom_rois(scans,scannumbers,logscaling=True,colormap='jet',interpolation='nearest'):
+        # create a big image
+        image = xrs_scans.create_sum_image(scans,scannumbers)
 
+        # create one roi_object per sub-image
+        roi_obj = roi_finder()
+        roi_obj.get_zoom_rois(image,logscaling=logscaling,colormap=colormap,interpolation=interpolation)        
+
+        return roi_obj.roi_obj
 
 
 

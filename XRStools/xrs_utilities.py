@@ -823,6 +823,57 @@ def abscorr2(mu1,mu2,alpha,beta,samthick):
 		ac = cosa/(samthick*np.exp(-mu1*samthick/cosa))
 	return ac
 
+def absCorrection(mu1,mu2,alpha,beta,samthick,geometry='transmission'):
+	"""
+        **absCorrection**
+
+        Calculates absorption correction for given mu1 and mu2.
+	Multiply the measured spectrum with this correction factor.
+        This is a translation of Keijo Hamalainen's Matlab function (KH 30.05.96).
+
+	Args
+	----
+	mu1 : np.array
+            Absorption coefficient for the incident energy in [1/cm].
+	mu2 : np.array
+            Absorption coefficient for the scattered energy in [1/cm].
+	alpha : float
+            Incident angle relative to plane normal in [deg].
+	beta : float
+            Exit angle relative to plane normal [deg].
+	samthick : float 
+            Sample thickness in [cm].
+        geometry : string, optional
+            Key word for different sample geometries ('transmission', 'reflection', 'sphere'). 
+            If *geometry* is set to 'sphere', no angular dependence is assumed.
+
+	Returns
+	-------
+	ac : np.array
+            Absorption correction factor. Multiply this with your measured spectrum.
+
+	"""
+	cosa = np.cos(math.radians(alpha))
+	cosb = np.cos(math.radians(beta))
+
+        # reflection geometry
+	if geometry == 'reflection':
+                if beta >= 90.0:
+                        print('WARNING: are you sure about the beta angle?')
+		ac =  cosa*(mu1/cosa + mu2/cosb)/(1.0 - np.exp(-mu1*samthick/cosa - mu2*samthick/cosb))
+
+        # transmission geometry
+        elif geometry == 'transmission' and np.absolute(mu1/cosa - mu2/cosb).any() > np.spacing(1):
+		ac = -cosa*(mu1/cosa - mu2/cosb)/(np.exp(-mu1*samthick/cosa) - np.exp(-mu2*samthick/cosb))
+	elif geometry == 'transmission' and np.absolute(mu1/cosa - mu2/cosb).any() <= np.spacing(1):
+		ac = cosa/(samthick*np.exp(-mu1*samthick/cosa))
+
+        # spherical sample
+        elif geometry == 'sphere':
+                ac = (mu1 + mu2)/(1.0 - np.exp(-mu1*samthick -mu2*samthick))
+
+	return ac
+
 def gettransmission(energy,formulas,concentrations,densities,thickness):
 	"""
 	returns the transmission through a sample composed of chemical formulas 
