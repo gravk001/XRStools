@@ -42,6 +42,10 @@ from scipy import interpolate, integrate, constants, optimize
 from re import findall
 from collections import defaultdict
 
+# default valence energy cutoff value 
+VAL_CUTOFF_DEFAULT = 20.0
+
+
 def list_duplicates(seq):
     tally = defaultdict(list)
     for i,item in enumerate(seq):
@@ -70,7 +74,12 @@ def parseChemFormula(ChemFormula):
 def getAtomicWeight(Z):
     """Returns the atomic weight.
     """
-    return xrs_utilities.myprho(1.0,'Si')[2]
+    return xrs_utilities.myprho(1.0,Z)[2]
+
+def getAtomicDensity(Z):
+    """Returns the atomic density.
+    """
+    return xrs_utilities.myprho(1.0,Z)[1]
 
 class SqwPredict:
     """Class to build a S(q,w) prediction based on HF Compton Profiles.
@@ -84,22 +93,51 @@ class SqwPredict:
     
     
 class AtomProfile:
-    """Class to construct and handle Hartree-Fock atomic Compton Profile of a single atoms.
+    """
+    **AtomProfile**
+
+    Class to construct and handle Hartree-Fock atomic Compton Profile of a single atoms.
 
     Attributes:
     -----------
-      element (string): Element symbol as in the periodic table.
-      elementNr (int) : Number of the element as in the periodic table.
-      shells (list)   :
-      edges (list)    :
-      C (np.array)    :
-      J (np.array)    :
-      V (np.array)    :
-      CperShell (dict. of np.arrays):
-      JperShell (dict. of np.arrays):
-      VperShell (dict. of np.arrays):
+    filename : string 
+        Path and filename to the HF profile table.
+    element : string
+        Element symbol as in the periodic table.
+    elementNr : int
+        Number of the element as in the periodic table.
+    shells : list of strings
+        Names of the shells.
+    edges : list
+        List of edge onsets (eV).
+    C_total : np.array
+        Total core Compton profile.
+    J_total : np.array
+        Total Compton profile.
+    V_total : np.array
+        Total valence Compton profile.
+    CperShell : dict. of np.arrays
+        Core Compton profile per electron shell.
+    JperShell : dict. of np.arrays
+        Total Compton profile per electron shell.
+    VperShell : dict. of np.arrays
+        Valence Compton profile per electron shell.
+    stoichiometry : float, optional
+        Stoichiometric weight (default is 1.0).
+    atomic_weight : float
+        Atomic weight.
+    atomic_density : float
+        Density (g/cm**3).
+    twotheta : float
+        Scattering angle 2Th (degrees).
+    alpha : float
+        Incident angle (degrees).
+    beta : float
+        Exit angle (degrees).
+    thickness : float
+        Sample thickness (cm).
     """
-    def __init__(self, element, filename, stoichiometry=1):
+    def __init__(self, element, filename, stoichiometry=1.0):
         self.filename  = filename
         self.element   = element
         self.elementNr = xrs_utilities.element(element)
@@ -111,23 +149,192 @@ class AtomProfile:
         self.CperShell = {}
         self.JperShell = {}
         self.VperShell = {}
-        self.stoichiometry = stoichiometry
-        self.atomic_weight = getAtomicWeight(element)
+        self.stoichiometry  = stoichiometry
+        self.atomic_weight  = getAtomicWeight(element)
+        self.atomic_density = getAtomicDensity(element)
+        self.twotheta  = []
+        self.alpha     = []
+        self.beta      = []
+        self.thickness = []
 
-    def get_elossProfiles(self,E0, twotheta,correctasym=None,valence_cutoff=20.0):
-        enScale, J_total, C_total, V_total, q, J_shell, C_shell, V_shell = elossProfile(self.element,self.filename,E0,twotheta,correctasym,valence_cutoff)
+    def get_stoichiometry(self):
+        return self.stoichiometry
+
+    def get_elossProfiles(self,E0, twotheta,correctasym=None,valence_cutoff=VAL_CUTOFF_DEFAULT):
+        """
+        **get_elossProfiles**
+        Convert the HF Compton profile on to energy loss scale.
+
+        Args:
+        -----
+        E0 : float
+            Analyzer energy, enery of the scattered r-rays.
+        twotheta : float or list of floats
+            Scattering angle 2Th.
+        correctasym : float, optional
+            Scaling factor to be multiplied to the asymmetry. 
+        valence_cutoff : float, optional
+            Energy cut off as to what is considered the boundary between core and valence.
+        """
+        # save the parameters
+        self.E0 = E0
+        # reset self.twotheta
+        self.twotheta = []
+        if isinstance(twotheta, list) or isinstance(twotheta, np.ndarray):
+            self.twotheta.extend(twotheta)
+        elif isinstance(twotheta, float):
+            self.twotheta.append(twotheta)
+        else:
+            print('Unsupported type for twotheta argument')
+            return
+
+        # do the conversion for the first tth to get the size/shape of things
+        enScale, J_total, C_total, V_total, q, J_shell, C_shell, V_shell = elossProfile(self.element,self.filename,E0,self.twotheta[0],correctasym,valence_cutoff)
+        # save eloss scale
         self.eloss     = enScale
-        self.C_total   = C_total
-        self.J_total   = J_total
-        self.V_total   = V_total
-        self.CperShell = C_shell
-        self.JperShell = J_shell
-        self.VperShell = V_shell
+
+        # prepare output
+        self.C_total = np.zeros((len(enScale),len(self.twotheta)))
+        self.J_total = np.zeros((len(enScale),len(self.twotheta)))
+        self.V_total = np.zeros((len(enScale),len(self.twotheta)))
+        for key in self.CperShell:
+            self.CperShell[key] = np.zeros((len(enScale),len(self.twotheta)))
+            self.JperShell[key] = np.zeros((len(enScale),len(self.twotheta)))
+            self.VperShell[key] = np.zeros((len(enScale),len(self.twotheta)))
+            
+        # convert everything to eloss scale
+        for tth,ii in zip(self.twotheta,range(len(self.twotheta))):
+            enScale, J_total, C_total, V_total, q, J_shell, C_shell, V_shell = elossProfile(self.element,self.filename,E0,tth,correctasym,valence_cutoff)
+        
+            # save the results (all shell dicts have the same keys)
+            self.C_total[:,ii] = np.interp(self.eloss,enScale,C_total)*self.stoichiometry
+            self.J_total[:,ii] = np.interp(self.eloss,enScale,J_total)*self.stoichiometry
+            self.V_total[:,ii] = np.interp(self.eloss,enScale,V_total)*self.stoichiometry
+            for key in self.CperShell:
+                self.CperShell[key][:,ii] = np.interp(self.eloss,enScale,C_shell[key])
+                self.JperShell[key][:,ii] = np.interp(self.eloss,enScale,C_shell[key])
+                self.VperShell[key][:,ii] = np.interp(self.eloss,enScale,C_shell[key])
+
+    def absorptionCorrectProfiles(self, alpha, thickness, geometry='transmission'):
+        """
+        **absorptionCorrectProfiles**
+
+        Apply absorption correction to the Compton profiles on energy loss scale.
+
+        Args:
+        -----
+        alpha :float
+            Angle of incidence (degrees).
+        beta : float
+            Exit angle for the scattered x-rays (degrees). If 'beta' is negative, 
+            transmission geometry is assumed, if 'beta' is positive, reflection geometry.
+        thickness : float
+            Sample thickness.
+        """
+        # save the angles
+        self.alpha = alpha
+        if geometry == 'reflection':
+            beta = 180 - alpha - self.twotheta
+        if geometry == 'transmission':
+            beta = alpha - self.twotheta
+        if geometry == 'sphere':
+            beta = alpha - self.twotheta
+        self.beta = beta
+
+        # set the sample thickness
+        self.thickness = thickness # in [cm] now
+
+        # get the mass absorption coefficients
+        mu_in   = xrs_utilities.mpr(self.eloss/1.0e3+self.E0,self.element)[0]
+        mu_out  = xrs_utilities.mpr(self.E0,self.element)[0]
+
+        # calculate the absorption factor for several alpha values
+        if isinstance(self.alpha,list) or isinstance(self.alpha,np.ndarray):
+            for alpha,ii in zip(self.alpha,range(len(self.alpha))):
+                abs_corr = xrs_utilities.absCorrection(mu_in,mu_out,alpha,self.beta,self.thickness,geometry=geometry)
+                # apply correction to all profiles
+                self.C_total[:,ii] /= abs_corr
+                self.J_total[:,ii] /= abs_corr
+                self.V_total[:,ii] /= abs_corr
+                for key in self.CperShell:
+                    self.CperShell[key][:,ii] /= abs_corr
+                    self.JperShell[key][:,ii] /= abs_corr
+                    self.VperShell[key][:,ii] /= abs_corr
+
+        # calculate the absorption factor for several beta values
+        elif isinstance(self.beta,list) or isinstance(self.beta,np.ndarray):
+            for beta,ii in zip(self.beta,range(len(self.beta))):
+                abs_corr = xrs_utilities.absCorrection(mu_in,mu_out,self.alpha,beta,self.thickness,geometry=geometry)
+                # apply correction to all profiles
+                self.C_total[:,ii] /= abs_corr
+                self.J_total[:,ii] /= abs_corr
+                self.V_total[:,ii] /= abs_corr
+                for key in self.CperShell:
+                    self.CperShell[key][:,ii] /= abs_corr
+                    self.JperShell[key][:,ii] /= abs_corr
+                    self.VperShell[key][:,ii] /= abs_corr
+
+        # calculate the absorption factor for several sample thickness values
+        elif isinstance(self.thickness,list) or isinstance(self.thickness,np.ndarray):
+            for thick,ii in zip(self.thickness,range(len(self.thickness))):
+                abs_corr = xrs_utilities.absCorrection(mu_in,mu_out,self.alpha,self.beta,thick,geometry=geometry)
+                # apply correction to all profiles
+                self.C_total[:,ii] /= abs_corr
+                self.J_total[:,ii] /= abs_corr
+                self.V_total[:,ii] /= abs_corr
+                for key in self.CperShell:
+                    self.CperShell[key][:,ii] /= abs_corr
+                    self.JperShell[key][:,ii] /= abs_corr
+                    self.VperShell[key][:,ii] /= abs_corr
+
+        # calculate the absorption factor for a single value
+        else:
+            abs_corr = xrs_utilities.absCorrection(mu_in,mu_out,self.alpha,self.beta,self.thickness,geometry=geometry)
+            # apply correction to all profiles
+            self.C_total /= abs_corr
+            self.J_total /= abs_corr
+            self.V_total /= abs_corr
+            for key in self.CperShell:
+                self.CperShell[key] /= abs_corr
+                self.JperShell[key] /= abs_corr
+                self.VperShell[key] /= abs_corr
+
 
 class FormulaProfile:
-    """Class to construct and handle Hartree-Fock atomic Compton Profile of a single chemical compound.
     """
-    def __init__(self, formula, filename):
+    **FormulaProfile**
+
+    Class to construct and handle Hartree-Fock atomic Compton Profile of a single chemical compound.
+
+    Attributes
+    ----------
+    filename : string
+        Path and filename to Biggs database.
+    formula : string
+        Chemical sum formula for the compound of interest (e.g. 'SiO2' or 'H2O').
+    elements : list of strings
+        List of atomic symbols that make up the chemical sum formula.
+    stoichiometries : list of integers
+        List of the stoichimetric weights for each of the elements in the list *elements*.
+    element_Nrs : list of integers
+        List of atomic numbers for each element in the *elements* list.
+    AtomProfiles : list of *AtomProfiles* 
+        List of instances of the *AtomProfiles* class for each element in the list.
+    eloss : np.ndarray
+        Energy loss scale for the Compton profiles.
+    C_total : np.ndarray
+        Core HF Compton profile (one column per 2Th).
+    J_total : np.ndarray
+        Total HF Compton profile (one column per 2Th).
+    V_total :np.ndarray
+        Valence HF Compton profile (one column per 2Th).
+    E0 : float
+        Analyzer energy (keV).
+    twotheta : float, list, or np.ndarray
+        Value or list/np.ndarray of the scattering angle.
+    """
+    def __init__(self, formula, filename, weight=1):
+        assert type(formula) is str, "\'formula\' argument should be a string!"
         self.filename  = filename
         self.formula   = formula
         self.elements, self.stoichiometries = parseChemFormula(formula)
@@ -140,46 +347,116 @@ class FormulaProfile:
         self.C_total   = []
         self.J_total   = []
         self.V_total   = []
+        self.E0        = 0.0
+        self.twotheta  = []
+        self.stoich_weight = weight
 
-    def get_elossProfiles(self,E0, twotheta,correctasym=None,valence_cutoff=20.0):
+    def get_stoichWeight(self):
+        return self.stoich_weight
+
+    def get_elossProfiles(self,E0, twotheta,correctasym=None,valence_cutoff=VAL_CUTOFF_DEFAULT):
+        self.E0 = E0
+
+        # reset self.twotheta
+        self.twotheta = []
+        if isinstance(twotheta, list):
+            self.twotheta.extend(twotheta)
+        elif isinstance(twotheta, float):
+            self.twotheta.append(twotheta)
+        else:
+            print('Unsupported type for twotheta argument')
+
         for AtomProfile in self.AtomProfiles:
-            AtomProfile.get_elossProfiles(E0, twotheta,correctasym,valence_cutoff)
+            AtomProfile.get_elossProfiles(self.E0, self.twotheta,correctasym,valence_cutoff)
+
         self.eloss = self.AtomProfiles[0].eloss
-        self.C_total = np.zeros_like(self.AtomProfiles[0].C_total)
-        self.J_total = np.zeros_like(self.AtomProfiles[0].J_total)
-        self.V_total = np.zeros_like(self.AtomProfiles[0].V_total)
-        for AP, ii in zip(self.AtomProfiles,range(len(self.AtomProfiles))):
-            self.C_total += np.interp(self.eloss,AP.eloss,AP.C_total)*self.stoichiometries[ii]
-            self.J_total += np.interp(self.eloss,AP.eloss,AP.J_total)*self.stoichiometries[ii]
-            self.V_total += np.interp(self.eloss,AP.eloss,AP.V_total)*self.stoichiometries[ii]
+
+        # initialize the profiles
+        self.C_total = np.zeros((len(self.eloss),len(self.twotheta)))
+        self.J_total = np.zeros((len(self.eloss),len(self.twotheta)))
+        self.V_total = np.zeros((len(self.eloss),len(self.twotheta)))
+
+        # add up all AtomProfiles
+        for AP in self.AtomProfiles:
+            for ii in range(len(self.twotheta)):
+                print np.shape(AP.C_total)
+                self.C_total[:,ii] += np.interp(self.eloss,AP.eloss,AP.C_total[:,ii])*AP.get_stoichiometry()
+                self.J_total[:,ii] += np.interp(self.eloss,AP.eloss,AP.J_total[:,ii])*AP.get_stoichiometry()
+                self.V_total[:,ii] += np.interp(self.eloss,AP.eloss,AP.V_total[:,ii])*AP.get_stoichiometry()
+
+    def get_correctecProfiles(self, densities, alpha, beta, samthick ):
+        pass
 
 
-class SampleProfile:
-    """Class to construct and handle Hartree-Fock atomic Compton Profile of sample composed of several chemical compounds.
+class HFProfile:
+    """
+    *HFProfile*
+
+    Class to construct and handle Hartree-Fock atomic Compton Profile of sample composed of several chemical compounds.
+
+    Attributes
+    ----------
+    
+
     """
     def __init__(self, formulas, stoich_weights, filename):
+
+        if isinstance(formulas,list) and isinstance(stoich_weights,list):
+            self.formulas = formulas
+            self.stoich_weights = stoich_weights
+        elif isinstance(formulas,str) and isinstance(stoich_weits,int) or isinstance(formulas,str) and isinstance(stoich_weits,float):
+            self.formulas = []
+            self.formulas.append(formulas)
+            self.stoich_weights = []
+            self.stoich_weights.append(stoich_weights)
+        else:
+            print('Unsupported/uncongruent types for formulas/stoich_weights arguments!')
+            return
+
         self.filename  = filename
-        self.formulas   = formulas
         self.FormulaProfiles = []
-        for formula in self.formulas:
-            CP = FormulaProfile(formula,filename)
+        for formula,ii in zip(self.formulas,range(len(self.formulas))):
+            CP = FormulaProfile(formula,filename,weight=stoich_weights[ii])
             self.FormulaProfiles.append(CP)
+
         self.eloss     = []
         self.C_total   = []
         self.J_total   = []
         self.V_total   = []
+        self.twotheta  = []
+        self.E0        = 0.0
 
-    def get_elossProfiles(self,E0, twotheta):
-        for AtomProfile in self.AtomProfiles:
-            AtomProfile.get_elossProfiles(E0, twotheta)
-        self.eloss = self.AtomProfiles[0].eloss
-        self.C_total = np.zeros_like(self.AtomProfiles[0].C_total)
-        self.J_total = np.zeros_like(self.AtomProfiles[0].J_total)
-        self.V_total = np.zeros_like(self.AtomProfiles[0].V_total)
-        for AP, ii in zip(self.AtomProfiles,range(len(self.AtomProfiles))):
-            self.C_total += np.interp(self.eloss,AP.eloss,AP.C_total)*self.stoichiometries[ii]
-            self.J_total += np.interp(self.eloss,AP.eloss,AP.J_total)*self.stoichiometries[ii]
-            self.V_total += np.interp(self.eloss,AP.eloss,AP.V_total)*self.stoichiometries[ii]
+    def get_elossProfiles(self,E0, twotheta,correctasym=None,valence_cutoff=VAL_CUTOFF_DEFAULT):
+        # save the E0 value
+        self.E0 = E0
+
+        # reset self.twotheta
+        self.twotheta = []
+        if isinstance(twotheta, list):
+            self.twotheta.extend(twotheta)
+        elif isinstance(twotheta, float):
+            self.twotheta.append(twotheta)
+        else:
+            print('Unsupported type for twotheta argument')
+
+        # get all Atomic and Formula unit profiles on eloss scale
+        for FormulaProfile in self.FormulaProfiles:
+            FormulaProfile.get_elossProfiles(self.E0, self.twotheta,correctasym,valence_cutoff)
+
+        # save the eloss-scale
+        self.eloss = self.FormulaProfiles[0].eloss
+
+        # initialize the profiles
+        self.C_total = np.zeros((len(self.eloss),len(self.twotheta)))
+        self.J_total = np.zeros((len(self.eloss),len(self.twotheta)))
+        self.V_total = np.zeros((len(self.eloss),len(self.twotheta)))
+
+        # add up all Compton Profiles from the sub-units
+        for FP,jj in zip(self.FormulaProfiles,range(len(self.FormulaProfiles))):
+            for ii in range(len(self.twotheta)):
+                self.C_total[:,ii] += np.interp(self.eloss,FP.eloss,FP.C_total[:,ii])*FP.get_stoichWeight()
+                self.J_total[:,ii] += np.interp(self.eloss,FP.eloss,FP.J_total[:,ii])*FP.get_stoichWeight()
+                self.V_total[:,ii] += np.interp(self.eloss,FP.eloss,FP.V_total[:,ii])*FP.get_stoichWeight()
 
 
 
