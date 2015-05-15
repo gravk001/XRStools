@@ -113,38 +113,39 @@ def Extraction(yamlData):
     linear baselines,  Pearson profile
     Example ::
 
-     active : 1
-     dataadress   : "pippo.h5:/ROI_A/loaded_datas"         # where load_scans wrote data
-     HFaddress    : "pippo.h5:/ROI_A/loaded_datas/HF_O"    # where compton profiles have been calculated
-     # prenormrange : [ 5 , .inf ]		
-
-     analyzerAverage :                                     #  averaging over analysers
+     Extraction :
          active : 1
-         which : [0,11  , 36,59   ]
-         errorweighing  : False
+         dataadress   : "pippo.h5:/ROI_A/loaded_datas"         # where load_scans wrote data
+         HFaddress    : "pippo.h5:/ROI_A/loaded_datas/HF_O"    # where compton profiles have been calculated
+         # prenormrange : [ 5 , .inf ]		
 
-     removeLinearAv :                                      #  fit a linear baseline and remove it
-         active  : 1
-         region1 :  [520.0,532.0]   
-         region2 :  None 
-         ewindow : 100 
-         scale : 1
+         analyzerAverage :                                     #  averaging over analysers
+             active : 1
+             which : [0,11  , 36,59   ]
+             errorweighing  : False
 
-     removePearsonAv:                                      # fit a Pearson and remove it
-         active  : 0
-         region1 :  [520.0,532.0]   
-         region2 :  None  
-         guess :
-             Peak_position : 600.0
-             FWHM          :  10
-             Shape         : "Lorentzian" 
-             Peak_intensity: 100.0
-             linear_slope  : 1
-             linear_background : 0
-             scaling_factor : 1
-            
-     view   :   0
-     target :   "myextraction"                            # path relative to dataadress where extracted signal will be written
+         removeLinearAv :                                      #  fit a linear baseline and remove it
+             active  : 1
+             region1 :  [520.0,532.0]   
+             region2 :  None 
+             ewindow : 100 
+             scale : 1
+
+         removePearsonAv:                                      # fit a Pearson and remove it
+             active  : 0
+             region1 :  [520.0,532.0]   
+             region2 :  None  
+             guess :
+                 Peak_position : 600.0
+                 FWHM          :  10
+                 Shape         : "Lorentzian" 
+                 Peak_intensity: 100.0
+                 linear_slope  : 1
+                 linear_background : 0
+                 scaling_factor : 1
+
+         view   :   0
+         target :   "myextraction"                            # path relative to dataadress where extracted signal will be written
 
     """
 
@@ -236,28 +237,30 @@ def load_scans(yamlData):
     This command harvest the selected signals.
     the instructions on the scans to be taken must be in the form( as submembers ofload_scans ) ::
 
-     roiaddress :  "hdf5filename:nameofroigroup"  # the same given in create_rois
-     expdata    :  "absolutepathtoaspecfile"  # this points to a spec file
-  
-     elastic_scans    : [623]
-     fine_scans       : [626,630,634,638,642]
-     n_loop           : 4
-     long_scan        : 624
-  
-     signaladdress : "nameofsignalgroup"  # Target group for writing Relative to ROI (and in the same file)!!!!
 
-     #############################################################
-     # OPTIONALS
-     #
-     order : [0,1,2,3,4,5]  #  list of integers (0-5) which describes the order of modules in which the 
-                            #	ROIs were defined (default is VD, VU, VB, HR, HL, HB; i.e. [0,1,2,3,4,5])
+     load_scans :
+         roiaddress :  "hdf5filename:nameofroigroup"  # the same given in create_rois
+         expdata    :  "absolutepathtoaspecfile"  # this points to a spec file
 
-     rvd : -41              # mean tth angle of HL module (default is 0.0)
-     rvu : 85               # mean tth angle of HR module (default is 0.0)
-     rvb : 121.8            # mean tth angle of HB module (default is 0.0)
-     rhl : 41.0             # mean tth angle of VD module (default is 0.0)
-     rhr : 41.0             # mean tth angle of VU module (default is 0.0)
-     rhb : 121.8            # mean tth angle of VB module (default is 0.0)
+         elastic_scans    : [623]
+         fine_scans       : [626,630,634,638,642]
+         n_loop           : 4
+         long_scan        : 624
+
+         signaladdress : "nameofsignalgroup"  # Target group for writing Relative to ROI (and in the same file)!!!!
+
+         #############################################################
+         # OPTIONALS
+         #
+         order : [0,1,2,3,4,5]  #  list of integers (0-5) which describes the order of modules in which the 
+                                #	ROIs were defined (default is VD, VU, VB, HR, HL, HB; i.e. [0,1,2,3,4,5])
+
+         rvd : -41              # mean tth angle of HL module (default is 0.0)
+         rvu : 85               # mean tth angle of HR module (default is 0.0)
+         rvb : 121.8            # mean tth angle of HB module (default is 0.0)
+         rhl : 41.0             # mean tth angle of VD module (default is 0.0)
+         rhr : 41.0             # mean tth angle of VU module (default is 0.0)
+         rhb : 121.8            # mean tth angle of VB module (default is 0.0)
 
 
     #
@@ -346,14 +349,16 @@ def create_rois(yamlData):
     and select a hdf5 file, and a name of a node inside the file, where the rois 
     will be written.
 
-    You can  :
+    example ::
 
-    expdata :  "absolutepathtoaspecfile"  # this points to a spec file
-    scans   : [623,624]                   # a list containing one or more scans 
-                                          # for the elastic part.
-                                          # They will be summed to an image
-                                          # and rois will then be extracted from this image.
-    roiaddress : "myfile.hdf5:/path/to/hdf5/group"  # the target destination for rois
+      create_rois :
+
+        expdata :  "absolutepathtoaspecfile"  # this points to a spec file
+        scans   : [623,624]                   # a list containing one or more scans 
+                                              # for the elastic part.
+                                              # They will be summed to an image
+                                              # and rois will then be extracted from this image.
+        roiaddress : "myfile.hdf5:/path/to/hdf5/group"  # the target destination for rois
    
     If expdata is not given in the yaml input file, then the roicreation widget will be launched
     without data, and you have to open some file for the image.

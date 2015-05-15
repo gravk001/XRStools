@@ -675,7 +675,7 @@ def element(z):
 		print 'type '+ type(z) + 'not supported.'	
 	return Z
 
-def myprho(energy,Z,logtablefile=os.path.join(data_installation_dir,'xrstools/data/logtable.dat')):
+def myprho(energy,Z,logtablefile=os.path.join(data_installation_dir,'data/logtable.dat')):
 	"""Calculates the photoelectric, elastic, and inelastic absorption of 
 	an element Z 
 
