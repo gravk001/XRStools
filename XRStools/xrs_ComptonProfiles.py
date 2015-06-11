@@ -197,7 +197,7 @@ class AtomProfile:
         self.C_total = np.zeros((len(enScale),len(self.twotheta)))
         self.J_total = np.zeros((len(enScale),len(self.twotheta)))
         self.V_total = np.zeros((len(enScale),len(self.twotheta)))
-        for key in self.CperShell:
+        for key in C_shell:
             self.CperShell[key] = np.zeros((len(enScale),len(self.twotheta)))
             self.JperShell[key] = np.zeros((len(enScale),len(self.twotheta)))
             self.VperShell[key] = np.zeros((len(enScale),len(self.twotheta)))
@@ -339,10 +339,10 @@ class FormulaProfile:
         self.formula   = formula
         self.elements, self.stoichiometries = parseChemFormula(formula)
         self.element_Nrs = [xrs_utilities.element(element) for element in self.elements]
-        self.AtomProfiles = []
+        self.AtomProfiles = {}
         for element,stoichio in zip(self.elements,self.stoichiometries):
             CP = AtomProfile(element,filename,stoichiometry=stoichio)
-            self.AtomProfiles.append(CP)
+            self.AtomProfiles[element] = CP
         self.eloss     = []
         self.C_total   = []
         self.J_total   = []
@@ -366,10 +366,10 @@ class FormulaProfile:
         else:
             print('Unsupported type for twotheta argument')
 
-        for AtomProfile in self.AtomProfiles:
-            AtomProfile.get_elossProfiles(self.E0, self.twotheta,correctasym,valence_cutoff)
+        for key in self.AtomProfiles:
+            self.AtomProfiles[key].get_elossProfiles(self.E0, self.twotheta,correctasym,valence_cutoff)
 
-        self.eloss = self.AtomProfiles[0].eloss
+        self.eloss = self.AtomProfiles[self.AtomProfiles.keys()[0]].eloss
 
         # initialize the profiles
         self.C_total = np.zeros((len(self.eloss),len(self.twotheta)))
@@ -377,9 +377,9 @@ class FormulaProfile:
         self.V_total = np.zeros((len(self.eloss),len(self.twotheta)))
 
         # add up all AtomProfiles
-        for AP in self.AtomProfiles:
+        for key in self.AtomProfiles:
+            AP = self.AtomProfiles[key]
             for ii in range(len(self.twotheta)):
-                print np.shape(AP.C_total)
                 self.C_total[:,ii] += np.interp(self.eloss,AP.eloss,AP.C_total[:,ii])*AP.get_stoichiometry()
                 self.J_total[:,ii] += np.interp(self.eloss,AP.eloss,AP.J_total[:,ii])*AP.get_stoichiometry()
                 self.V_total[:,ii] += np.interp(self.eloss,AP.eloss,AP.V_total[:,ii])*AP.get_stoichiometry()
@@ -414,10 +414,10 @@ class HFProfile:
             return
 
         self.filename  = filename
-        self.FormulaProfiles = []
+        self.FormulaProfiles = {}
         for formula,ii in zip(self.formulas,range(len(self.formulas))):
             CP = FormulaProfile(formula,filename,weight=stoich_weights[ii])
-            self.FormulaProfiles.append(CP)
+            self.FormulaProfiles[formula] = CP
 
         self.eloss     = []
         self.C_total   = []
@@ -440,11 +440,11 @@ class HFProfile:
             print('Unsupported type for twotheta argument')
 
         # get all Atomic and Formula unit profiles on eloss scale
-        for FormulaProfile in self.FormulaProfiles:
-            FormulaProfile.get_elossProfiles(self.E0, self.twotheta,correctasym,valence_cutoff)
+        for key in self.FormulaProfiles:
+            FormulaProfiles[key].get_elossProfiles(self.E0, self.twotheta,correctasym,valence_cutoff)
 
         # save the eloss-scale
-        self.eloss = self.FormulaProfiles[0].eloss
+        self.eloss = self.FormulaProfiles[self.FormulaProfiles.keys()[0]].eloss
 
         # initialize the profiles
         self.C_total = np.zeros((len(self.eloss),len(self.twotheta)))
@@ -452,7 +452,8 @@ class HFProfile:
         self.V_total = np.zeros((len(self.eloss),len(self.twotheta)))
 
         # add up all Compton Profiles from the sub-units
-        for FP,jj in zip(self.FormulaProfiles,range(len(self.FormulaProfiles))):
+        for key,jj in zip(self.FormulaProfiles,range(len(self.twotheta))):
+            FP = self.FormulaProfiles[key]
             for ii in range(len(self.twotheta)):
                 self.C_total[:,ii] += np.interp(self.eloss,FP.eloss,FP.C_total[:,ii])*FP.get_stoichWeight()
                 self.J_total[:,ii] += np.interp(self.eloss,FP.eloss,FP.J_total[:,ii])*FP.get_stoichWeight()
@@ -638,22 +639,72 @@ def elossProfile(element,filename,E0,tth,correctasym=None,valence_cutoff=20.0):
                     V_shell[name] = HF_profile[:,counter]
                 else:
                     V_shell[name] = np.zeros_like(HF_profile[:,counter])
+            else:
+                J_shell[name] = np.zeros_like(HF_profile[:,counter])
+                V_shell[name] = np.zeros_like(HF_profile[:,counter])
+
             C_shell[name] = J_shell[name] - V_shell[name]
             counter += 1
 
     return enScale, J_total, C_total, V_total, q, J_shell, C_shell, V_shell
 
 
-def mapShellNames(shell_str):
+def mapShellNames(shell_str,atomicNumber):
+    """
+    **mapShellNames**
 
-    all_names  = ['pz', 'total', 'Shell_1', 'Shell_2', 'Shell_3', 'Shell_4', 'Shell_5', 
+    Translates to and from spectroscopic edge notation and the convention of the Biggs database.
+
+    Args:
+    -----
+    shell_str : string
+        Spectroscopic symbol to be converted to Biggs database convention.
+    atomicNumber : int
+        Z for the atom in question.
+    """
+
+    if atomicNumber <= 35: # for Z<=35 (Br), there is no 2p spin-orbit splitting in the Biggs data
+
+        all_names   = ['pz', 'total', 'Shell_1', 'Shell_2', 'Shell_3', 'Shell_4', 'Shell_5', 'Shell_6', 'Shell_7', 'Shell_8']
+        all_shells  = ['pz', 'total', '1s',      '2s',      '2p',      '3s',      '3p',      '3d',      '4s',      '4p'     ]
+        all_spectro = ['pz', 'total', 'K',       'L1',      'L23',     'M1',      'M23',     'M45',     'N1',      'N23'    ]
+
+        if shell_str in all_spectro:
+            index = all_spectro.index(shell_str)
+            return all_names[index]
+
+        elif shell_str in all_shells:
+            index = all_shells.index(shell_str)
+            return all_names[index]
+
+        elif shell_str in all_names:
+            index = all_names.index(shell_str)
+            return all_spectro[index]
+
+        else:
+            print('Following shells available for Z<=35: [\'K\',\'L1\',\'L23\',\'M1\',\'M23\',\'M45\',\'N1\',\'N23\']')
+            return
+
+    else:
+        all_names   = ['pz', 'total', 'Shell_1', 'Shell_2', 'Shell_3', 'Shell_4', 'Shell_5', 
                   'Shell_6', 'Shell_7', 'Shell_8', 'Shell_9', 'Shell_10', 'Shell_11', 
                   'Shell_12', 'Shell_13', 'Shell_14', 'Shell_15', 'Shell_16', 'Shell_17', 
                   'Shell_18', 'Shell_19', 'Shell_20', 'Shell_21', 'Shell_22', 'Shell_23', 
-                  'Shell_24', 'Shell_25', 'Shell_26', 'Shell_27']
-    all_shells = ['pz', 'total', '1s', '2s', '2p1/2', '2p3/2', '3s', '3p1/2', '3p3/2', '3d', '4s', '4p', '4d ']
-    all_spectro = ['pz', 'total', 'K', 'L1', 'L2', 'L3', 'M1', 'M2', 'M3', 'M4']
+                  'Shell_24']
+        # all_shells  = ['pz', 'total', '1s', '2s', '2p1/2', '2p3/2', '3s', '3p1/2', '3p3/2', '3d1/2', '3d3/2', '3d5/2', '4s', '4p', '4d ']
+        all_spectro = ['pz', 'total', 'K', 'L1', 'L2', 'L3', 'M1', 'M2', 'M3', 'M4', 'M5', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'O1', 'O2', 'O3', 'O4', 'O5', 'P1', 'P2', 'P3']
 
+        if shell_str in all_spectro:
+            index = all_spectro.index(shell_str)
+            return all_names[index]
+
+        elif shell_str in all_names:
+            index = all_names.index(shell_str)
+            return all_spectro[index]
+
+        else:
+            print('Following shells available for Z>35: [\'K\', \'L1\', \'L2\', \'L3\', \'M1\', \'M2\', \'M3\', \'M4\', \'M5\', \'N1\', \'N2\', \'N3\', \'N4\', \'N5\', \'N6\', \'N7\', \'O1\', \'O2\', \'O3\', \'O4\', \'O5\', \'P1\', \'P2\', \'P3\']')
+            return
 
 # 1s, 2s, 2p, 3s, 3p, 4s, 3d, 4p, 5s, 4d, 5p, 6s, 4f, 5d, 6p, 7s, 5f, 6d, 7p, (8s, 5g, 6f, 7d, 8p, and 9s)
 
