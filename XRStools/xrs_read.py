@@ -850,6 +850,45 @@ class read_id20:
 				self.signals[:,ii] -= background # subtract background roi
 
 
+	def animation(self,scannumber,logscaling=True,timeout=-1,colormap='jet'):
+		"""
+		Shows the edf-files of a scan as a 'movie'.
+		INPUT:
+		scannumber = integer/scannumber
+		logscaling = set to 'True' (default) if edf-images are to be shown on logarithmic-scale
+		timeout    = time in seconds defining pause between two images, if negative (default)
+					 images are renewed by mouse clicks
+		colormap   = matplotlib color scheme used in the display
+		"""
+		if isinstance(scannumber,list):
+			if len(scannumber)>1:
+				print 'this only works for a single scan, sorry'
+				return
+			else:
+				scannumber = scannumber[0]
+		scanname = 'Scan%03d' % scannumber
+		edfmats = self.scans[scanname].edfmats
+		scanlen  = np.shape(edfmats)[0]
+		plt.ion()
+		plt.clf()
+		for n in range(scanlen):
+			plt.clf()
+			if logscaling:
+				theimage = plt.imshow(np.log(edfmats[n,:,:]))
+			else:
+				theimage = plt.imshow(edfmats[n,:,:])
+			plt.xlabel('detector x-axis [pixel]')
+			plt.ylabel('detector y-axis [pixel]')
+			if timeout<0:
+				titlestring = 'Frame No. %d' % (n+1) + ' of %d' % scanlen + ', press key or mouse botton to continue' 
+				plt.title(titlestring)
+			else:
+				titlestring = 'Frame No. %d' % (n+1) + ' of %d' % scanlen + ', updating every %2.2f ' % timeout + ' seconds'
+				plt.title(titlestring)
+			theimage.set_cmap(colormap)
+			plt.draw()
+			plt.waitforbuttonpress(timeout=timeout)
+
 
 
 
