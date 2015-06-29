@@ -92,9 +92,9 @@ class scan:
 			Python list of scaling factors (one per ROI defined) to be applied to all pixels of that ROI.
 
 		"""
-		data = []
+		data = [] # list of 2D arrays (energy vs. intensity for each pixel inside a single ROI) 
 		for n in range(len(indices)): # each ROI
-			roidata = np.zeros((len(self.edfmats),len(indices[n])))
+			roidata = np.zeros((len(self.edfmats),len(indices[n]))) # 2D np array energy vs pixels in current roi
 			for m in range(len(self.edfmats)): # each energy point along the scan
 				for l in range(len(indices[n])): # each pixel on the detector
 					roidata[m,l] = self.edfmats[m,indices[n][l][0],indices[n][l][1]]

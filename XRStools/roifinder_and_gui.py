@@ -183,6 +183,9 @@ class roi_finder:
 			input_image[input_image[:,:] == 0.0] = 1.0
 			input_image = np.log(np.abs(input_image))
 
+		# save input image for later use
+		self.roi_obj.input_image = input_image
+
 		# prepare a figure
 		fig, ax = plt.subplots()
 		plt.subplots_adjust(bottom=0.2)
@@ -278,6 +281,9 @@ class roi_finder:
 			# set all zeros to ones:
 			input_image[input_image[:,:] == 0.0] = 1.0
 			input_image = np.log(np.abs(input_image))
+
+		# save input image for later use
+		self.roi_obj.input_image = input_image
 
 		# prepare a figure
 		fig, ax = plt.subplots()
@@ -424,6 +430,8 @@ class roi_finder:
 			input_image[input_image[:,:] == 0.0] = 1.0
 			input_image = np.log(np.abs(input_image))
 
+		# save input image for later use
+		self.roi_obj.input_image = input_image
 
 		ax = plt.subplot(111) 
 		plt.subplots_adjust(left=0.05, bottom=0.2)
@@ -527,6 +535,9 @@ class roi_finder:
 			# set all zeros to ones:
 			input_image[input_image[:,:] == 0.0] = 1.0
 			input_image = np.log(np.abs(input_image))
+
+		# save input image for later use
+		self.roi_obj.input_image = input_image
 
 		# prepare a figure
 		fig, ax = plt.subplots()
@@ -639,6 +650,100 @@ class roi_finder:
 				plt.text(xcenter,ycenter,string)
 				plt.show()
 
+	def refine_pw_rois(self,roi_obj,pw_data,n_components=2,method='nnma'):
+		"""
+		**refine_pw_rois**
+
+		Use decomposition of pixelwise data for each ROI to find which of the pixels holds
+		data from the sample and which one only has background. 
+
+		Args:
+		-----
+		roi_obj (xrs_rois.roi_object): ROI object to be refined
+		pw_data (list): list containing one 2D numpy array per ROI holding pixel-wise signals
+		n_components (int): number of components in the decomposition
+		method (string): keyword describing which decomposition to be used ('pca', 'ica', 'nnma')
+		"""
+		# check if available method is used
+		avail_methods = ['pca','ica','nnma']
+		if not method in avail_methods:
+			print('Please use one of the following methods: ' + str(avail_methods) + '!')
+			return
+
+		# check if scikit learn is available
+		try:
+			from sklearn.decomposition import FastICA, PCA, ProjectedGradientNMF
+		except ImportError:
+			raise ImportError('Please install the scikit-learn package to use this feature.')
+			return
+
+		counter = 0
+		new_indices = []
+		for data in pw_data: # go through each ROI
+
+			# decompose data, choose method
+			if method == 'nnma': # non negative matrix factorisation
+				nnm = ProjectedGradientNMF(n_components=n_components)
+				N   = nnm.fit_transform(data)
+			elif method == 'pca': # principal component analysis
+				pca = PCA(n_components=n_components)
+				N = pca.fit_transform(data)
+			elif method == 'ica': # independent component analysis
+				ica = FastICA(n_components=n_components)
+				N = ica.fit_transform(data)
+
+			# let user decide which component belongs to the data:
+			user_choise = 0
+			plt.cla()
+			plt.title('Click on component you are interested in.')
+			legendstr = []
+			for ii in range(n_components):
+				plt.plot(N[:,ii])
+				legendstr.append('Component No. %01d' %ii)
+			plt.legend(legendstr)
+			plt.xlabel('points along scan')
+			plt.ylabel('intensity [arb. units]')
+			user_input = np.array(plt.ginput(1,timeout=-1)[0])
+
+			# which curve was chosen
+			nearest_points = [(np.abs(N[:,ii]-user_input[1])).argmin() for ii in range(n_components)]
+			user_choice = (np.abs(nearest_points-user_input[0])).argmin()
+
+			# find covariance for all pixels with user choice
+			covariance = np.array([])
+			for ii in range(len(data[0,:])):
+				covariance = np.append(covariance, np.cov(data[:,ii],N[:,user_choice])[0,0])
+
+			# plot covariance, let user choose the the cutoff in y direction
+			plt.cla()
+			plt.title('Click to define a y-threshold.')
+			plt.plot(covariance)
+			plt.xlabel('pixels in ROI')
+			plt.ylabel('covariance [arb. units]')
+			user_cutoff = np.array(plt.ginput(1,timeout=-1)[0])
+
+			# find the ROI indices above the cutoff, reassign ROI indices
+			inds = covariance >= user_cutoff[1]
+			refined_indices = []
+			for ii in range(len(roi_obj.indices[counter])):
+				if inds[ii]:
+					refined_indices.append(roi_obj.indices[counter][ii])
+			new_indices.append(refined_indices)
+				
+			# end loop
+			counter += 1
+
+		# reassign ROI object
+		self.roi_obj.roi_matrix     = xrs_rois.convert_inds_to_matrix(new_indices,self.roi_obj.input_image.shape)
+		self.roi_obj.red_rois       = xrs_rois.convert_matrix_to_redmatrix(self.roi_obj.roi_matrix)
+		self.roi_obj.indices        = new_indices 
+		self.roi_obj.kind           = 'refined'
+		self.roi_obj.x_indices      = xrs_rois.convert_inds_to_xinds(new_indices)
+		self.roi_obj.y_indices      = xrs_rois.convert_inds_to_yinds(new_indices)
+		self.roi_obj.masks          = xrs_rois.convert_roi_matrix_to_masks(self.roi_obj.roi_matrix)
+		self.roi_obj.number_of_rois = np.amax(self.roi_obj.roi_matrix)
+
+
 def define_lin_roi(height,image_shape,verbose=False):
 	"""
 	Lets you pick 2 points on a current image and returns a linear ROI of
@@ -715,17 +820,6 @@ def define_zoom_roi(input_image,verbose=False):
 	for n in range(len(indsx)):
 		roi.append((indsy[n],indsx[n]))
 	return roi
-
-
-
-
-
-
-
-
-
-
-
 
 def show_rois(roi_matrix):
         """

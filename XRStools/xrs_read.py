@@ -515,6 +515,19 @@ class read_id20:
 				print ("integrating "+scan)
 				self.scans[scan].applyrois(self.roi_obj.indices)
 
+	def getrawdata_pixelwise(self):
+		"""
+		Goes through all instances of the scan class and calls it's applyrois_pw method
+		to extract intensities for all pixels in each ROI.
+		"""
+		if not np.any(self.roi_obj.indices):
+			print 'Please define some ROIs first.'
+			return
+		for scan in self.scans:
+			if len(self.scans[scan].edfmats):
+				print ("integrating pixelwise "+scan)
+				self.scans[scan].applyrois_pw(self.roi_obj.indices)
+     
 
         def SumDirect(self,scannumbers):
                 sum=None

@@ -101,15 +101,15 @@ class roi_object:
 	Container class to hold all relevant information about given ROIs.
 	"""
 	def __init__(self):
-                self.roi_matrix     = np.array([]) # single matrix of zeros, ones, twos, ... , n's (where n is the number of ROIs defined)
+		self.roi_matrix     = np.array([]) # single matrix of zeros, ones, twos, ... , n's (where n is the number of ROIs defined)
 		self.red_rois       = {}           # dictionary, one entry for each ROI, each ROI has an origin and a rectangular box of ones and zeros defining the ROI
 		self.indices        = [] # list of list of tuples (one list of tuples for each ROI)
-		self.number_of_rois = 0            # number of ROIs defined
+		self.number_of_rois = 0  # number of ROIs defined
 		self.kind           = [] # keyword (e.g. 'zoom', 'line', 'auto', etc.), certain features (esp. in imaging) are only available for certain kinds of ROIs
 		self.x_indices      = [] # list of numpy arrays of x-indices (for each ROI)
 		self.y_indices      = [] # list of numpy arrays of y-indices (for each ROI)
 		self.masks          = [] # 3D numpy array with slices of zeros and ones (same size as detector image) for each roi
-
+		self.input_image	= [] # 2D imput image that was used to define the ROIs
 		
 	def load_rois_fromMasksDict(self, masksDict, newshape=None, kind="zoom"):
 		self.kind=kind
