@@ -790,9 +790,9 @@ def define_zoom_roi(input_image,verbose=False):
 	"""
 	# input_image.shape prints  (y-length, x-length)
 	# parse the figure limits from the current zoom
-	limits = np.round(plt.axis()) # x-min, x-max, y-max, y-min
-	# frac_limits = plt.axis() # x-min, x-max, y-max, y-min as floats
-	# limits = [np.round(frac_limits[0]), np.ceil(frac_limits[1]), np.ceil(frac_limits[2]), np.floor(frac_limits[3])] # x-min, x-max, y-max, y-min
+	# limits = np.round(plt.axis()) # x-min, x-max, y-max, y-min
+	frac_limits = plt.axis() # x-min, x-max, y-max, y-min as floats
+	limits = [np.floor(frac_limits[0]), np.ceil(frac_limits[1]+1.0), np.floor(frac_limits[2]), np.ceil(frac_limits[3]+1)] # x-min, x-max, y-max, y-min
 	# check that selected zoom area is not outside the image
 	inds = limits < 0
 	limits[inds] = 0
