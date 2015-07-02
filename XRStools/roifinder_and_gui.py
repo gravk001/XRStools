@@ -636,6 +636,7 @@ class roi_finder:
 
 		# make a figure
 		else:
+			plt.cla()
 			plt.imshow(roi_matrix)
 			plt.xlabel('x-axis [pixel]')
 			plt.ylabel('y-axis [pixel]')
@@ -648,7 +649,6 @@ class roi_finder:
 				ycenter = np.mean(inds[0])
 				string  = '%02d' % (ii+1)
 				plt.text(xcenter,ycenter,string)
-				plt.show()
 
 	def refine_pw_rois(self,roi_obj,pw_data,n_components=2,method='nnma'):
 		"""
@@ -792,9 +792,7 @@ def define_zoom_roi(input_image,verbose=False):
 	# parse the figure limits from the current zoom
 	# limits = np.round(plt.axis()) # x-min, x-max, y-max, y-min
 	frac_limits = plt.axis() # x-min, x-max, y-max, y-min as floats
-	print frac_limits, len(frac_limits)
 	limits = np.array([np.ceil(frac_limits[0]), np.floor(frac_limits[1]+0.5), np.floor(frac_limits[2]+0.5), np.ceil(frac_limits[3])]) #  x-min, x-max, y-max, y-min as ints
-	print type(limits)
 	# check that selected zoom area is not outside the image
 	inds = limits < 0
 	limits[inds] = 0
