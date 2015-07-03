@@ -36,7 +36,7 @@ __copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
 
 
 #from helpers import *
-import xrs_rois, xrs_scans, xrs_utilities, math_functions, xrs_fileIO
+import xrs_rois, xrs_scans, xrs_utilities, math_functions, xrs_fileIO, roifinder_and_gui
 
 from numpy import array
 import scipy.io
@@ -880,7 +880,6 @@ def animation(id20read_object,scannumber,logscaling=True,timeout=-1,colormap='je
 		else:
 			scannumber = scannumber[0]
 
-
 	scanname = 'Scan%03d' % scannumber
 	edfmats  = id20read_object.scans[scanname].edfmats
 	scanlen  = np.shape(edfmats)[0]
@@ -904,6 +903,50 @@ def animation(id20read_object,scannumber,logscaling=True,timeout=-1,colormap='je
 		plt.draw()
 		plt.waitforbuttonpress(timeout=timeout)
 
+def alignment_image(id20read_object,scannumber,motorname,filename=None):
+	"""
+	Loads a scan from a sample position scan (x-scan, y-scan, z-scan), lets you choose a zoomroi and constructs a 2D image from this
+	INPUT:
+	scannumber = number of the scan
+	motorname  = string that contains the motor name (must be the same as in the SPEC file)
+	filename   = optional parameter with filename to store the image
+	"""
+	# load the scan
+	data, motors, counters, edfmats = id20read_object.readscan(scannumber)
+
+	# the scan motor
+	position = counters[motorname.lower()]
+
+	# define a zoom ROI
+	image = xrs_utilities.sumx(edfmats)
+	roi_finder_obj = roifinder_and_gui.roi_finder()
+	roi_finder_obj.get_zoom_rois(image)
+
+	# construct the image
+	roixinds = roi_finder_obj.roi_obj.x_indices[0]
+	roiyinds = roi_finder_obj.roi_obj.y_indices[0]
+
+	# go through all edf files of the scan, sum over the height of the roi and stack the resulting lines into a matrix
+	axesrange = [0,roiyinds[-1],position[-1],position[0]]
+	theimage  = (np.sum(edfmats[:,np.amin(roixinds):np.amax(roixinds)+1,np.amin(roiyinds):np.amax(roiyinds)+1],axis=1))
+	plt.close()
+	fig = plt.figure()
+	ax  = fig.add_subplot(111)
+	ax.imshow(np.log(theimage),extent=axesrange)
+	ax.set_aspect('auto')
+	plt.xlabel('pixel along the beam')
+	ylabelstr = motorname.lower() + ' position [mm]'
+	plt.ylabel(ylabelstr)
+	plt.show()
+
+	# save the image, if a filename is provided
+	if filename:
+		from XRStools.xrs_imaging import LRimage
+		f = open(filename, 'wb')
+		yrange = np.arange(np.amin(roixinds),np.amax(roixinds)+1)
+		theobject = LRimage(theimage, position, yrange)
+		pickle.dump(theobject, f, protocol=-1)
+		f.close()
 
 
 
