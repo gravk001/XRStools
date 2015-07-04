@@ -395,7 +395,7 @@ def readbiggsdata(filename,element):
 	data = (np.reshape(np.array(data),(length,arraysize)))
 	return data, occupation, bindingen, colnames
 
-def makepzprofile(element,filename=os.path.join(installation_dir,'xrstools/data/ComptonProfiles.dat')):
+def makepzprofile(element,filename=os.path.join(installation_dir,'xrstools/things/ComptonProfiles.dat')):
 	"""
 	constructs compton profiles of element 'element' on pz-scale 
 	(-100:100 a.u.) from the Biggs tables provided in 'filename'
@@ -432,7 +432,7 @@ def makepzprofile(element,filename=os.path.join(installation_dir,'xrstools/data/
 	occupation = [float(val) for val in occupation]
 	return pzprofile, binden, occupation
 
-def makeprofile(element,filename=os.path.join(installation_dir,'xrstools/data/ComptonProfiles.dat'),E0=9.69,tth=35.0,correctasym=None):
+def makeprofile(element,filename=os.path.join(installation_dir,'xrstools/things/ComptonProfiles.dat'),E0=9.69,tth=35.0,correctasym=None):
 	"""
 	takes the profiles from 'makepzprofile()', converts them onto eloss 
 	scale and normalizes them to S(q,w) [1/eV]
@@ -486,7 +486,7 @@ def makeprofile(element,filename=os.path.join(installation_dir,'xrstools/data/Co
 	C = J - V
 	return enscale,J,C,V,q
 
-def makeprofile_comp(formula,filename=os.path.join(installation_dir,'xrstools/data/ComptonProfiles.dat'),E0=9.69,tth=35,correctasym=None):
+def makeprofile_comp(formula,filename=os.path.join(installation_dir,'xrstools/things/ComptonProfiles.dat'),E0=9.69,tth=35,correctasym=None):
 	"""
 	returns the compton profile of a chemical compound with formula 'formula'
 	input:
@@ -515,7 +515,7 @@ def makeprofile_comp(formula,filename=os.path.join(installation_dir,'xrstools/da
 		V += v
 	return eloss, J,C,V,q
 
-def makeprofile_compds(formulas,concentrations=None,filename=os.path.join(installation_dir,'xrstools/data/ComptonProfiles.dat'),E0=9.69,tth=35.0,correctasym=None):
+def makeprofile_compds(formulas,concentrations=None,filename=os.path.join(installation_dir,'xrstools/things/ComptonProfiles.dat'),E0=9.69,tth=35.0,correctasym=None):
 	"""
 	returns sum of compton profiles from a lost of chemical compounds weighted by the given concentration
 	"""
@@ -670,7 +670,7 @@ def element(z):
 		print 'type '+ type(z) + 'not supported.'	
 	return Z
 
-def myprho(energy,Z,logtablefile=os.path.join(installation_dir,'xrstools/data/logtable.dat')):
+def myprho(energy,Z,logtablefile=os.path.join(installation_dir,'xrstools/things/logtable.dat')):
 	"""Calculates the photoelectric, elastic, and inelastic absorption of 
 	an element Z 
 
