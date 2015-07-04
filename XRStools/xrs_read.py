@@ -948,5 +948,36 @@ def alignment_image(id20read_object,scannumber,motorname,filename=None):
 		pickle.dump(theobject, f, protocol=-1)
 		f.close()
 
+def get_scans_pw(id20read_object,scannumbers):
+	"""Sums scans from pixelwise ROI integration for use in the PW roi refinement.
+	**get_scans_pw**
+	"""
+	if isinstance(scannumbers,list):
+		scannums = scannumbers
+	elif isinstance(scannumbers,int):
+		scannums = [scannumbers]
+	else:
+		print('Please provide keyword \'scannumbers\' as integer or list of integers.')
+		return
+	if len(scannums)==1:
+		scanname = 'Scan%03d' % scannums[0]
+		pw_matrices = id20read_object.scans[scanname].signals_pw
+	else:
+		scanname = 'Scan%03d' % scannums[0]
+		pw_matrices = id20read_object.scans[scanname].signals_pw
+		for ii in scannums[1:]:
+			scanname = 'Scan%03d' % ii
+			for jj in range(len(pw_matrices)):
+				pw_matrices[jj] += id20read_object.scans[scanname].signals_pw[jj]
+	return pw_matrices
+
+
+
+
+
+
+
+
+
 
 
