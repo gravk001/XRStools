@@ -400,7 +400,7 @@ def readbiggsdata(filename,element):
 	data = (np.reshape(np.array(data),(length,arraysize)))
 	return data, occupation, bindingen, colnames
 
-def makepzprofile(element,filename=os.path.join(data_installation_dir,'data/ComptonProfiles.dat')):
+def makepzprofile(element,filename=os.path.join(data_installation_dir,'ComptonProfiles.dat')):
 	"""
 	constructs compton profiles of element 'element' on pz-scale 
 	(-100:100 a.u.) from the Biggs tables provided in 'filename'
@@ -437,7 +437,7 @@ def makepzprofile(element,filename=os.path.join(data_installation_dir,'data/Comp
 	occupation = [float(val) for val in occupation]
 	return pzprofile, binden, occupation
 
-def makeprofile(element,filename=os.path.join(data_installation_dir,'data/ComptonProfiles.dat'),E0=9.69,tth=35.0,correctasym=None):
+def makeprofile(element,filename=os.path.join(data_installation_dir,'ComptonProfiles.dat'),E0=9.69,tth=35.0,correctasym=None):
 	"""
 	takes the profiles from 'makepzprofile()', converts them onto eloss 
 	scale and normalizes them to S(q,w) [1/eV]
@@ -491,7 +491,7 @@ def makeprofile(element,filename=os.path.join(data_installation_dir,'data/Compto
 	C = J - V
 	return enscale,J,C,V,q
 
-def makeprofile_comp(formula,filename=os.path.join(data_installation_dir,'data/ComptonProfiles.dat'),E0=9.69,tth=35,correctasym=None):
+def makeprofile_comp(formula,filename=os.path.join(data_installation_dir,'ComptonProfiles.dat'),E0=9.69,tth=35,correctasym=None):
 	"""
 	returns the compton profile of a chemical compound with formula 'formula'
 	input:
@@ -520,7 +520,7 @@ def makeprofile_comp(formula,filename=os.path.join(data_installation_dir,'data/C
 		V += v
 	return eloss, J,C,V,q
 
-def makeprofile_compds(formulas,concentrations=None,filename=os.path.join(data_installation_dir,'data/ComptonProfiles.dat'),E0=9.69,tth=35.0,correctasym=None):
+def makeprofile_compds(formulas,concentrations=None,filename=os.path.join(data_installation_dir,'ComptonProfiles.dat'),E0=9.69,tth=35.0,correctasym=None):
 	"""
 	returns sum of compton profiles from a lost of chemical compounds weighted by the given concentration
 	"""
