@@ -23,40 +23,29 @@ highq.extend(range(60,72))
 # repertorio = "/home/alex/WORKS/Christoph/for_alessandro"
 # repertorio = open("conf.txt","r").readlines()[0].strip()
 
-repertorio = "/data/id20/inhouse/data/run3_15/run4_es291"
+repertorio = "/home/christoph/data/hc990_2"
 h2o = xrs_read.read_id20(repertorio + '/hydra',monitorcolumn='kapraman')
 
-
-
-
 # manage ROIs
-image4roi =  h2o.SumDirect( [174] )
+image4roi =  h2o.SumDirect( [210] )
 roifinder = roifinder_and_gui.roi_finder()
 roifinder.get_zoom_rois(image4roi)
 # set the ROI object
 h2o.set_roiObj(roifinder.roi_obj)
-h2o.loadelastic([174])
-h2o.loadscan([178,188],'edge1')
-
-# for several scans:
-
-pixelwise_stuff = []
-for ii in range(len(gap9.scans['Scan188'].signals_pw)):
-    pixelwise_stuff.append(gap9.scans['Scan188'].signals_pw[ii] + gap9.scans['Scan178'].signals_pw[ii])
-
+h2o.loadelastic([210])
+h2o.loadscan([211],'edge1')
 
 # refine ROIs
 h2o.getrawdata_pixelwise()
-roifinder.refine_pw_rois(roifinder.roi_obj, pixelwise_stuff,n_components=2,method='nnma')
-#roifinder.refine_pw_rois(roifinder.roi_obj, h2o.scans['Scan626'].signals_pw,n_components=2,method='nnma')
+roifinder.refine_pw_rois(roifinder.roi_obj, h2o.scans['Scan211'].signals_pw,n_components=2,method='nnma')
 roifinder.show_rois()
 
 # reset the ROI object
 h2o.set_roiObj(roifinder.roi_obj)
 
 # reload scans
-h2o.loadelasticdirect([623])
-h2o.loadscandirect([626],'edge1')
+h2o.loadelasticdirect([210])
+h2o.loadscandirect([211],'edge1')
 
 # stitch and find eloss scale
 h2o.getspectrum()
