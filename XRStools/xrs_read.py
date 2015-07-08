@@ -36,7 +36,7 @@ __copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
 
 
 #from helpers import *
-import xrs_rois, xrs_scans, xrs_utilities, math_functions, xrs_fileIO
+import xrs_rois, xrs_scans, xrs_utilities, math_functions, xrs_fileIO, roifinder_and_gui
 
 from numpy import array
 import scipy.io
@@ -676,16 +676,16 @@ class read_id20:
 
                             # try finden the FWHM/resolution for each ROI
                             FWHM,x0 = xrs_utilities.fwhm((self.groups['elastic'].energy - self.cenom[n])*1e3,self.groups['elastic'].signals_orig[:,n])
-                            try:
-                                FWHM,x0 = xrs_utilities.fwhm((self.groups['elastic'].energy - self.cenom[n])*1e3,self.groups['elastic'].signals_orig[:,n])
-                                self.resolution.append(FWHM)
+                            # try:
+                            # 	FWHM,x0 = xrs_utilities.fwhm((self.groups['elastic'].energy - self.cenom[n])*1e3,self.groups['elastic'].signals_orig[:,n])
+                            # 	self.resolution.append(FWHM)
                             # # append a zero if the FWHM routine fails
-                            except:
-                                #     exc_type, exc_value, exc_traceback = sys.exc_info()
-                                #     print "*** print_tb:"
-                                #     traceback.print_tb(exc_traceback, limit=None, file=sys.stdout)
-                                #     print " need a more sofisticated way of finding the FWHM " 
-                                self.resolution.append(0.0) # need a more sofisticated way of finding the FWHM
+                            # except:
+                            #     exc_type, exc_value, exc_traceback = sys.exc_info()
+                            #     print "*** print_tb:"
+                            #     traceback.print_tb(exc_traceback, limit=None, file=sys.stdout)
+                            #     print " need a more sofisticated way of finding the FWHM " 
+                            #     self.resolution.append(0.0) # need a more sofisticated way of finding the FWHM
 			self.E0 = np.mean(valid_cenoms)
 			# define the first eloss scale as the 'master' scale for all ROIs
 			self.eloss = (self.energy - cofm)*1e3 # energy loss in eV
@@ -863,44 +863,120 @@ class read_id20:
 				self.signals[:,ii] -= background # subtract background roi
 
 
-	def animation(self,scannumber,logscaling=True,timeout=-1,colormap='jet'):
-		"""
-		Shows the edf-files of a scan as a 'movie'.
-		INPUT:
-		scannumber = integer/scannumber
-		logscaling = set to 'True' (default) if edf-images are to be shown on logarithmic-scale
-		timeout    = time in seconds defining pause between two images, if negative (default)
-					 images are renewed by mouse clicks
-		colormap   = matplotlib color scheme used in the display
-		"""
-		if isinstance(scannumber,list):
-			if len(scannumber)>1:
-				print 'this only works for a single scan, sorry'
-				return
-			else:
-				scannumber = scannumber[0]
-		scanname = 'Scan%03d' % scannumber
-		edfmats = self.scans[scanname].edfmats
-		scanlen  = np.shape(edfmats)[0]
-		plt.ion()
+def animation(id20read_object,scannumber,logscaling=True,timeout=-1,colormap='jet'):
+	"""
+	Shows the edf-files of a scan as a 'movie'.
+	INPUT:
+	scannumber = integer/scannumber
+	logscaling = set to 'True' (default) if edf-images are to be shown on logarithmic-scale
+	timeout    = time in seconds defining pause between two images, if negative (default)
+				 images are renewed by mouse clicks
+	colormap   = matplotlib color scheme used in the display
+	"""
+	if isinstance(scannumber,list):
+		if len(scannumber)>1:
+			print 'this only works for a single scan, sorry'
+			return
+		else:
+			scannumber = scannumber[0]
+
+	scanname = 'Scan%03d' % scannumber
+	edfmats  = id20read_object.scans[scanname].edfmats
+	scanlen  = np.shape(edfmats)[0]
+	plt.ion()
+	plt.clf()
+	for n in range(scanlen):
 		plt.clf()
-		for n in range(scanlen):
-			plt.clf()
-			if logscaling:
-				theimage = plt.imshow(np.log(edfmats[n,:,:]))
-			else:
-				theimage = plt.imshow(edfmats[n,:,:])
-			plt.xlabel('detector x-axis [pixel]')
-			plt.ylabel('detector y-axis [pixel]')
-			if timeout<0:
-				titlestring = 'Frame No. %d' % (n+1) + ' of %d' % scanlen + ', press key or mouse botton to continue' 
-				plt.title(titlestring)
-			else:
-				titlestring = 'Frame No. %d' % (n+1) + ' of %d' % scanlen + ', updating every %2.2f ' % timeout + ' seconds'
-				plt.title(titlestring)
-			theimage.set_cmap(colormap)
-			plt.draw()
-			plt.waitforbuttonpress(timeout=timeout)
+		if logscaling:
+			theimage = plt.imshow(np.log(edfmats[n,:,:]))
+		else:
+			theimage = plt.imshow(edfmats[n,:,:])
+		plt.xlabel('detector x-axis [pixel]')
+		plt.ylabel('detector y-axis [pixel]')
+		if timeout<0:
+			titlestring = 'Frame No. %d' % (n+1) + ' of %d' % scanlen + ', press key or mouse botton to continue' 
+			plt.title(titlestring)
+		else:
+			titlestring = 'Frame No. %d' % (n+1) + ' of %d' % scanlen + ', updating every %2.2f ' % timeout + ' seconds'
+			plt.title(titlestring)
+		theimage.set_cmap(colormap)
+		plt.draw()
+		plt.waitforbuttonpress(timeout=timeout)
+
+def alignment_image(id20read_object,scannumber,motorname,filename=None):
+	"""
+	Loads a scan from a sample position scan (x-scan, y-scan, z-scan), lets you choose a zoomroi and constructs a 2D image from this
+	INPUT:
+	scannumber = number of the scan
+	motorname  = string that contains the motor name (must be the same as in the SPEC file)
+	filename   = optional parameter with filename to store the image
+	"""
+	# load the scan
+	data, motors, counters, edfmats = id20read_object.readscan(scannumber)
+
+	# the scan motor
+	position = counters[motorname.lower()]
+
+	# define a zoom ROI
+	image = xrs_utilities.sumx(edfmats)
+	roi_finder_obj = roifinder_and_gui.roi_finder()
+	roi_finder_obj.get_zoom_rois(image)
+
+	# construct the image
+	roixinds = roi_finder_obj.roi_obj.x_indices[0]
+	roiyinds = roi_finder_obj.roi_obj.y_indices[0]
+
+	# go through all edf files of the scan, sum over the height of the roi and stack the resulting lines into a matrix
+	axesrange = [0,roiyinds[-1],position[-1],position[0]]
+	theimage  = (np.sum(edfmats[:,np.amin(roixinds):np.amax(roixinds)+1,np.amin(roiyinds):np.amax(roiyinds)+1],axis=1))
+	plt.close()
+	fig = plt.figure()
+	ax  = fig.add_subplot(111)
+	ax.imshow(np.log(theimage),extent=axesrange)
+	ax.set_aspect('auto')
+	plt.xlabel('pixel along the beam')
+	ylabelstr = motorname.lower() + ' position [mm]'
+	plt.ylabel(ylabelstr)
+	plt.show()
+
+	# save the image, if a filename is provided
+	if filename:
+		from XRStools.xrs_imaging import LRimage
+		f = open(filename, 'wb')
+		yrange = np.arange(np.amin(roixinds),np.amax(roixinds)+1)
+		theobject = LRimage(theimage, position, yrange)
+		pickle.dump(theobject, f, protocol=-1)
+		f.close()
+
+def get_scans_pw(id20read_object,scannumbers):
+	"""Sums scans from pixelwise ROI integration for use in the PW roi refinement.
+	**get_scans_pw**
+	"""
+	if isinstance(scannumbers,list):
+		scannums = scannumbers
+	elif isinstance(scannumbers,int):
+		scannums = [scannumbers]
+	else:
+		print('Please provide keyword \'scannumbers\' as integer or list of integers.')
+		return
+	if len(scannums)==1:
+		scanname = 'Scan%03d' % scannums[0]
+		pw_matrices = id20read_object.scans[scanname].signals_pw
+	else:
+		scanname = 'Scan%03d' % scannums[0]
+		pw_matrices = id20read_object.scans[scanname].signals_pw
+		for ii in scannums[1:]:
+			scanname = 'Scan%03d' % ii
+			for jj in range(len(pw_matrices)):
+				pw_matrices[jj] += id20read_object.scans[scanname].signals_pw[jj]
+	return pw_matrices
+
+
+
+
+
+
+
 
 
 
