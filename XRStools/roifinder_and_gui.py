@@ -624,7 +624,7 @@ class roi_finder:
 		self.roi_obj.masks          = xrs_rois.convert_roi_matrix_to_masks(self.roi_obj.roi_matrix)
 		self.roi_obj.number_of_rois = np.amax(self.roi_obj.roi_matrix)
 
-	def show_rois(self):
+	def show_rois(self,interpolation='nearest'):
 		"""
 		Creates a figure with the defined ROIs as numbered boxes on it.
 		"""
@@ -637,7 +637,7 @@ class roi_finder:
 		# make a figure
 		else:
 			plt.cla()
-			plt.imshow(roi_matrix)
+			plt.imshow(roi_matrix,interpolation=interpolation)
 			plt.xlabel('x-axis [pixel]')
 			plt.ylabel('y-axis [pixel]')
 
@@ -650,7 +650,7 @@ class roi_finder:
 				string  = '%02d' % (ii+1)
 				plt.text(xcenter,ycenter,string)
 
-	def refine_pw_rois(self,roi_obj,pw_data,n_components=2,method='nnma'):
+	def refine_pw_rois(self,roi_obj,pw_data,n_components=2,method='nnma',cov_thresh=-1):
 		"""
 		**refine_pw_rois**
 
@@ -720,7 +720,16 @@ class roi_finder:
 			plt.plot(covariance)
 			plt.xlabel('pixels in ROI')
 			plt.ylabel('covariance [arb. units]')
-			user_cutoff = np.array(plt.ginput(1,timeout=-1)[0])
+			if cov_thresh < 0:
+				user_cutoff = np.array(plt.ginput(1,timeout=-1)[0])
+			elif cov_thresh>0 and isinstance(cov_thresh,int):
+				if len(covariance) < cov_thresh:
+					print('ROI has fewer pixels than cov_thresh, will break here.')
+					return
+				else:
+					user_cutoff = np.array([0.0, np.sort(covariance)[-cov_thresh]])
+			else:
+				print('Please provide cov_thresh as positive integer!')
 
 			# find the ROI indices above the cutoff, reassign ROI indices
 			inds = covariance >= user_cutoff[1]
@@ -729,7 +738,7 @@ class roi_finder:
 				if inds[ii]:
 					refined_indices.append(roi_obj.indices[counter][ii])
 			new_indices.append(refined_indices)
-				
+
 			# end loop
 			counter += 1
 
