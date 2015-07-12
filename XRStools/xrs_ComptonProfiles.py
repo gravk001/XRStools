@@ -441,7 +441,7 @@ class HFProfile:
 
         # get all Atomic and Formula unit profiles on eloss scale
         for key in self.FormulaProfiles:
-            FormulaProfiles[key].get_elossProfiles(self.E0, self.twotheta,correctasym,valence_cutoff)
+            self.FormulaProfiles[key].get_elossProfiles(self.E0, self.twotheta,correctasym,valence_cutoff)
 
         # save the eloss-scale
         self.eloss = self.FormulaProfiles[self.FormulaProfiles.keys()[0]].eloss
