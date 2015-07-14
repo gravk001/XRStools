@@ -146,6 +146,7 @@ class AtomProfile:
         self.C_total   = []
         self.J_total   = []
         self.V_total   = []
+        self.q_vals    = []
         self.CperShell = {}
         self.JperShell = {}
         self.VperShell = {}
@@ -197,6 +198,7 @@ class AtomProfile:
         self.C_total = np.zeros((len(enScale),len(self.twotheta)))
         self.J_total = np.zeros((len(enScale),len(self.twotheta)))
         self.V_total = np.zeros((len(enScale),len(self.twotheta)))
+        self.q_vals  = np.zeros((len(enScale),len(self.twotheta)))
         for key in C_shell:
             self.CperShell[key] = np.zeros((len(enScale),len(self.twotheta)))
             self.JperShell[key] = np.zeros((len(enScale),len(self.twotheta)))
@@ -210,6 +212,7 @@ class AtomProfile:
             self.C_total[:,ii] = np.interp(self.eloss,enScale,C_total)*self.stoichiometry
             self.J_total[:,ii] = np.interp(self.eloss,enScale,J_total)*self.stoichiometry
             self.V_total[:,ii] = np.interp(self.eloss,enScale,V_total)*self.stoichiometry
+            self.q_vals[:,ii]  = np.interp(self.eloss,enScale,q)
             for key in self.CperShell:
                 self.CperShell[key][:,ii] = np.interp(self.eloss,enScale,C_shell[key])
                 self.JperShell[key][:,ii] = np.interp(self.eloss,enScale,C_shell[key])
@@ -347,6 +350,7 @@ class FormulaProfile:
         self.C_total   = []
         self.J_total   = []
         self.V_total   = []
+        self.q_vals    = []
         self.E0        = 0.0
         self.twotheta  = []
         self.stoich_weight = weight
@@ -375,6 +379,7 @@ class FormulaProfile:
         self.C_total = np.zeros((len(self.eloss),len(self.twotheta)))
         self.J_total = np.zeros((len(self.eloss),len(self.twotheta)))
         self.V_total = np.zeros((len(self.eloss),len(self.twotheta)))
+        self.q_vals  = np.zeros((len(self.eloss),len(self.twotheta)))
 
         # add up all AtomProfiles
         for key in self.AtomProfiles:
@@ -383,7 +388,8 @@ class FormulaProfile:
                 self.C_total[:,ii] += np.interp(self.eloss,AP.eloss,AP.C_total[:,ii])*AP.get_stoichiometry()
                 self.J_total[:,ii] += np.interp(self.eloss,AP.eloss,AP.J_total[:,ii])*AP.get_stoichiometry()
                 self.V_total[:,ii] += np.interp(self.eloss,AP.eloss,AP.V_total[:,ii])*AP.get_stoichiometry()
-
+                self.q_vals[:,ii]  = np.interp(self.eloss,AP.eloss,AP.q_vals[:,ii])
+ 
     def get_correctecProfiles(self, densities, alpha, beta, samthick ):
         pass
 
@@ -423,6 +429,7 @@ class HFProfile:
         self.C_total   = []
         self.J_total   = []
         self.V_total   = []
+        self.q_vals    = []
         self.twotheta  = []
         self.E0        = 0.0
 
@@ -450,6 +457,7 @@ class HFProfile:
         self.C_total = np.zeros((len(self.eloss),len(self.twotheta)))
         self.J_total = np.zeros((len(self.eloss),len(self.twotheta)))
         self.V_total = np.zeros((len(self.eloss),len(self.twotheta)))
+        self.q_vals  = np.zeros((len(self.eloss),len(self.twotheta)))
 
         # add up all Compton Profiles from the sub-units
         for key,jj in zip(self.FormulaProfiles,range(len(self.twotheta))):
@@ -458,7 +466,7 @@ class HFProfile:
                 self.C_total[:,ii] += np.interp(self.eloss,FP.eloss,FP.C_total[:,ii])*FP.get_stoichWeight()
                 self.J_total[:,ii] += np.interp(self.eloss,FP.eloss,FP.J_total[:,ii])*FP.get_stoichWeight()
                 self.V_total[:,ii] += np.interp(self.eloss,FP.eloss,FP.V_total[:,ii])*FP.get_stoichWeight()
-
+                self.q_vals[:,ii] = np.interp(self.eloss,FP.eloss,FP.q_vals[:,ii])
 
 
 class ComptonProfiles:

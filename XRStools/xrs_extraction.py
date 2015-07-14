@@ -37,6 +37,10 @@ __copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
 import os
 import numpy as np
 import xrs_utilities, xrs_fileIO, math_functions, xrs_ComptonProfiles
+import matplotlib.pyplot as plt
+
+from scipy import optimize
+from math_functions import *
 
 installation_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -48,6 +52,20 @@ if not debug:
 else:
 	HFCP_PATH     = '/home/christoph/sources/XRStools/data/ComptonProfiles.dat'
 	LOGTABLE_PATH = '/home/christoph/sources/XRStools/data/logtable.dat'
+
+
+def map_chamber_names(name):
+	"""
+	**map_chamber_names**
+	Maps names of chambers to range of ROI numbers.
+	"""
+	chamberNames = {'VD':range(0,12),
+					'VU':range(12,24),
+					'VB':range(24,36),
+					'HR':range(36,48),
+					'HL':range(48,60),
+					'HB':range(60,72)}
+	return chamberNames[name.upper()]
 
 
 class HF_dataset:
@@ -70,10 +88,12 @@ class HF_dataset:
 		self.J_total   = np.zeros((len(self.eloss),len(self.tth)))
 		self.C_total   = np.zeros((len(self.eloss),len(self.tth)))
 		self.V_total   = np.zeros((len(self.eloss),len(self.tth)))
+		self.q_vals    = np.zeros((len(self.eloss),len(self.tth)))
 		for ii in range(len(self.tth)):
 			self.J_total[:,ii] = np.interp(self.eloss, self.HFProfile.eloss,self.HFProfile.J_total[:,ii])
 			self.C_total[:,ii] = np.interp(self.eloss, self.HFProfile.eloss,self.HFProfile.C_total[:,ii])
 			self.V_total[:,ii] = np.interp(self.eloss, self.HFProfile.eloss,self.HFProfile.V_total[:,ii])
+			self.q_vals[:,ii]  = np.interp(self.eloss, self.HFProfile.eloss,self.HFProfile.q_vals[:,ii])
 
 		# initialize double dicts for {'element1':{'edge1','edge2',...}, 'element2':{'edge1','edge2',...} }
 		self.C_edges = {}
@@ -100,39 +120,47 @@ class valence_CP:
 	**valence_CP**
 	Class to organize information about extracted experimental valence Compton profiles.
 	"""
-	def __init__(self)
+	def __init__(self):
 		self.pzscale        = np.flipud(np.arange(-10,10,0.05)) # definition according to Huotari et al, JPCS 62 (2001) 2205
-		self.valencepz      = np.zeros((len(self.pzscale),len(self.signals[0,:])))
-		self.valasymmetrypz = np.zeros((len(self.pzscale),len(self.signals[0,:])))
-		self.valence        = np.zeros((len(self.eloss),len(self.signals[0,:])))
-		self.valasymmetry   = np.zeros((len(self.eloss),len(self.signals[0,:])))
+		self.valencepz      = np.array([])
+		self.valasymmetrypz = np.array([])
+		self.valence        = np.array([])
+		self.valasymmetry   = np.array([])
+
+	def get_asymmetry(self):
+		pass
+
+	def get_pzscale(self):
+		pass
+
+
 
 class edge_extraction:
 	"""
 	**edge_extraction**
 	Class to destill core edge spectra from x-ray Raman scattering experiments.
 	"""
-	def __init__(self,experimental_data, formulas, stoich_weights, edges ,prenormrange=[5,np.inf]):
+	def __init__(self,exp_data, formulas, stoich_weights, edges ,prenormrange=[5,np.inf]):
 		# input
-		self.eloss   = experimental_data.eloss
-		self.signals = experimental_data.signals
-		self.errors  = experimental_data.errors
-		self.E0      = experimental_data.E0
-		self.tth     = experimental_data.tth
+		self.eloss   = exp_data.eloss
+		self.signals = exp_data.signals
+		self.errors  = exp_data.errors
+		self.E0      = exp_data.E0
+		self.tth     = exp_data.tth
 		self.prenormrange = prenormrange
-		self.HF_dataset = HF_dataset(experimental_data, formulas, stoich_weights, edges)
+		self.HF_dataset = HF_dataset(exp_data, formulas, stoich_weights, edges)
 
 		# output
-		self.background     = np.zeros(np.shape(data.signals))
-		self.sqw            = np.zeros(np.shape(data.signals))
-		self.sqwav          = np.zeros(np.shape(data.eloss))
-		self.sqwaverr       = np.zeros(np.shape(data.eloss))
+		self.background     = np.zeros(np.shape(exp_data.signals))
+		self.sqw            = np.zeros(np.shape(exp_data.signals))
+		self.sqwav          = np.zeros(np.shape(exp_data.eloss))
+		self.sqwaverr       = np.zeros(np.shape(exp_data.eloss))
 		self.valence_CP     = valence_CP()
 
 		# some variables for averaging rawdata over analyzers/whole chambers
 		self.avsignals  = np.array([])
 		self.averrors   = np.array([])
-		self.avC        = np.array([])
+		self.av_C       = {}
 		self.avqvals    = np.array([])
 
 		# rough normalization over range given by prenormrange
@@ -160,7 +188,7 @@ class edge_extraction:
 		"""	
 		if isinstance(roi_numbers,list):
 			columns = roi_numbers
-		elif: isinstance(roi_numbers,str): 
+		elif isinstance(roi_numbers,str): 
 			columns = map_chamber_names(roi_numbers)
 		else:
 			print('Unsupported type for keyword \'roi_numbers\'.')
@@ -174,16 +202,24 @@ class edge_extraction:
 		# build matricies to sum over
 		av      = np.zeros((len(self.eloss),len(columns)))
 		averr   = np.zeros((len(self.eloss),len(columns)))
-		avcvals = np.zeros((len(self.eloss),len(columns)))
 		avqvals = np.zeros((len(self.eloss),len(columns)))
+		avcvals = {}
+		for key in self.HF_dataset.edges:
+			avcvals[key] = {}
+			for edge in self.HF_dataset.edges[key]:
+				avcvals[key][edge] = np.zeros((len(self.eloss),len(columns)))
 
+		# assign the signals to sum over
 		for column,ii in zip(columns,range(len(columns))):
 			# find data points with error = 0.0 and replace error by 1.0
 			inds = np.where(self.errors[:,column] == 0.0)[0]
 			self.errors[inds,column] = 1.0
-			av[:,ii]      = self.signals[:,column]]
+			av[:,ii]      = self.signals[:,column]
 			averr[:,ii]   = self.errors[:,column]
-			avqvals[:,ii] = self.qvals[:,column]
+			avqvals[:,ii] = self.HF_dataset.q_vals[:,column]
+			for key in self.HF_dataset.edges:
+				for edge in self.HF_dataset.edges[key]:
+					avcvals[key][edge][:,ii] = self.HF_dataset.C_edges[key][edge][:,column]
 
 		# sum things up
 		if errorweighing:
@@ -193,16 +229,107 @@ class edge_extraction:
 			self.avsignals = np.sum(av,axis=1)
 			self.averrors  = np.sqrt(np.sum(np.absolute(averr)**2.0,axis=1)) # check this again
 
+		# average over HF core profiles 
 		self.avqvals = np.mean(avqvals,axis=1)
+		for key in self.HF_dataset.edges:
+			self.av_C[key] = {}
+			for edge in self.HF_dataset.edges[key]:
+				self.av_C[key][edge] = np.mean(avcvals[key][edge],axis=1)
+				
 
-	def removeCorePearsonAv2(self,range1,range2,element,edge,weights=[2,1],guess=None):
+	def removePolyCoreAv(self,element,edge,range1,range2,weights=[1,1],guess=[1.0,0.0,0.0],ewindow=100.0):
 		"""
-		**removeCorePearsonAv2**
-		
+		**removePolyCoreAv**
+		Args
+		----
+		edges : dict
+			Dictionary holding information of which edge to extract. E.g. {'Si':'L23'}.
+		range1 : list
+			List with start and end value for fit-region 1.
+		range2 : list
+			List with start and end value for fit-region 2.
+		weigths : list of ints
+			List with weights for the respective fit-regions 1 and 2. Default is [1,1].
+		guess : list
+			List of starting values for the fit. Default is [1.0,0.0,0.0].
+		ewindow: float
+			Width of energy window used in the plot. Default is 100.0.
 		"""
-		# find indices for fit-range
-		region1 = np.where(np.logical_and(self.eloss >= range1[0], self.eloss <= range1[1]))[0]
-		region2 = np.where(np.logical_and(self.eloss >= range2[0], self.eloss <= range2[1]))[0]
+		# check that there are averaged signals available
+		if not np.any(self.avsignals):
+			print('Found no averaged signals. Use \'analyzerAverage\'-method first to create some averages.')
+			return
+
+		# check that desired edge is available
+		if not element in self.HF_dataset.edges.keys():
+			print('Cannot find HF profiles for desired atom.')
+			return
+		if not edge in self.HF_dataset.edges[element]:
+			print('Cannot find HF core profiles for desired edge.' )
+			return
+
+		# define fitting ranges
+		region1 = np.where(np.logical_and(self.eloss >= range1[0], self.eloss <= range1[1]))
+		region2 = np.where(np.logical_and(self.eloss >= range2[0], self.eloss <= range2[1]))
+		region  = np.append(region1*weights[0],region2*weights[1])
+
+		# prepare plotting window
+		plt.ion()
+		plt.cla()
+
+		# get the HF core spectrum
+		HF_core = self.av_C[element][edge]
+
+		# estimate start value for scaling parameter
+		HF_core_norm = np.trapz(HF_core[region2],self.eloss[region2])
+		exp_norm     = np.trapz(self.avsignals[region2],self.eloss[region2])
+		self.avsignals *= HF_core_norm/exp_norm
+
+		# define fit-function, boundaries, and constraints
+		cons    =  ({'type': 'eq',   'fun': lambda x: np.trapz(HF_core[region2],self.eloss[region2]) - 
+														np.trapz(x[0]*self.avsignals[region2]-HF_core[region2] - 
+																np.polyval(x[1::],self.eloss[region2]),self.eloss[region2] )  },
+					{'type': 'eq',   'fun': lambda x: np.trapz(x[0]*self.avsignals[region1] - HF_core[region1] - 
+																np.polyval(x[1::],self.eloss[region1]),self.eloss[region1] )  },
+					{'type': 'ineq', 'fun': lambda x: x[0]})
+
+		fitfct = lambda a: np.sum( (a[0]*self.avsignals[region] - HF_core[region] - np.polyval(a[1::],self.eloss[region]) )**2.0 )
+		res    = optimize.minimize(fitfct, guess, method='SLSQP',constraints=cons).x
+		print 'The fit parameters are: ', res
+
+		yres = np.polyval(res[1::], self.eloss)
+		plt.plot(self.eloss,HF_core)	
+		plt.plot(self.eloss,self.avsignals*res[0], self.eloss,yres+HF_core, self.eloss,self.avsignals*res[0]-yres)
+		plt.legend(['HF core','scaled signal','poly-fit + core','scaled signal - poly'])
+		plt.xlabel('energy loss [eV]')
+		plt.ylabel('signal [a.u.]')
+		plt.xlim(range1[0]-ewindow,range2[1]+ewindow) 
+		plt.autoscale(enable=True, axis='y')
+		plt.draw()
+
+		self.sqwav    = self.avsignals*res[0] - yres
+		self.sqwaverr = self.averrors*res[0]
+
+	def removeCorePearsonAv(self,element,edge,range1,range2,weights=[2,1],guess=None):
+		"""
+		**removeCorePearsonAv**
+		"""
+		# check that there are averaged signals available
+		if not np.any(self.avsignals):
+			print('Found no averaged signals. Use \'analyzerAverage\'-method first to create some averages.')
+			return
+
+		# check that desired edge is available
+		if not element in self.HF_dataset.edges.keys():
+			print('Cannot find HF profiles for desired atom.')
+			return
+		if not edge in self.HF_dataset.edges[element]:
+			print('Cannot find HF core profiles for desired edge.' )
+			return
+
+		# define fitting ranges
+		region1 = np.where(np.logical_and(self.eloss >= range1[0], self.eloss <= range1[1]))
+		region2 = np.where(np.logical_and(self.eloss >= range2[0], self.eloss <= range2[1]))
 		region  = np.append(region1*weights[0],region2*weights[1])
 
 		# find indices for guessing start values
@@ -223,62 +350,82 @@ class edge_extraction:
 		plt.cla()
 
 		# get the HF core spectrum
-		HF_core = self.HF_dataset.C_edges[element][edge]
+		HF_core = self.av_C[element][edge]
 
-		bnds = ((0, None), (0, None), (0, None), (0, None), (0, None), (0, None), (0, None))
+		# approximately scale data in post-edge region
+		HF_core_norm = np.trapz(HF_core[region2],self.eloss[region2])
+		exp_norm     = np.trapz(self.avsignals[region2],self.eloss[region2])
+		self.avsignals *= HF_core_norm/exp_norm
+
+		bnds = ((None, None), (0, None), (0, None), (0, None), (0, None), (0, None), (0, None))
 		cons    =  ({'type': 'ineq', 'fun': lambda x:  x[2]  },
 					{'type': 'ineq', 'fun': lambda x:  x[3]  },
 					{'type': 'ineq', 'fun': lambda x:  x[6]  },
-					{'type': 'eq',   'fun': lambda x:   np.sum( (x[6]*self.avsignals[region2] - 
+					{'type': 'eq',   'fun': lambda x:   np.trapz(HF_core[region1],self.eloss[region1]) - 
+														np.trapz(x[6]*self.avsignals[region1] - 
+																pearson7_zeroback(self.eloss[region1],x[0:4]) - 
+																np.polyval(x[4:6],self.eloss[region1]) - 
+																HF_core[region1],
+																self.eloss[region1])  },
+					{'type': 'eq',   'fun': lambda x:   np.trapz(x[6]*self.avsignals[region2] - 
 																pearson7_zeroback(self.eloss[region2],x[0:4]) - 
 																np.polyval(x[4:6],self.eloss[region2]) - 
-																self.avC[region2])**2.0 )  },
+																HF_core[region2],
+																self.eloss[region2])})
 
-)
-res_ca350_50h = optimize.minimize(fitfctn, (0.1,0.1), method='SLSQP', bounds=bnds,constraints=cons).x
+		fitfct = lambda a: np.sum( (a[0]*self.avsignals[region] - 
+									pearson7_zeroback(self.eloss[region],a[0:4]) - 
+									np.polyval(a[4:6],self.eloss[region]) - 
+									HF_core[region] )**2.0 )
 
-fitfct  = lambda a: np.sum( (a[6]*self.avsignals[region1] - pearson7_zeroback(self.eloss[region1],a[0:4]) - np.polyval(a[4:6],self.eloss[region1]) - self.avC[region1])**2.0 ) + np.sum( (a[6]*self.avsignals[region2] - pearson7_zeroback(self.eloss[region2],a[0:4]) - np.polyval(a[4:6],self.eloss[region2]) - self.avC[region2])**2.0 )
+		res    = optimize.minimize(fitfct, guess, method='SLSQP', bounds=bnds, constraints=cons).x
+		print 'The fit parameters are: ', res
 
-
-		# some sensible boundary conditions for the fit:
-
-		c2 = lambda a: a[2] # shape should not be negative
-		c3 = lambda a: a[3] # peak intensity should not be negative
-		c4 = lambda a: np.absolute(5e-1 - a[4]) # slope for linear background should be small
-		c5 = lambda a: a[3] - a[5] # offset for linear should be smaller than maximum of pearson
-		c6 = lambda a: a[6] # scaling factor for the data should not be negative
-		c7 = lambda a: np.sum( (a[6]*self.avsignals[region2] - pearson7_zeroback(self.eloss[region2],a[0:4]) - self.avC[region2] - np.polyval(a[4:6],self.eloss[region2]))**2.0 )
-
-		fitfct  = lambda a: np.sum( (a[6]*self.avsignals[region1] - pearson7_zeroback(self.eloss[region1],a[0:4]) - np.polyval(a[4:6],self.eloss[region1]) - self.avC[region1])**2.0 ) + np.sum( (a[6]*self.avsignals[region2] - pearson7_zeroback(self.eloss[region2],a[0:4]) - np.polyval(a[4:6],self.eloss[region2]) - self.avC[region2])**2.0 )
-		cons = []#[c1, c2, c3, c4, c5, c6, c7]
-		res     = optimize.minimize(fitfct,guess)
 		yres    = pearson7_zeroback(self.eloss,res[0:4]) + np.polyval(res[4:6],self.eloss)
-
-		plt.plot(self.eloss,self.avsignals*res[6],self.eloss,yres+self.avC,self.eloss,self.avsignals*res[6]-yres,self.eloss,self.avC)
+		plt.plot(self.eloss,self.avsignals*res[6],self.eloss,yres+HF_core,self.eloss,self.avsignals*res[6]-yres,self.eloss,HF_core)
 		plt.legend(('scaled data','pearson + linear + core','data - (pearson + linear)','core'))
 		plt.draw()
 
 		self.sqwav = self.avsignals*res[6] - yres
 		self.sqwaverr = self.averrors*res[6]
 
+	def save_average_Sqw(self,filename, emin=None, emax=None, normrange=None):
+		"""
+		**save_average_Sqw**
+		Save the S(q,w) into a ascii file (energy loss, S(q,w), Poisson errors).
 
+		Args
+		----
+		filename : str
+			Filename for the ascii file.
+		emin : float
+			Use this to save only part of the spectrum.
+		emax : float
+			Use this to save only part of the spectrum.
+		normrange : list of floats
+			E_start and E_end for possible area-normalization before saving.
+		"""
+		# check that there are is an extracted S(q,w) available
+		if not np.any(self.sqwav):
+			print('Found no extracted S(q,w).')
+			return
 
-
-def map_chamber_names(name):
-	"""
-	**map_chamber_names**
-	Maps names of chambers to range of ROI numbers.
-	"""
-	chamberNames = {'VD':range(0,12),
-					'VU':range(12,24),
-					'VB':range(24,36),
-					'HR':range(36,48),
-					'HL':range(48,60),
-					'HB':range(60,72)}
-
-	return chamberNames[name.upper()]
-
-
-
-
+		if emin and emax: 
+			inds = np.where(np.logical_and(self.eloss>=emin,self.eloss<=emax))[0]
+			data = np.zeros((len(inds),3))
+			data[:,0] = self.eloss[inds]
+			data[:,1] = self.sqwav[inds]
+			data[:,2] = self.sqwaverr[inds]
+		else:
+			data = np.zeros((len(self.eloss),3))
+			data[:,0] = self.eloss
+			data[:,1] = self.sqwav
+			data[:,2] = self.sqwaverr
+		if normrange:
+			assert type(normrange) is list and len(normrange) is 2, "normrange has to be a list of length two!"
+			inds = np.where(np.logical_and(data[:,0]>=normrange[0],data[:,0]<=normrange[1]))[0]
+			norm = trapz(data[inds,1],data[inds,0])
+			data[:,1] /= norm
+			data[:,2] /= norm
+		np.savetxt(filename,data)
 
