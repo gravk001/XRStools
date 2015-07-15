@@ -235,15 +235,18 @@ class edge_extraction:
 			self.av_C[key] = {}
 			for edge in self.HF_dataset.edges[key]:
 				self.av_C[key][edge] = np.mean(avcvals[key][edge],axis=1)
-				
 
 	def removePolyCoreAv(self,element,edge,range1,range2,weights=[1,1],guess=[1.0,0.0,0.0],ewindow=100.0):
 		"""
 		**removePolyCoreAv**
+		Subtract a polynomial from averaged data guided by the HF core Compton profile.
+
 		Args
 		----
-		edges : dict
-			Dictionary holding information of which edge to extract. E.g. {'Si':'L23'}.
+		element : str
+			String (e.g. 'Si') for the element you want to work on.
+		edge: str
+			String (e.g. 'K' or 'L23') for the edge to extract.
 		range1 : list
 			List with start and end value for fit-region 1.
 		range2 : list
@@ -251,7 +254,11 @@ class edge_extraction:
 		weigths : list of ints
 			List with weights for the respective fit-regions 1 and 2. Default is [1,1].
 		guess : list
-			List of starting values for the fit. Default is [1.0,0.0,0.0].
+			List of starting values for the fit. Default is [1.0,0.0,0.0] (i.e. a quadratic
+			function. Change the number of guess values to get other degrees of polynomials
+			(i.e. [1.0, 0.0] for a constant, [1.0,0.0,0.0,0.0] for a cubic, etc.).
+			The first guess value passed is for scaling of the experimental data to the HF
+			core Compton profile.
 		ewindow: float
 			Width of energy window used in the plot. Default is 100.0.
 		"""
@@ -289,8 +296,8 @@ class edge_extraction:
 		cons    =  ({'type': 'eq',   'fun': lambda x: np.trapz(HF_core[region2],self.eloss[region2]) - 
 														np.trapz(x[0]*self.avsignals[region2]-HF_core[region2] - 
 																np.polyval(x[1::],self.eloss[region2]),self.eloss[region2] )  },
-					{'type': 'eq',   'fun': lambda x: np.trapz(x[0]*self.avsignals[region1] - HF_core[region1] - 
-																np.polyval(x[1::],self.eloss[region1]),self.eloss[region1] )  },
+					{'type': 'eq',   'fun': lambda x: np.trapz( np.abs( x[0]*self.avsignals[region1] - HF_core[region1] - 
+																np.polyval(x[1::],self.eloss[region1]),self.eloss[region1] )) },
 					{'type': 'ineq', 'fun': lambda x: x[0]})
 
 		fitfct = lambda a: np.sum( (a[0]*self.avsignals[region] - HF_core[region] - np.polyval(a[1::],self.eloss[region]) )**2.0 )
@@ -362,11 +369,11 @@ class edge_extraction:
 					{'type': 'ineq', 'fun': lambda x:  x[3]  },
 					{'type': 'ineq', 'fun': lambda x:  x[6]  },
 					{'type': 'eq',   'fun': lambda x:   np.trapz(HF_core[region1],self.eloss[region1]) - 
-														np.trapz(x[6]*self.avsignals[region1] - 
+														np.trapz(np.abs(x[6]*self.avsignals[region1] - 
 																pearson7_zeroback(self.eloss[region1],x[0:4]) - 
 																np.polyval(x[4:6],self.eloss[region1]) - 
 																HF_core[region1],
-																self.eloss[region1])  },
+																self.eloss[region1]) ) },
 					{'type': 'eq',   'fun': lambda x:   np.trapz(x[6]*self.avsignals[region2] - 
 																pearson7_zeroback(self.eloss[region2],x[0:4]) - 
 																np.polyval(x[4:6],self.eloss[region2]) - 
