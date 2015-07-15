@@ -50,8 +50,8 @@ if not debug:
 	HFCP_PATH = os.path.join(installation_dir,'../../../../share/XRStools/data/ComptonProfiles.dat')
 	LOGTABLE_PATH = os.path.join(installation_dir,'../../../../share/XRStools/data/logtable.dat')
 else:
-	HFCP_PATH     = '/home/christoph/sources/XRStools/data/ComptonProfiles.dat'
-	LOGTABLE_PATH = '/home/christoph/sources/XRStools/data/logtable.dat'
+	HFCP_PATH     = 'data/ComptonProfiles.dat' #'/home/christoph/sources/XRStools/data/ComptonProfiles.dat'
+	LOGTABLE_PATH = 'data/logtables.dat' #'/home/christoph/sources/XRStools/data/logtable.dat'
 
 
 def map_chamber_names(name):
