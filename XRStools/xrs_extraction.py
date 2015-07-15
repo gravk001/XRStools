@@ -165,7 +165,7 @@ class edge_extraction:
 
 		# rough normalization over range given by prenormrange
 		if prenormrange:
-			for n in range(len(self.tth)):
+			for n in range(self.signals.shape[1]):
 				HFnorm  = np.trapz(self.HF_dataset.J_total[:,n], self.eloss)
 				inds    = np.where(np.logical_and(self.eloss >= prenormrange[0], self.eloss <= prenormrange[1]))[0]
 				EXPnorm = np.trapz(self.signals[inds,n], self.eloss[inds])
