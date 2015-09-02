@@ -862,6 +862,10 @@ class read_id20:
 				background = self.signals[:,backroinum]/backnorm*expnorm
 				self.signals[:,ii] -= background # subtract background roi
 
+	def save_raw_data(self):
+		data = np.zeros((len(self.eloss),len(self.signals[0,:])))
+		data[:,0]   = self.eloss
+		data[:,1::] = self.signals
 
 def animation(id20read_object,scannumber,logscaling=True,timeout=-1,colormap='jet'):
 	"""

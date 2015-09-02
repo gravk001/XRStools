@@ -115,6 +115,15 @@ class HF_dataset:
 					else:
 						print('Could not find ' + key + ' in any of the provided formulas.')
 
+	def get_J_total_av(self,columns):
+		return np.mean(self.J_total[:,columns])
+
+	def get_C_total(self,columns):
+		return np.mean(self.J_total[:,columns])
+
+	def get_C_edges_av(self,element,edge,columns):
+		return np.mean(self.C_edges[element][edge][:,columns])
+
 class valence_CP:
 	"""
 	**valence_CP**
@@ -161,6 +170,7 @@ class edge_extraction:
 		self.avsignals  = np.array([])
 		self.averrors   = np.array([])
 		self.av_C       = {}
+		self.av_J       = np.array([])
 		self.avqvals    = np.array([])
 
 		# rough normalization over range given by prenormrange
@@ -196,13 +206,14 @@ class edge_extraction:
 
 		self.avsignals = np.zeros_like(self.eloss)
 		self.averror   = np.zeros_like(self.eloss)
-		self.avC       = np.zeros_like(self.eloss)
+		self.av_J      = np.zeros_like(self.eloss)
 		self.avqvals   = np.zeros_like(self.eloss)
 
 		# build matricies to sum over
 		av      = np.zeros((len(self.eloss),len(columns)))
 		averr   = np.zeros((len(self.eloss),len(columns)))
 		avqvals = np.zeros((len(self.eloss),len(columns)))
+		avJ     = np.zeros((len(self.eloss),len(columns)))
 		avcvals = {}
 		for key in self.HF_dataset.edges:
 			avcvals[key] = {}
@@ -231,6 +242,7 @@ class edge_extraction:
 
 		# average over HF core profiles 
 		self.avqvals = np.mean(avqvals,axis=1)
+		self.av_J     = np.mean(self.HF_dataset.J_total[:,columns],axis=1)
 		for key in self.HF_dataset.edges:
 			self.av_C[key] = {}
 			for edge in self.HF_dataset.edges[key]:
@@ -317,7 +329,7 @@ class edge_extraction:
 		self.sqwav    = self.avsignals*res[0] - yres
 		self.sqwaverr = self.averrors*res[0]
 
-	def removeCorePearsonAv(self,element,edge,range1,range2,weights=[2,1],guess=None):
+	def removeCorePearsonAv(self,element,edge,range1,range2,weights=[2,1],HFcore_shift=0.0,guess=None,scaling=None):
 		"""
 		**removeCorePearsonAv**
 		"""
@@ -339,48 +351,59 @@ class edge_extraction:
 		region2 = np.where(np.logical_and(self.eloss >= range2[0], self.eloss <= range2[1]))
 		region  = np.append(region1*weights[0],region2*weights[1])
 
-		# find indices for guessing start values
-		guessregion = np.where(np.logical_and(self.eloss>=self.prenormrange[0],self.eloss<=self.prenormrange[1]))[0]
-		if not guess: 
-			guess = []
-			ind   = self.avsignals[guessregion].argmax(axis=0) # find index of maximum of signal in "prenormrange" (defalt [5,inf])
-			guess.append(self.eloss[guessregion][ind]) # max of signal (in range of prenorm from __init__)
-			guess.append(guess[0]*1.0) # once the position of the peason maximum
-			guess.append(1.0) # pearson shape, 1 = Lorentzian, infinite = Gaussian
-			guess.append(self.avsignals[guessregion][ind]) # Peak intensity
-			guess.append(0.0) # linear slope
-			guess.append(0.0) # no background
-			guess.append(1.0) # scaling factor for exp. data
+		# find indices for guessing start values from HF J_total
+		fitfct = lambda a: np.sum( (self.av_J[region] - pearson7_zeroback(self.eloss,a)[region] - 
+									np.polyval(a[4:6],self.eloss[region]) )**2.0 )
+		guess1 = optimize.minimize(fitfct, [1.0,1.0,1.0,1.0], method='SLSQP').x
+
+		#guessregion = np.where(np.logical_and(self.eloss>=self.prenormrange[0],self.eloss<=self.prenormrange[1]))[0]
+		#if not guess: 
+		#	guess = []
+		#	ind   = self.avsignals[guessregion].argmax(axis=0) # find index of maximum of signal in "prenormrange" (defalt [5,inf])
+		#	guess.append(self.eloss[guessregion][ind]) # max of signal (in range of prenorm from __init__)
+		#	guess.append(guess[0]*1.0) # once the position of the peason maximum
+		#	guess.append(1.0) # pearson shape, 1 = Lorentzian, infinite = Gaussian
+		#	guess.append(self.avsignals[guessregion][ind]) # Peak intensity
+		#	guess.append(0.0) # linear slope
+		#	guess.append(0.0) # no background
+		#	guess.append(1.0) # scaling factor for exp. data
+
+		guess = guess1
+		guess = np.append(guess,[0.0,0.0,1.0]) # append starting values for linear and scaling
 
 		# manage some plotting things
 		plt.ion()
 		plt.cla()
 
+		print len(guess1),len(guess)
+
 		# get the HF core spectrum
-		HF_core = self.av_C[element][edge]
+		HF_core = np.interp(self.eloss,self.eloss+HFcore_shift,self.av_C[element][edge])
 
 		# approximately scale data in post-edge region
 		HF_core_norm = np.trapz(HF_core[region2],self.eloss[region2])
 		exp_norm     = np.trapz(self.avsignals[region2],self.eloss[region2])
-		self.avsignals *= HF_core_norm/exp_norm
+		the_signals  = self.avsignals*HF_core_norm/exp_norm
 
-		bnds = ((None, None), (0, None), (0, None), (0, None), (0, None), (0, None), (0, None))
+		if scaling:
+			bnds = ((None, None), (0, None), (0, None), (0, None), (0, None), (0, None), (scaling-0.01, scaling+0.01))
+		else:
+			bnds = ((None, None), (0, None), (0, None), (0, None), (0, None), (0, None), (0, None))
+
 		cons    =  ({'type': 'ineq', 'fun': lambda x:  x[2]  },
 					{'type': 'ineq', 'fun': lambda x:  x[3]  },
 					{'type': 'ineq', 'fun': lambda x:  x[6]  },
-					{'type': 'eq',   'fun': lambda x:   np.trapz(HF_core[region1],self.eloss[region1]) - 
-														np.trapz(np.abs(x[6]*self.avsignals[region1] - 
+					{'type': 'eq',   'fun': lambda x:  np.trapz(np.abs(x[6]*the_signals[region1] - 
 																pearson7_zeroback(self.eloss[region1],x[0:4]) - 
 																np.polyval(x[4:6],self.eloss[region1]) - 
-																HF_core[region1],
-																self.eloss[region1]) ) },
-					{'type': 'eq',   'fun': lambda x:   np.trapz(x[6]*self.avsignals[region2] - 
+																HF_core[region1] ),
+																self.eloss[region1]  ) },
+					{'type': 'eq',   'fun': lambda x:  np.trapz(x[6]*the_signals[region2] - 
 																pearson7_zeroback(self.eloss[region2],x[0:4]) - 
-																np.polyval(x[4:6],self.eloss[region2]) - 
-																HF_core[region2],
+																np.polyval(x[4:6],self.eloss[region2])-HF_core[region2],
 																self.eloss[region2])})
 
-		fitfct = lambda a: np.sum( (a[0]*self.avsignals[region] - 
+		fitfct = lambda a: np.sum( (a[0]*the_signals[region] - 
 									pearson7_zeroback(self.eloss[region],a[0:4]) - 
 									np.polyval(a[4:6],self.eloss[region]) - 
 									HF_core[region] )**2.0 )
@@ -389,12 +412,66 @@ class edge_extraction:
 		print 'The fit parameters are: ', res
 
 		yres    = pearson7_zeroback(self.eloss,res[0:4]) + np.polyval(res[4:6],self.eloss)
-		plt.plot(self.eloss,self.avsignals*res[6],self.eloss,yres+HF_core,self.eloss,self.avsignals*res[6]-yres,self.eloss,HF_core)
+		plt.plot(self.eloss,the_signals*res[6],self.eloss,yres+HF_core,self.eloss,the_signals*res[6]-yres,self.eloss,HF_core)
 		plt.legend(('scaled data','pearson + linear + core','data - (pearson + linear)','core'))
 		plt.draw()
 
-		self.sqwav = self.avsignals*res[6] - yres
+		self.sqwav = the_signals*res[6] - yres
 		self.sqwaverr = self.averrors*res[6]
+
+	def removePearsonAv(self,element,edge,range1,range2=None,weights=[2,1],guess=None,scale=1.0,HFcore_shift=0.0):
+		"""
+		**removePearsonAv**
+		"""
+		# check that there are averaged signals available
+		if not np.any(self.avsignals):
+			print('Found no averaged signals. Use \'analyzerAverage\'-method first to create some averages.')
+			return
+
+		# define fitting ranges
+		region1 = np.where(np.logical_and(self.eloss >= range1[0], self.eloss <= range1[1]))
+		if range2:
+			region2 = np.where(np.logical_and(self.eloss >= range2[0], self.eloss <= range2[1]))
+			region  = np.append(region1*weights[0],region2*weights[1])
+		else:
+			region  = region1
+
+		guessregion = np.where(np.logical_and(self.eloss>=self.prenormrange[0],self.eloss<=self.prenormrange[1]))[0]
+		if not guess: 
+			guess = []
+			ind   = self.avsignals[guessregion].argmax(axis=0) # find index of maximum of signal in "prenormrange" (defalt [5,inf])
+			guess.append(self.eloss[guessregion][ind]) # max of signal (in range of prenorm from __init__)
+			guess.append(guess[0]*2.0) # once the position of the peason maximum
+			guess.append(1.0) # pearson shape, 1 = Lorentzian, infinite = Gaussian
+			guess.append(self.avsignals[guessregion][ind]) # Peak intensity
+			guess.append(0.0) # no background
+
+		# scale data by hand
+		thespec = self.avsignals * scale
+
+		# get the HF core spectrum
+		HF_core = np.interp(self.eloss,self.eloss+HFcore_shift,self.av_C[element][edge])
+
+		# define fitfunction
+		fitfct  = lambda a: np.sum( (thespec[region] - pearson7_zeroback(self.eloss[region],a[0:4]) - np.polyval(a[4:6],self.eloss[region]) - HF_core[region])**2.0 )
+
+		res = optimize.minimize(fitfct,guess).x
+		print 'the fitting results are: ', res
+
+		yres = pearson7_zeroback(self.eloss,res[0:4]) + np.polyval(res[4:6],self.eloss)
+		plt.cla()
+		plt.plot(self.eloss,thespec,self.eloss,yres,self.eloss,thespec-yres,self.eloss,HF_core)
+		plt.legend(('data','pearson fit','data - pearson','core'))
+		plt.draw()
+
+		self.sqwav = thespec-yres
+		self.sqwaverr = self.averrors * scale
+
+
+
+
+
+		
 
 	def save_average_Sqw(self,filename, emin=None, emax=None, normrange=None):
 		"""
@@ -431,7 +508,7 @@ class edge_extraction:
 		if normrange:
 			assert type(normrange) is list and len(normrange) is 2, "normrange has to be a list of length two!"
 			inds = np.where(np.logical_and(data[:,0]>=normrange[0],data[:,0]<=normrange[1]))[0]
-			norm = trapz(data[inds,1],data[inds,0])
+			norm = np.trapz(data[inds,1],data[inds,0])
 			data[:,1] /= norm
 			data[:,2] /= norm
 		np.savetxt(filename,data)

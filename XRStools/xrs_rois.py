@@ -35,6 +35,7 @@ __license__ = "MIT"
 __copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
 
 import numpy as np
+import copy
 
 from xrs_utilities import *
 from math_functions import *
@@ -120,7 +121,7 @@ class roi_object:
 
 		self.masks          = convert_roi_matrix_to_masks(self.roi_matrix)
 		self.indices        = convert_matrix_rois_to_inds(self.roi_matrix)
-		selfnumber_of_rois = np.amax(self.roi_matrix)
+		self.number_of_rois = np.amax(self.roi_matrix)
 		self.x_indices      = convert_inds_to_xinds(self.indices)
 		self.y_indices      = convert_inds_to_yinds(self.indices)
 
@@ -140,14 +141,24 @@ class roi_object:
 		"""
 		import pickle
 		f = open(filename,'rb')
-		roiob = pickle.load(f)
+		roi_obj = pickle.load(f)
 		f.close()
+		self.roi_matrix = roi_obj.roi_matrix
+		self.red_rois       = roi_obj.red_rois   
+		self.indices        = roi_obj.indices  
+		self.number_of_rois = roi_obj.number_of_rois
+		self.kind           = roi_obj.kind 
+		self.x_indices      = roi_obj.x_indices
+		self.y_indices      = roi_obj.y_indices 
+		self.masks          = roi_obj.masks 
+		self.input_image	= roi_obj.input_image
 
-		indices = xrs_rois.swap_indices_old_rois(roiob.inds)
-		roi_matrix     = convert_inds_to_matrix(rois,input_image.shape)
-		red_rois       = convert_matrix_to_redmatrix(self.roi_obj.roi_matrix)
-
-                self.load_rois_fromMasksDict(red_rois)
+		#print len(roiob.indices), roiob.roi_matrix.shape
+		
+		#indices = swap_indices_old_rois(roiob.indices)
+		#roi_matrix     = convert_inds_to_matrix(indices,roiob.input_image.shape)
+		#red_rois       = convert_matrix_to_redmatrix(self.roi_obj.roi_matrix)
+		#self.load_rois_fromMasksDict(red_rois)
 
 
 	def load_rois(self,filename):
@@ -180,7 +191,55 @@ class roi_object:
 	def get_masks(self):
 		return self.masks
 
+	def get_copy(self):
+		"""
+		**get_copy**
+		Returns a deep copy of self.
+		"""
+		return copy.deepcopy(self)
 
+	def shift_rois(self,shiftVal,direction='horiz',whichroi=None):
+		"""
+		**shift_rois**
+		Displaces the defined ROIs by the provided value.
+
+		Args
+		----
+		shiftVal : int
+			Value by which the ROIs should be shifted.
+		direction : string
+			Description of which direction to shit by.
+		whichroi : sequence
+			Sequence (iterable) for which ROIs should be shifted.
+		"""
+		the_indices = []
+
+		if not whichrois:
+			inds = range(len(self.indices))
+		else:
+			inds = whichroi
+
+		if direction == 'vert':
+			for roi in self.indices:
+				oneroi = []
+				for pixel in roi:
+					oneroi.append( (pixel[0]+shiftVal,pixel[1]) )
+				the_indices.append(oneroi)
+
+		if direction == 'hriz':
+			for roi in self.indices:
+				oneroi = []
+				for pixel in roi:
+					oneroi.append( (pixel[0], pixel[1]+shiftVal) )
+				the_indices.append(oneroi)
+
+		self.indices = the_indices
+
+		self.roi_matrix     = convert_inds_to_matrix(self.indices,self.input_image.shape)
+		self.red_rois       = convert_matrix_to_redmatrix(self.roi_matrix)
+		self.x_indices      = convert_inds_to_xinds(self.indices)
+		self.y_indices      = convert_inds_to_yinds(self.indices)
+		self.masks          = convert_roi_matrix_to_masks(self.roi_matrix)
 
 def convert_redmatrix_to_matrix( masksDict,mask, offsetX=0, offsetY=0):
     for key, (pos,M)  in masksDict.iteritems():
