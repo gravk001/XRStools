@@ -11,127 +11,88 @@ from scipy.optimize import leastsq, fmin
 from helpers import *
 #from xrs_read import rois
 
-class imaging:
+import xrs_read
+
+class oneD_imaging(xrs_read.read_id20):
+	""" **oneD_imaging**
+	Class to construct images using the 1D piercing mode.
 	"""
-	a class to make images from id20 data, it will use some of the methods the read_id20 class has also,
-	maybe it would make sense to use read_id20 as a superclass for this one and just add the imaging
-	functionality
-	"""
-	def __init__(self,absfilename,energycolumn='energy_cc',monitorcolumn='monitor'):
-		self.scans         = {} # dictionary of scans that are loaded
-		if not os.path.isfile(absfilename):
-			raise Exception('IOError! No such file, please check filename.')
-		self.path          = os.path.split(absfilename)[0] + '/'
-		self.filename      = os.path.split(absfilename)[1]
+	def __init__(self,absfilename,energycolumn='sty',monitorcolumn='kapraman',edfName=None,single_image=True):
+		try:
+			self.path     = os.path.split(absfilename)[0] + '/'
+			self.filename = os.path.split(absfilename)[1]
+		except IOError:
+			print('IOError! No such SPEC file, please check SPEC-filename.')
+		if not edfName:
+			self.edfName = os.path.split(absfilename)[1]
+		else:
+			self.edfName = edfName
+		self.single_image  = single_image
 		self.scannumbers   = []
+		self.EDF_PREFIXh   = 'edf/h_'
+		self.EDF_PREFIXv   = 'edf/v_'
 		self.EDF_PREFIX    = 'edf/'
 		self.EDF_POSTFIX   = '.edf'
-		self.DET_PIXEL_NUM = 256
-		self.TTH_OFFSETS   = np.array([-13.0,-6.5,-6.5,0.0,0.0,6.5,6.5,13.0,13.0])
-		# which column in the SPEC file to be used for the energy and monitor
-		self.encolumn      = energycolumn.lower()
-		self.monicolumn    = monitorcolumn.lower()
-		# ROIs: only rectangular rois should be possible (line or zoom ROIs)
-		self.rois     = []
-		# the stored images
-		self.images   = {} # dictionary of images, which will be stored under their scan name
+		self.DET_PIXEL_NUMx = 768
+		self.DET_PIXEL_NUMy = 512
+		self.DET_PIXEL_NUM  = 256
+		self.encolumn       = energycolumn.lower()
+		self.monicolumn     = monitorcolumn.lower()
+		self.eloss    = []	# common eloss scale for all analyzers
+		self.energy   = []	# common energy scale for all analyzers
+		self.signals  = []	# signals for all analyzers
+		self.errors   = []	# poisson errors
+		self.qvalues  = []	# for all analyzers
+		self.groups   = {}  # dictionary of groups (such as 2 'elastic', or 5 'edge1', etc.)
+		self.cenom    = []  # list of center of masses of the elastic lines
+		self.E0       = []  # energy value, mean value of self.cenom
+		self.tth      = []  # list of scattering angles (one for each ROI)
+		self.VDtth    = []
+		self.VUtth    = []
+		self.VBtth    = []
+		self.HRtth    = []
+		self.HLtth    = []
+		self.HBtth    = []
+		self.resolution   = []  # list of FWHM of the elastic lines for each analyzer
+		self.signals_orig = []  # signals for all analyzers before interpolation
+		self.errors_orig  = []  # errors for all analyzers before interpolation
+		# TTH offsets from center of V and H modules
+		# tth offsets in one direction (horizontal for V-boxes, vertical for H-boxes)
+		self.TTH_OFFSETS1   = np.array([5.0, 0.0, -5.0, 5.0, 0.0, -5.0, 5.0, 0.0, -5.0, 5.0, 0.0, -5.0])
+		# tth offsets in the other direction (horizontal for H-boxes, vertical for V-boxes)
+		self.TTH_OFFSETS2   = np.array([-9.71, -9.75, -9.71, -3.24, -3.25, -3.24, 3.24, 3.25, 3.24, 9.71, 9.75, 9.71]) 
+		# input
+		self.roi_obj = [] # an instance of the roi_object class from the xrs_rois module (new)
+		# images
+		self.twoDimages = {} # dictionary: one entry per scan, each scan has a list of one image per ROI
 
-	def readscan(self,scannumber):
-		"""
-		returns the data, motors, counter-names, and edf-files from the calss's specfile of "scannumber"
-		should use PyMca's routines to read the Spec- and edf-files
-		"""
-		fn = self.path + self.filename
-		# loading spec file
-		print ("parsing edf- and SPEC-files of scan No. %s" % scannumber)
-		data, motors, counters = specread(fn,scannumber)
-		# loading according edf files
-		edfmats = np.array(np.zeros((len(counters['ccdno']),self.DET_PIXEL_NUM,self.DET_PIXEL_NUM)))
-		for m in range(len(counters['ccdno'])):
-			ccdnumber = counters['ccdno'][m]+1
-			edfname   = self.path + self.EDF_PREFIX + self.filename + '_' + "%04d" % ccdnumber + self.EDF_POSTFIX
-			edfmats[m,:,:] = edfread(edfname)
-		self.scannumbers.extend([scannumber]) # keep track of the scnanumbers
-		return data, motors, counters, edfmats
-
-	def loadscan(self,scannumbers,scantype='generic'):
-		"""
-		loads the files belonging to scan No "scannumber" and puts it into an instance
-		of the container-class scan. the default scantype is 'generic', later the scans
-		will be grouped (then added) based on the scantype
-		"""
+	def loadscan_2Dimages(self, scannumbers,scantype='sty'):
+		# check if there are ROIs defined
+		if not self.roi_obj:
+			print 'Please define some ROIs first.'
+			return
 		# make sure scannumbers are iterable (list)
 		if not isinstance(scannumbers,list):
 			scannums = []
 			scannums.append(scannumbers)
 		else:
 			scannums = scannumbers 
-		for number in scannums:
+
+		for number in scannums:	# go through all scans
 			scanname = 'Scan%03d' % number
 			data, motors, counters, edfmats = self.readscan(number)
-			# can assign some things here already (even if maybe redundant)
-			monitor   = counters[self.monicolumn]
-			# energy related columns cannot be assigned now, since scans here could also be position scans (like z-scans)
-			monoangle = None #counters['pmonoa']
-			energy    = None #counters[self.encolumn]
-			# create an instance of the "scan" class for every scan
-			onescan = scan(edfmats,number,energy,monoangle,monitor,counters,motors,data,scantype)
-			# assign one dictionary entry to each scan 
-			self.scans[scanname] = onescan
+			position = counters[scantype.lower()]
+			self.twoDimages[scanname] = []
+			for ii in range(len(self.roi_obj.x_indices)): # go through all ROIs
+				# construct the image
+				roixinds = self.roi_obj.x_indices[ii]
+				roiyinds = self.roi_obj.y_indices[ii]
+				# go through all edf files of the scan, sum over the height of the roi and stack the resulting lines into a matrix
+				axesrange = [0,roiyinds[-1],position[-1],position[0]]
+				imageMat  = (np.sum(edfmats[:,np.amin(roixinds):np.amax(roixinds)+1,np.amin(roiyinds):np.amax(roiyinds)+1],axis=1))
+				imageInst = LRimage(imageMat,position,roiyinds)
+				self.twoDimages[scanname].append(imageInst)
 
-	def createrois(self,scannumbers):
-		"""
-		create rois object from this class and scannumbers
-		"""
-		rois_object = rois(self.scans,scannumbers)
-		return rois_object
-
-	def getlinrois(self,scannumbers,numrois=9,logscaling=True,height=5,colormap='jet'):
-		"""
-		define ROIs by clicking two points
-		"""
-		rois_object = self.createrois(scannumbers)
-		rois_object.getlinrois(numrois,logscaling,height,colormap)
-		# asign the entire rois object to self.rois to also have access to the roikind attribute e.g.
-		self.rois = rois_object
-
-	def getzoomrois(self,scannumbers,numrois=9,logscaling=True,colormap='jet'):
-		"""
-		define ROIs by zooming in on a region of interest
-		"""
-		rois_object = self.createrois(scannumbers)
-		rois_object.getzoomrois(numrois,logscaling,colormap)
-		# asign the entire rois object to self.rois to also have access to the roikind attribute e.g.
-		self.rois = rois_object
-
-	def image_from_line(self,scannumber,scanmotor,whichroi=[0]):
-		"""
-		create images from a point focus, either along a sample position (scanmotor = 'sx', 'sz', ...)
-		or along energy (scanmotor = 'energy_cc', 'nrj', ...) 
-		"""
-		scanname = 'Scan%03d' % scannumber
-
-		# make mask out of rois (this can be deleted once the ROIs are always handled as masks of zeros and ones)
-		maskrois = []
-		for roi in self.rois.rois:
-			mask = np.zeros((self.DET_PIXEL_NUM,self.DET_PIXEL_NUM))
-			for pixel in roi:
-				mask[pixel[1],pixel[0]] = 1
-			maskrois.append(mask)
-
-		roisalongscan = [] # list of rectangular matricies (shaped like the rois) for each roi (len(scan)*width*height matrix)
-		lineimages    = [] # list of images from lines (len(scan)*width)
-		for n in whichroi: # for each roi
-			inds = np.nonzero(maskrois[n])
-			roialongscan = []
-			lineimage     = []
-			for edfmat in self.scans[scanname].edfmats: # each edf file of a given scan
-				roialongscan.append(np.reshape(edfmat[inds],(self.rois.roiheight[n],self.rois.roiwidth[n]))) # the whole roi
-				lineimage.append(np.sum( np.reshape(edfmat[inds],(self.rois.roiheight[n],self.rois.roiwidth[n])),axis=0))  # summed over height
-			roisalongscan.append(roialongscan)
-			lineimages.append(np.squeeze(lineimage))
-		print np.shape(roisalongscan), np.shape(lineimages)
-		plt.imshow(lineimages[0])
 
 
 class imageset:
@@ -352,7 +313,7 @@ class imageset:
 
 class image:
 	"""
-	container class to hold info of a single LR-image to be put togther in a SR-image by the imageset class
+	Container class to hold info of a single LR-image to be put togther in a SR-image by the imageset class
 	"""
 	def __init__(self,matrix,xscale,yscale):
 		self.name	= []

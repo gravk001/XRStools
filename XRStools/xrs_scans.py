@@ -405,7 +405,56 @@ def appendScans(groups,include_elastic):
     else: 
         return catScans(groups,include_elastic)
 
+def catXESScans(groups):
+	"""
+	Concatenate all scans in groups, return the appended energy, signals, and errors.
+	This needs to be a bit smarter to also work for scans that are scanned from small to large energy...
+	"""
+	# sort the groups by their end-energy (is the smallest in XES/energy2-scans)
+	allgroups  = []
+	for group in groups:
+		allgroups.append(groups[group])
+	allgroups.sort(key = lambda x:x.get_eend())
 
+	# find lowest energy, highest energy, smallest increment, define grid
+	eStart = allgroups[-1].energy[0]
+	eStop  = allgroups[0].energy[-1]
+	stepSizes = []
+	for group in allgroups:
+		stepSizes.append(np.diff(group.energy)[0])
+	eStep   = np.amin(stepSizes)
+
+	energy  = np.arange(eStop,eStart,-eStep)
+	signals = np.zeros((len(energy),1))
+	errors  = np.zeros((len(energy),1))
+
+	# interpolate all groups onto grid, put into a matrix
+	for group in allgroups:
+		interp_signals = np.interp(energy,np.flipud(group.energy),np.flipud(np.squeeze(group.signals)), left=0.0, right=0.0)
+		signals        = np.append(signals, interp_signals.reshape((len(energy),1)),axis=1)
+		interp_errors  = np.interp(energy,np.flipud(group.energy),np.flipud(np.squeeze(group.errors)), left=0.0, right=0.0)
+		errors         = np.append(errors,interp_errors.reshape((len(energy),1)),axis=1)
+
+	# sum up and weigh by number of available non-zero points
+	sum_signals = np.zeros_like(energy)
+	sum_errors  = np.zeros_like(energy)
+	for ii in range(len(energy)):
+		nParts = len(np.where(signals[ii,:]>0.0)[0])
+		sum_signals[ii] = np.sum(signals[ii,:])/nParts
+		sum_errors[ii]  = np.sqrt(np.sum(errors[ii,:]**2.0))/nParts
+
+	spectrum = scangroup(energy,sum_signals,sum_errors,grouptype='spectrum')
+	return spectrum.energy, spectrum.signals, spectrum.errors
+
+def appendXESScans(groups):
+	"""
+	try including different background scans... 
+	append groups of scans ordered by their first energy value.
+	long scans are inserted into gaps that at greater than two times the grid of the finer scans
+	"""
+	# find all types of groups	
+	grouptypes = [key for key in groups.keys()]
+	return catXESScans(groups)
 
 def create_sum_image(scans,scannumbers):
 	"""

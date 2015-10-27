@@ -211,15 +211,17 @@ def fwhm(x,y):
 	i0 = np.where(y == y0)
 	x0 = x[i0]
 
-	i1 = np.where(np.logical_and(y>y/3.0, x<x0))
-	i2 = np.where(np.logical_and(y>y/3.0, x>x0))
+	i1 = np.where(np.logical_and(y>y/3.0, x<x0))[0]
+	i2 = np.where(np.logical_and(y>y/3.0, x>x0))[0]
 
 	if len(y[i1])==0 or len(y[i2])==0:
 		return 0,0
-	f  = interpolate.interp1d(y[i1],x[i1], bounds_error=False, fill_value=0.0)
-	x1 = f(y0/2.0)
-	f  = interpolate.interp1d(y[i2],x[i2], bounds_error=False, fill_value=0.0)
-	x2 = f(y0/2.0)
+	#f  = interpolate.interp1d(y[i1],x[i1], bounds_error=False, fill_value=0.0)
+	#x1 = f(y0/2.0)
+	#f  = interpolate.interp1d(y[i2],x[i2], bounds_error=False, fill_value=0.0)
+	#x2 = f(y0/2.0)
+	x1 = np.interp(y0/2.0,y[i1],x[i1])
+	x2 = np.interp(y0/2.0,y[i2],x[i2])
 	fwhm = x2 - x1
 	x0 = np.mean([x2, x1])
 	return 2.0*fwhm, x0
@@ -346,6 +348,144 @@ def momtrans_au(e1,e2,tth):
 	q     = 1/hbarc*np.sqrt(e1**2.0+e2**2.0-2.0*e1*e2*np.cos(th));
 	return q
 
+def vrot(v,vaxis,phi):
+	""" **vrot**
+	Rotates a vector around a given axis.
+
+	Args:
+	-----
+	v (np.array): vector to be rotated
+	vaxis (np.array): rotation axis
+	phi (float): angle [deg] respecting the right-hand rule 
+
+	Returns:
+	--------
+	v2 (np.array): new rotated vector
+
+	Function by S. Huotari (2007) adopted to Python.
+	"""
+	h = vaxis[0]
+	k = vaxis[1]
+	l = vaxis[2]
+	alpha = np.arctan2(k,h)
+	if np.absolute(alpha)>np.finfo(float).eps:
+		h2 = np.cos(alpha)*(h+k*np.tan(alpha))
+	else:
+		h2 = h
+	v2 = np.array([h2, 0.0, l])
+	ca = np.cos(alpha)
+	sa = np.sin(alpha)
+	R1 = np.array([[ca, sa, 0.0], [-sa, ca, 0.0], [0.0, 0.0, 1.0]])
+	beta = np.radians(vangle(v2,np.array([0.0, 0.0, 1.0])))
+	cb = np.cos(beta)
+	sb = np.sin(beta)
+	R2 = np.array([[cb, 0.0, -sb], [0.0, 1.0, 0.0], [sb, 0.0, cb]])
+	phi = np.radians(phi)
+	cp = np.cos(phi)
+	sp = np.sin(phi)
+	R3 = np.array([[cp, -sp, 0.0], [sp, cp, 0.0], [0.0, 0.0, 1.0]])
+	v2 = np.dot(R3,np.dot(R2,np.dot(R1,v))) 
+	v2 = np.dot(np.linalg.inv(R1),np.dot(np.linalg.inv(R2),v2))
+	return v2	
+
+def vangle(v1, v2):
+	""" **vangle**
+	Calculates the angle between two cartesian vectors v1 and v2 in degrees.
+
+	Args:
+	-----
+	v1 (np.array): first vector.
+	v2 (np.array): second vector.
+
+	Returns:
+	--------
+	th (float): angle between first and second vector.
+
+	Function by S. Huotari, adopted for Python.
+	"""
+	return np.arccos(np.dot(v1,v2)/np.linalg.norm(v1)/np.linalg.norm(v2))/np.pi*180.0;
+
+def cixs(theta,phi,G=np.array([-1.0,-1.0,-1.0]),x_vec=np.array([0.0, -1.0, 1.0]),crystal='Si',analRefl=[4,4,4]):
+	""" **cixs**
+	Calculates q1 for given Theta and Phi angle for coherent IXS experiments.
+
+	Args:
+	-----
+	theta (float): scattering angle.
+	phi (float): rotation angle in the plane perpendicular to G-vector.
+	G (np.array): G-vector.
+	x_vec (np.array): vector in the plane perpendicular to G-vector.
+	crystal (str): wich crystal to use,
+	analRefl (list): which analyzer reflection to use
+
+	Returns:
+	--------
+	kin (np.array):  incident beam vector (K_0)
+	kout (np.array): Bragg diffracted beam vector (K_h)
+	qout2 (np.array): inelastically scattered beam vector (K')
+	q1 (np.array): momentum transfer 1
+	q2 (np.array): momentum transfer 2
+	"""
+	hc = 12.3984191 # CODATA 2002 recommended value, physics.nist.gov/constants
+	zz = G
+	G = 2.0*np.pi*G/dspace([1.0, 0.0, 0.0])
+	xx = vrot(x_vec,G,theta)
+	yy = vrot(xx,zz,90.0)
+	a  = dspace([1, 0, 0],xtal=crystal)
+	Eout = energy(dspace(analRefl),88.0)
+	lambdaout = hc/Eout
+	E = Eout+0.02
+	lam = hc/E
+	kin  = vrot(xx,yy,braggd(G,E))
+	kin  = kin/np.linalg.norm(kin)*2.0*np.pi/lam
+	kout =-vrot(kin,G,180.0)
+	qout2 = vrot(kin,yy,-braggd(G,E))
+	qout2 = qout2/np.linalg.norm(qout2)*2.0*np.pi/lambdaout
+	qout2 = vrot(qout2,G,phi)
+	q1 = kin-qout2
+	q2 = kout-qout2
+	return kin, kout, qout2, q1, q2, G
+
+def cixs2(theta,phi,xi,G=np.array([-1.0,-1.0,-1.0]),x_vec=np.array([0.0, -1.0, 1.0]),crystal='Si',analRefl=[4,4,4]):
+	""" **cixs2**
+	Calculates q1 and q2 for given Theta, Phi, and Xi angle for coherent IXS experiments with asymmetric q1, q2.
+
+	Args:
+	-----
+	theta (float): rotation angle around G.
+	phi (float): rotation angle around vector in plane perpendicular to G-vector.
+	xi (float): rotation angle for asymmetric q1, q2.
+	G (np.array): G-vector.
+	x_vec (np.array): vector in the plane perpendicular to G-vector.
+	crystal (str): wich crystal to use,
+	analRefl (list): which analyzer reflection to use
+
+	Returns:
+	--------
+	kin (np.array):  incident beam vector (K_0)
+	kout (np.array): Bragg diffracted beam vector (K_h)
+	qout2 (np.array): inelastically scattered beam vector (K')
+	q1 (np.array): momentum transfer 1
+	q2 (np.array): momentum transfer 2
+	"""
+	hc = 12.3984191 # CODATA 2002 recommended value, physics.nist.gov/constants
+	zz = G
+	xx = vrot(x_vec,G,theta)
+	yy = vrot(xx,zz,90.0)
+	a  = dspace([1, 0, 0],xtal=crystal)
+	Eout = energy(dspace(analRefl),89.0)
+	lambdaout = hc/Eout
+	E = Eout+0.02
+	lam = hc/E
+	kin  = vrot(xx,yy,braggd(G,E))
+	kin  = kin/np.linalg.norm(kin)*2.0*np.pi/lam
+	kout =-vrot(kin,G,180.0)
+	qout2 = vrot(kin,yy,-braggd(G,E)+xi)
+	qout2 = qout2/np.linalg.norm(qout2)*2.0*np.pi/lambdaout
+	qout2 = vrot(qout2,G,phi)
+	q1 = kin-qout2
+	q2 = kout-qout2
+	return kin, kout, qout2, q1, q2
 
 def readbiggsdata(filename,element):
 	"""
@@ -1054,13 +1194,17 @@ def edfread(filename):
 			dim2 = int(entry.strip().split()[2])
 		if entry.strip().split()[0] == 'Size':
 			size = int(entry.strip().split()[2])
+		if entry.strip().split()[0] == 'UnsignedShort':
+			type_code = 'H'
+		if entry.strip().split()[0] == 'SignedInteger':
+			type_code = 'i'
 	length = 0
 	for line in f:
 		length += len(line)
 	headerlength = (length-size)/2			
 	# get the data
 	f = open(filename,'rb')
-	predata = arr.array('H')
+	predata = arr.array(type_code)
 	predata.fromfile(f,(headerlength+dim1*dim2)) # this prevents the header (1024 characters long) to end up in the 256x256 picture
 	data = np.reshape(predata[headerlength:],(dim1,dim2)) # this prevents the header (1024 characters long) to end up in the 256x256 picture
 	f.close()
@@ -1200,7 +1344,7 @@ def taupgen(e, hkl = [6,6,0], crystals = 'Si', R = 1.0, dev = np.arange(-50.0,15
 	% Complaints -> /dev/null
 	"""
 	prefix = data_installation_dir+'/'
-	path = prefix + 'chitables/chitable_' # path to chitables
+	path = prefix + 'data/chitables/chitable_' # path to chitables
 	# load the according chitable (tabulated)
 	hkl_string = str(int(hkl[0])) + str(int(hkl[1])) + str(int(hkl[2]))
 	filestring = path + crystals.lower() + hkl_string + '.dat'
@@ -1232,7 +1376,7 @@ def taupgen(e, hkl = [6,6,0], crystals = 'Si', R = 1.0, dev = np.arange(-50.0,15
 
 	if crystals.upper() == 'SI':
 		s13 = -0.278
-	elif crytals.upper() == 'GE':
+	elif crystals.upper() == 'GE':
 		s13 = -0.273
 	else:
 		print 'Poisson ratio for this crystal not defined'
