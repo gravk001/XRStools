@@ -50,7 +50,7 @@ class scan:
 		self.energy   = np.array(energy_scale)        # numpy array of the energy axis
 		self.monitor  = np.array(monitor_signal)      # numpy array of the monitor signal
 		# some things maybe not imediately necessary 
-		self.counters = np.array(counters)            # names of all counters that appear in the SPEC file for this scan (maybe unnecessary)
+		self.counters = counters                      # names of all counters that appear in the SPEC file for this scan (maybe unnecessary)
 		self.motors   = motor_positions               # all motor positions as found in the SPEC file header for this scan ( " )
 		self.specdata = np.array(specfile_data)       # all data that is also in the SPEC file for this scan
 		# data (to be filled after defining rois)
@@ -192,6 +192,23 @@ class scangroup:
 
 	def get_maxediff(self):
 		return (self.energy[-1]-self.energy[0])
+
+class offDiaDataSet:
+	""" **offDiaDataSet**
+	Class to hold information from an off-diagonal dataset.
+	"""
+	def __init__(self):
+		self.RCmonitor    = np.array([])
+		self.signalMatrix = np.array([])
+		self.motorMatrix  = np.array([])
+		self.energy       = np.array([])
+		self.ROI_number   = 0
+		self.G_vector     = np.array([])
+		self.q0           = np.array([])
+		self.qh           = np.array([])
+		self.k0           = np.array([])
+		self.kh           = np.array([])
+		self.kprime       = np.array([])
 
 def findgroups(scans):
 	"""
@@ -513,9 +530,9 @@ def findRCscans(scans):
 	Returns a list of scans with name RC.
 	"""
 	RCscans = []
-	for name in scans:
-		if name == 'RC':
-			RCscans.append(scans[name])
+	for key in scans:
+		if scans[key].get_type() == 'RC':
+			RCscans.append(scans[key])
 	return RCscans
 
 

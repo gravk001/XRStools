@@ -118,8 +118,10 @@ class offDiagonal:
 		self.roi_obj = []
 
 		# which column in the SPEC file to be used for the energy and monitor
-		self.scanMotor     = scanMotor.lower()
-		self.moniColumn    = monitorName.lower()
+		self.scanMotor      = scanMotor.lower()
+		self.moniColumn     = monitorName.lower()
+		self.scanMatrix     = np.array([])
+		self.offDiaDataSets = []
 
 	def readscan(self,scanNumber):
 		""" **readscan**
@@ -153,7 +155,7 @@ class offDiagonal:
 		return data, motors, counters, edfmats
 
 
-	def loadscan(self,scanNumbers,scanType='generic',direct=False):
+	def loadscan(self,scanNumbers,scanType='generic',direct=False,scaling=None):
 		""" **loadscan**
 		Loads one or multiple scans. 
 
@@ -186,7 +188,7 @@ class offDiagonal:
 			else:
 				self.scans[scanname] = onescan
 
-	def loadRockingCurve(self,scanNumbers,energyCoor=[9,3],direct=False):
+	def loadRockingCurve(self,scanNumbers,energyCoor=[9,3],RCmoni='alirixs',direct=False):
 		""" **loadRockingCurve**
 		Load one or more rocking curves.
 
@@ -206,17 +208,47 @@ class offDiagonal:
 
 		for number in scannums:
 			self.loadscan(number,scanType='RC',direct=direct)
-			scanname = 'Scan%03d' % number
-			energy   = self.scans[scanname].motors[energyCoor[0]][energyCoor[1]]
+			scanname  = 'Scan%03d' % number
+			energy    = self.scans[scanname].motors[energyCoor[0]][energyCoor[1]]
+			RCmonitor = self.scans[scanname].counters[RCmoni]
 			self.scans[scanname].offdia_energy = energy
 
-	def stitchRockingCurves(self):
+	def stitchRockingCurves(self,RCmoni='alirixs'):
 		""" **stitchRockingCurves**
 		Go through all rocking curves and stitch them together to a 3D matrix.
 		"""
 		RcScans = xrs_scans.findRCscans(self.scans)
-		sorted(RcScans,key=lambda x:x.offdia_energy)
 
+		sorted_RcScans = sorted(RcScans,key=lambda x:x.offdia_energy)
+		energy_points  = sorted(list(set([scan.offdia_energy for scan in sorted_RcScans])))
+
+		dim1 = len(energy_points)
+		dim2 = sum(list(set([scan.signals.shape[0] for scan in sorted_RcScans])))
+
+		for ii in range(len(self.roi_obj.indices)):
+			dataset = xrs_scans.offDiaDataSet()
+			dataset.ROIno  = ii
+			dataset.energy = energy_points
+			moniMatrix   = np.zeros((dim1,dim2))
+			motorMatrix  = np.zeros((dim1,dim2))
+			signalMatrix = np.zeros((dim1,dim2))
+			for jj in range(len(energy_points)):
+				moniCol   = np.array([])
+				motorCol  = np.array([])
+				signalCol = np.array([])
+				for scan in sorted_RcScans:
+					if scan.offdia_energy == energy_points[jj]:
+						moniCol   = np.insert(moniCol,np.searchsorted(moniCol,scan.counters[RCmoni]),scan.counters[RCmoni])
+						motorCol  = np.insert(motorCol,np.searchsorted(motorCol,scan.energy),scan.energy)
+						signalCol = np.insert(signalCol,np.searchsorted(signalCol,scan.signals[:,ii]),scan.signals[:,ii])
+				moniMatrix[jj,:]   = moniCol
+				signalMatrix[jj,:] = signalCol
+				motorMatrix[jj,:]  = motorCol
+
+			dataset.signalMatrix = signalMatrix
+			dataset.motorMatrix  = motorMatrix
+			dataset.moniMatrix   = moniMatrix
+			self.offDiaDataSets.append(dataset)
 
 	def set_roiObj(self,roiobj):
 		""" **set_roiObj**

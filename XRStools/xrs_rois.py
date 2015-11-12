@@ -172,7 +172,6 @@ class roi_object:
                 self.load_rois_fromMasksDict(roi_obj.red_rois)
 		f.close()
 
-
 	def get_number_of_rois(self):
 		return self.number_of_rois
 
@@ -226,7 +225,7 @@ class roi_object:
 					oneroi.append( (pixel[0]+shiftVal,pixel[1]) )
 				the_indices.append(oneroi)
 
-		if direction == 'hriz':
+		if direction == 'horiz':
 			for roi in self.indices:
 				oneroi = []
 				for pixel in roi:
@@ -266,9 +265,6 @@ def convert_inds_to_matrix(ind_rois,image_shape):
             roi_matrix[xyind[0],xyind[1]] = counter
         counter += 1
     return roi_matrix
-
-
-
 
 def convert_matrix_to_redmatrix(matrix_rois, labelformat= 'ROI%02d'):
 	"""
@@ -424,10 +420,6 @@ def swap_indices_old_rois(old_indices):
 		new_indices.append(one_new_roi)
 	return new_indices
 
-
-
-
-
 def  load_rois_fromh5(h5group_tot,md):
     
     h5group = h5group_tot["rois_definition/rois_dict"]
@@ -440,8 +432,6 @@ def  load_rois_fromh5(h5group_tot,md):
     shape = h5data.shape
 
     return shape
-
-
 
 def  write_rois_toh5(h5group,md):
     for key in md.keys():
