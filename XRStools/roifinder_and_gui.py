@@ -650,6 +650,33 @@ class roi_finder:
 				string  = '%02d' % (ii+1)
 				plt.text(xcenter,ycenter,string)
 
+	def import_simo_style_rois(self,roiList,detImageShape=(512,768)):
+		""" **import_simo_style_rois**
+		Converts Simo-style ROIs to the conventions used here.
+
+		Arguments:
+		----------
+		roiList (list): List of tuples that have [(xmin, xmax, ymin, ymax), (xmin, xmax, ymin, ymax), ...].
+		detImageShape (tuple): Shape of the detector image (for convertion to roiMatrix)
+		"""
+		indices = []
+		for roi in roiList:
+			inds = []
+			for ii in range(roi[0],roi[1]):
+				for jj in range(roi[2],roi[3]):
+					inds.append((jj,ii))
+			indices.append(inds)
+		# assign the defined rois to the roi_object class
+		if detImageShape:
+			self.roi_obj.roi_matrix     = xrs_rois.convert_inds_to_matrix(indices,detImageShape)
+		self.roi_obj.red_rois       = xrs_rois.convert_matrix_to_redmatrix(self.roi_obj.roi_matrix)
+		self.roi_obj.indices        = indices
+		self.roi_obj.kind           = 'simoStyle'
+		self.roi_obj.x_indices      = xrs_rois.convert_inds_to_xinds(indices)
+		self.roi_obj.y_indices      = xrs_rois.convert_inds_to_yinds(indices)
+		self.roi_obj.masks          = xrs_rois.convert_roi_matrix_to_masks(self.roi_obj.roi_matrix)
+		self.roi_obj.number_of_rois = np.amax(self.roi_obj.roi_matrix)
+
 	def refine_pw_rois(self,roi_obj,pw_data,n_components=2,method='nnma',cov_thresh=-1):
 		"""
 		**refine_pw_rois**
