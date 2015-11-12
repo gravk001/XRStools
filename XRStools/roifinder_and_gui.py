@@ -664,7 +664,7 @@ class roi_finder:
 			inds = []
 			for ii in range(roi[0],roi[1]):
 				for jj in range(roi[2],roi[3]):
-					inds.append((jj,ii))
+					inds.append((ii,jj))
 			indices.append(inds)
 		# assign the defined rois to the roi_object class
 		if detImageShape:
