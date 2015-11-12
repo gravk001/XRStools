@@ -115,7 +115,7 @@ def PyMcaSpecRead(filename,nscan):
     counters = {}
     cou = 0
     for label in labels:
-        counters[label] = data[cou,:]
+        counters[label.lower()] = data[cou,:]
         cou += 1
     motors = np.array([])
     return data, motors, counters
@@ -208,6 +208,34 @@ def ReadEdfImages(ccdcounter, num_pix_x, num_pix_y, path, EdfPrefix, EdfName, Ed
         else:
             edfmats[m,:,:] = EdfRead(fname)
     return edfmats
+
+def ReadEdfImages_my(ccdcounter, path, EdfPrefix, EdfName, EdfPostfix):
+	"""
+	Reads a series of EDF-images and returs them in a 3D Numpy array
+	(horizontal and vertical Maxipix images in different files).
+	"""
+	fname   = path + EdfPrefix + EdfName + '_' + "%04d" % ccdcounter[0] + EdfPostfix
+	xyShape = np.shape(EdfRead(fname))
+	edfmats = PrepareEdfMatrix(len(ccdcounter),xyShape[1],xyShape[0])
+	for m in range(len(ccdcounter)):
+		ccdnumber = ccdcounter[m]
+		fname   = path + EdfPrefix + EdfName + '_' + "%04d" % ccdnumber + EdfPostfix
+		edfmats[m,:,:] = EdfRead(fname)
+	return edfmats
+
+def ReadEdfImages_PyMca(ccdcounter, path, EdfPrefix, EdfName, EdfPostfix):
+	"""
+	Reads a series of EDF-images and returs them in a 3D Numpy array
+	(horizontal and vertical Maxipix images in different files).
+	"""
+	fname   = path + EdfPrefix + EdfName + '_' + "%04d" % ccdcounter[0] + EdfPostfix
+	xyShape = np.shape(PyMcaEdfRead(fname))
+	edfmats = PrepareEdfMatrix(len(ccdcounter),xyShape[1],xyShape[0])
+	for m in range(len(ccdcounter)):
+		ccdnumber = ccdcounter[m]
+		fname   = path + EdfPrefix + EdfName + '_' + "%04d" % ccdnumber + EdfPostfix
+		edfmats[m,:,:] = PyMcaEdfRead(fname)
+	return edfmats
 
 def readbiggsdata(filename,element):
 	"""

@@ -507,3 +507,16 @@ def create_diff_image(scans,scannumbers,energy_keV):
 			above_image += scans[key].edfmats[ii,:,:]
 
 	return (above_image - below_image)
+
+def findRCscans(scans):
+	""" **findRCscans**
+	Returns a list of scans with name RC.
+	"""
+	RCscans = []
+	for name in scans:
+		if name == 'RC':
+			RCscans.append(scans[name])
+	return RCscans
+
+
+

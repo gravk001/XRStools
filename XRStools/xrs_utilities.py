@@ -85,6 +85,80 @@ class maxipix_det:
 		return self.name
 
 
+def fermi(rs):
+	""" **fermi**
+	Calculates the plasmon energy (in eV), Fermi energy (in eV), Fermi 
+	momentum (in a.u.), and critical plasmon cut-off vector (in a.u.).
+
+	Args:
+	-----
+	rs (float): electron separation parameter
+
+	Returns:
+	--------
+	wp (float): plasmon energy (in eV)
+	ef (float): Fermi energy (in eV)
+	kf (float): Fermi momentum (in a.u.)
+	kc (float): critical plasmon cut-off vector (in a.u.)
+
+	Based on Matlab function from A. Soininen.
+	"""
+	au   = 27.212
+	alfa = (9.0*np.pi/4.0)**(1.0/3.0)
+	kf = alfa/rs
+	ef = kf*kf/2.0
+	wp = np.sqrt(3.0/rs/rs/rs)
+	kc = kf * (np.sqrt(1.0+wp/ef)-1.0)
+	wp = wp*au
+	ef = ef*au
+	return wp, ef, kf, kc
+
+def lindhard_pol(q,w,rs=3.93,use_corr=False, lifetime=0.28):
+	""" **lindhard_pol**
+	Calculates the Lindhard polarizability function (RPA) for 
+	certain q (a.u.), w (a.u.) and rs (a.u.).
+
+	Args:
+	-----
+	q (float): momentum transfer (in a.u.)
+	w (float): energy (in a.u.)
+	rs (float): electron parameter
+	use_corr (boolean): if True, uses Bernardo's calculation for n(k) instead of the Fermi function.
+	lifetime (float): life time (default is 0.28 eV for Na).
+
+	Based on Matlab function by S. Huotari.
+	"""
+	wp, ef, kf = fermi(rs)
+	ef = ef/27.212
+	gamma = lifetime/27.212; # lifetime  (0.28 eV for Na)
+	th = np.arange(0.0,np.pi, np.pi/300.0)
+	k = np.arange(0,3.0*kf,kf/200.0)
+	[K,TH] = np.meshgrid(k,th)
+	ek = K**2/2.0
+	ekq =(K**2+q**2+2*q*K*np.cos(TH))/2.0
+	if not use_corr:
+		fek = np.zeros(np.shape(ek)) 
+		fek[ek<=ef]=1.0
+		fekq=np.zeros(np.shape(ekq)) 
+		fekq[ekq<=ef] = 1.0
+	if use_corr:
+		print('Not implemented yet!')
+	x = np.zeros_like(w)
+	for ii in range(len(w)):
+		#% w(ii)*27.2
+		y=np.sin(TH)*(fek-fekq)/(w[ii]+ek-ekq+i*gamma)
+		#mesh(K,TH,y);view(0,90);drawnow;
+		y=np.trapz(y,th)
+		#pl(k,real(k.^2.*y));drawnow
+		y=np.trapz(k**2.0*y,k)
+		x[ii]=y
+	x = 4.0*np.pi*x
+	x = x/(2.0*np.pi)**3
+	return x 
+
+
+
+
 def energy(d,ba):
 	"""
 	% ENERGY  Calculates energy corrresponing to Bragg angle for given d-spacing
@@ -434,7 +508,7 @@ def cixs(theta,phi,G=np.array([-1.0,-1.0,-1.0]),x_vec=np.array([0.0, -1.0, 1.0])
 	a  = dspace([1, 0, 0],xtal=crystal)
 	Eout = energy(dspace(analRefl),88.0)
 	lambdaout = hc/Eout
-	E = Eout+0.02
+	E = Eout+0.00
 	lam = hc/E
 	kin  = vrot(xx,yy,braggd(G,E))
 	kin  = kin/np.linalg.norm(kin)*2.0*np.pi/lam
@@ -445,6 +519,50 @@ def cixs(theta,phi,G=np.array([-1.0,-1.0,-1.0]),x_vec=np.array([0.0, -1.0, 1.0])
 	q1 = kin-qout2
 	q2 = kout-qout2
 	return kin, kout, qout2, q1, q2, G
+
+def cixs(theta,phi,G=np.array([-1.0,-1.0,-1.0]),x_vec=np.array([0.0, -1.0, 1.0]),crystal='Si',analRefl=[4,4,4]):
+	""" **cixs**
+	Calculates q1 for given Theta and Phi angle for coherent IXS experiments.
+
+	Args:
+	-----
+	theta (float): scattering angle.
+	phi (float): rotation angle in the plane perpendicular to G-vector.
+	G (np.array): G-vector.
+	x_vec (np.array): vector in the plane perpendicular to G-vector.
+	crystal (str): wich crystal to use,
+	analRefl (list): which analyzer reflection to use
+
+	Returns:
+	--------
+	kin (np.array):  incident beam vector (K_0)
+	kout (np.array): Bragg diffracted beam vector (K_h)
+	qout2 (np.array): inelastically scattered beam vector (K')
+	q1 (np.array): momentum transfer 1
+	q2 (np.array): momentum transfer 2
+	"""
+	import copy
+	hc = 12.3984191 # CODATA 2002 recommended value, physics.nist.gov/constants
+	zz = copy.deepcopy(G)
+	G  = 2.0*np.pi*zz/dspace([1, 0, 0])
+	xx = x_vec
+	xx = vrot(xx,G,theta)
+	yy = vrot(xx,zz,90.0)   
+	a  = dspace([1, 0, 0])
+	Eout = energy(dspace([4, 4, 4]),88.0)
+	lambdaout = hc/Eout
+	E = Eout #+0.02
+	lam = hc/E
+	k0 = vrot(xx,yy,braggd(zz,E))
+	k0 = k0/np.linalg.norm(k0)*2.0*np.pi/lam
+	kh = k0+G
+	lambdaout = hc/Eout
+	kprime = vrot(k0,yy,-braggd(zz,E))
+	kprime = kprime/np.linalg.norm(kprime)*2.0*np.pi/lambdaout
+	kprime =  vrot(kprime,G,phi) 
+	q0 = k0-kprime
+	qh = kh-kprime
+	return q0, qh, G, k0, kh, kprime 
 
 def cixs2(theta,phi,xi,G=np.array([-1.0,-1.0,-1.0]),x_vec=np.array([0.0, -1.0, 1.0]),crystal='Si',analRefl=[4,4,4]):
 	""" **cixs2**
