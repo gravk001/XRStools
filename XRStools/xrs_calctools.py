@@ -2,6 +2,8 @@
 # Filename: stobe_analyze.py
 
 import os
+import warnings
+from copy import deepcopy
 
 import numpy as np
 import array as arr
@@ -9,6 +11,7 @@ import array as arr
 from itertools import groupby
 from scipy.integrate import trapz
 from scipy.interpolate import interp1d
+from scipy import constants
 
 from pylab import *
 from scipy import signal
@@ -487,5 +490,535 @@ class erkale:
 
 ################################### 
 # reading function for cowan's code output
+
+class xyzAtom:
+        def __init__(self,name,coordinates,number):
+                self.name        = name
+                self.coordinates = np.array(coordinates)
+                self.x_coord     = self.coordinates[0]
+                self.y_coord     = self.coordinates[1]
+                self.z_coord     = self.coordinates[2]
+                self.number      = number
+
+        def getNorm(self):
+                return np.linalg.norm(self.coordinates)
+
+	def getCoordinates(self):
+		return self.coordinates
+
+	def translateSelf(self, vector):
+		try:
+			self.coordinates += vector
+        	        self.x_coord     += vector[0]
+        	        self.y_coord     += vector[1]
+        	        self.z_coord     += vector[2]
+		except ValueError:
+			print('Vector must be 3D np.array!') 
+
+class xyzMolecule:
+        def __init__(self,xyzAtoms):
+                self.xyzAtoms = xyzAtoms
+
+        def getCoordinates(self):
+                return [atom.getCoordinates() for atom in self.xyzAtoms]
+
+        def getCoordinates_name(self,name):
+                atoms = []
+                for atom in self.xyzAtoms:
+                        if atom.name == name:
+                                atoms.append(atom.coordinates)
+                return atoms
+
+        def get_atoms_by_name(self,name):
+                atoms = []
+                for atom in self.xyzAtoms:
+                        if atom.name == name:
+                                atoms.append(atom)
+                        else:
+                                pass
+                if len(atoms) == 0:
+                        print('Found no atoms with given name in box.')
+                        return
+                return atoms
+
+        def getGeometricCenter(self):
+                for_average = np.zeros((len(self.xyzAtoms),3))
+                for ii in range(len(self.xyzAtoms)):
+                        for_average[ii, :] = self.xyzAtoms[ii].coordinates
+                return np.mean(for_average,axis = 0)
+
+	def translateSelf(self,vector):
+		for atom in self.xyzAtoms:
+			atom.translateSelf(vector)
+
+	def scatterPlot(self):
+		from mpl_toolkits.mplot3d import Axes3D
+		fig = figure()
+		ax  = Axes3D(fig)
+		x_vals = [coord[0] for coord in self.getCoordinates()]
+		y_vals = [coord[1] for coord in self.getCoordinates()]
+		z_vals = [coord[2] for coord in self.getCoordinates()]
+		ax.scatter(x_vals, y_vals, z_vals)
+		show()
+
+class xyzBox:
+        def __init__(self,xyzAtoms,boxLength=None):
+                self.xyzMolecules = []
+                self.xyzAtoms     = xyzAtoms
+                self.n_atoms      = len(self.xyzAtoms)
+                self.title        = None
+		self.boxLength    = boxLength
+
+	def setBoxLength(self,boxLength,angstrom=True):
+		if angstrom:
+			self.boxLength = boxLength
+		else:
+			self.boxLength = boxLength*constants.physical_constants['atomic unit of length'][0]*10**10
+
+        def writeBox(self, filename):
+                writeXYZfile(filename, self.n_atoms, self.title, self.xyzAtoms)
+
+        def getCoordinates(self):		
+                return [atom.getCoordinates() for atom in self.xyzAtoms]
+
+        def get_atoms_by_name(self,name):
+                # find oxygen atoms
+                atoms = []
+                for atom in self.xyzAtoms:
+                        if atom.name == name:
+                                atoms.append(atom)
+                        else:
+                                pass
+                if len(atoms) == 0:
+                        print('Found no atoms with given name in box.')
+                        return
+                return atoms
+
+	def scatterPlot(self):
+		from mpl_toolkits.mplot3d import Axes3D
+		fig = figure()
+		ax  = Axes3D(fig)
+		#coordinates = self.getCoordinates()
+		#print type(coordinates), coordinates
+		x_vals = [coord[0] for coord in self.getCoordinates()]
+		y_vals = [coord[1] for coord in self.getCoordinates()]
+		z_vals = [coord[2] for coord in self.getCoordinates()]
+		cla()
+		ax.scatter(x_vals, y_vals, z_vals)
+		draw()
+
+        def get_OO_neighbors(self,Roocut=3.6):
+                """
+                Returns list of numbers of nearest oxygen neighbors in readius 'Roocut'
+                """
+                o_atoms = self.get_atoms_by_name('O')
+		if not self.boxLength:
+        	        return count_OO_neighbors(o_atoms,Roocut)
+		else:
+	       	        return count_OO_neighbors(o_atoms,Roocut,boxLength=self.boxLength)
+
+	def get_OO_neighbors_pbc(self,Roocut=3.6):
+		o_atoms = self.get_atoms_by_name('O')
+		return count_OO_neighbors_pbc(o_atoms,Roocut,boxLength=self.boxLength)
+
+	def get_h2o_molecules(self,o_name='O',h_name='H'):
+                o_atoms  = self.get_atoms_by_name(o_name)
+                h_atoms  = self.get_atoms_by_name(h_name)
+		if self.boxLength:
+			self.xyzMolecules = find_H2O_molecules(o_atoms,h_atoms,boxLength=self.boxLength)
+		else:
+			self.xyzMolecules = find_H2O_molecules(o_atoms,h_atoms,boxLength=self.boxLength)
+
+	def get_hbonds(self, Roocut=3.6, Rohcut=2.4, Aoooh=30.0):
+		hb_total_sum  = 0 # total number of H-bonds in box
+		hb_donor_sum  = 0 # total number of donor H-bonds in box
+                o_atoms  = self.get_atoms_by_name('O')
+                h_atoms  = self.get_atoms_by_name('H')
+		if self.boxLength:
+			h2o_mols = find_H2O_molecules(o_atoms,h_atoms,boxLength=self.boxLength)
+			self.xyzMolecules = h2o_mols
+		else:
+			h2o_mols = find_H2O_molecules(o_atoms,h_atoms)
+			test_h2o_mols = h2o_mols
+		for mol1 in h2o_mols:
+			for mol2 in h2o_mols:
+				donor, acceptor = countHbonds_pbc(mol1,mol2,self.boxLength,Roocut=Roocut, Rohcut=Rohcut, Aoooh=Aoooh)
+				hb_donor_sum  += donor
+				hb_accept_sum += acceptor
+		return hb_donor_sum, hb_accept_sum #hbonds, dbonds, abonds, hbondspermol
+
+	def changeOHBondlength(self,fraction, oName='O', hName='H'):
+		# find all H2O molecules
+		if self.boxLength:
+			h2o_mols = find_H2O_molecules(o_atoms,h_atoms,boxLength=self.boxLength)
+		else:
+			h2o_mols = find_H2O_molecules(o_atoms,h_atoms)
+		# change the bond length
+		new_h2o_mols = []
+		for mol in h2o_mols:
+			new_h2o_mols.append(changeOHBondLength(mol, fraction, boxLength=self.boxLength, oName=oName, hName=hName))
+		# redefine all molecules and atoms in box
+		self.xyzMolecules = new_h2o_mols
+		self.xyzAtoms = []
+		for mol in self.xyzMolecule:
+			for atom in mol:
+				self.xyzAtoms.append(atom)
+
+def getPeriodicTestBox_molecules(Molecules,boxLength,numbershells=1):
+	vectors = []
+	for l in range(-numbershells,numbershells+1):
+		for m in range(-numbershells,numbershells+1):
+			for n in range(-numbershells,numbershells+1):
+				vectors.append(np.array([l, m, n]))
+	pbc_molecules = []
+	for vector in vectors:
+		for molecule in Molecules:
+			cpAtoms = []
+			for atom in molecule.xyzAtoms:
+				cpAtom = deepcopy(atom)
+				cpAtom.translateSelf(vector*boxLength)
+				cpAtoms.append(cpAtom)
+			pbc_molecules.append(xyzMolecule(cpAtoms))
+	return pbc_molecules
+
+def getPeriodicTestBox(xyzAtoms,boxLength,numbershells=1):
+	vectors = []
+	for l in range(-numbershells,numbershells+1):
+		for m in range(-numbershells,numbershells+1):
+			for n in range(-numbershells,numbershells+1):
+				vectors.append(np.array([l, m, n]))
+	pbc_atoms = []
+	for vector in vectors:
+		for atom in xyzAtoms:
+			cpAtom = deepcopy(atom)
+			cpAtom.translateSelf(vector*boxLength)
+			pbc_atoms.append(cpAtom)
+	return pbc_atoms
+
+def getTranslVec(atom1,atom2,boxLength):
+	""" **getTranslVec**
+	Returns the translation vector that brings atom2 closer to atom1 in case
+	atom2 is further than boxLength away.
+	"""
+	xcoord1 = atom1.coordinates[0]
+	xcoord2 = atom2.coordinates[0]
+	ycoord1 = atom1.coordinates[1]
+	ycoord2 = atom2.coordinates[1]
+	zcoord1 = atom1.coordinates[2]
+	zcoord2 = atom2.coordinates[2]
+	translVec = np.zeros(atom2.coordinates.shape)
+	if xcoord1-xcoord2 > boxLength/2.0:
+		translVec[0] = -boxLength/2.0
+	if ycoord1-ycoord2 > boxLength/2.0:
+		translVec[1] = -boxLength/2.0
+	if zcoord1-zcoord2 > boxLength/2.0:
+		translVec[2] = -boxLength/2.0
+	return translVec
+
+def getTranslVec_geocen(mol1COM,mol2COM,boxLength):
+	""" **getTranslVec_geocen**
+	"""
+	translVec = np.zeros((len(mol1COM),))
+	if mol1COM[0]-mol2COM[0] > boxLength/2.0:
+		translVec[0] = -boxLength/2.0
+	if mol1COM[1]-mol2COM[0] > boxLength/2.0:
+		translVec[1] = -boxLength/2.0
+	if mol1COM[2]-mol2COM[0] > boxLength/2.0:
+		translVec[2] = -boxLength/2.0
+	return translVec
+
+def getDistancePbc(atom1,atom2,boxLength):
+	xdist  = atom1.coordinates[0] - atom2.coordinates[0]
+	xdist -= boxLength*round(xdist/boxLength)
+	ydist  = atom1.coordinates[1] - atom2.coordinates[1] 
+	ydist -= boxLength*round(ydist/boxLength)
+	zdist  = atom1.coordinates[2] - atom2.coordinates[2] 
+	zdist -= boxLength*round(zdist/boxLength)
+	return np.sqrt(xdist**2.0 + ydist**2.0 + zdist**2.0)
+
+def getDistance(atom1, atom2):
+	return np.linalg.norm(atom2.getCoordinates()-atom2.getCoordinates())
+
+def getDistVectorPbc(atom1,atom2,boxLength):
+	xdist  = atom1.coordinates[0] - atom2.coordinates[0]
+	xdist -= boxLength*round(xdist/boxLength)
+	ydist  = atom1.coordinates[1] - atom2.coordinates[1] 
+	ydist -= boxLength*round(ydist/boxLength)
+	zdist  = atom1.coordinates[2] - atom2.coordinates[2] 
+	zdist -= boxLength*round(zdist/boxLength)
+	return np.array([xdist, ydist, zdist])
+
+def getDistVector(atom1,atom2):
+	xdist  = atom1.coordinates[0] - atom2.coordinates[0]
+	ydist  = atom1.coordinates[1] - atom2.coordinates[1] 
+	zdist  = atom1.coordinates[2] - atom2.coordinates[2] 
+	return np.array([xdist, ydist, zdist])
+
+def countHbonds_pbc(mol1,mol2,boxLength,Roocut=3.6, Rohcut=2.4, Aoooh=30.0):
+	hb_donor  = 0
+	hb_accept = 0
+	# get atoms
+	mol1_o = mol1.get_atoms_by_name('O')
+	mol1_h = mol1.get_atoms_by_name('H')
+	mol2_o = mol2.get_atoms_by_name('O')
+	mol2_h = mol2.get_atoms_by_name('H')
+	if getDistancePbc(mol1_o[0],mol2_o[0],boxLength) <= Roocut:
+		# donor bond through first hydrogen atom of mol1
+		if getDistancePbc(mol1_h[0],mol2_o[0],boxLength) <= Rohcut:
+			vec1 = getDistVectorPbc(mol1_h[0],mol1_o[0],boxLength)
+			vec2 = getDistVectorPbc(mol2_o[0],mol1_o[0],boxLength)
+			if np.degrees(np.arccos( np.dot(vec1,vec2)/(np.linalg.norm(vec2)*np.linalg.norm(vec1)))) <= Aoooh:
+				hb_donor += 1
+		# donor bond through second hydrogen atom of mol1
+		if getDistancePbc(mol1_h[1],mol2_o[0],boxLength) <= Rohcut:
+			vec1 = getDistVectorPbc(mol1_h[1],mol1_o[0],boxLength)
+			vec2 = getDistVectorPbc(mol2_o[0],mol1_o[0],boxLength)
+			if np.degrees(np.arccos( np.dot(vec1,vec2)/(np.linalg.norm(vec2)*np.linalg.norm(vec1)))) <= Aoooh:
+				hb_donor += 1
+		# acceptor bond through first hydrogen atom of mol2
+		if getDistancePbc(mol1_o[0],mol2_h[0],boxLength) <= Rohcut:
+			vec1 = getDistVectorPbc(mol2_h[0],mol1_o[0],boxLength)
+			vec2 = getDistVectorPbc(mol2_o[0],mol1_o[0],boxLength)
+			if np.degrees(np.arccos( np.dot(vec1,vec2)/(np.linalg.norm(vec2)*np.linalg.norm(vec1)))) <= Aoooh:
+				hb_accept += 1
+		# acceptor bond through second hydrogen atom of mol2
+		if getDistancePbc(mol1_o[0],mol2_h[1],boxLength) <= Rohcut:
+			vec1 = getDistVectorPbc(mol2_h[1],mol1_o[0],boxLength)
+			vec2 = getDistVectorPbc(mol2_o[0],mol1_o[0],boxLength)
+			if np.degrees(np.arccos( np.dot(vec1,vec2)/(np.linalg.norm(vec2)*np.linalg.norm(vec1)))) <= Aoooh:
+				hb_accept += 1
+	return hb_donor, hb_accept
+
+def countHbonds(mol1,mol2, Roocut=3.6, Rohcut=2.4, Aoooh=30.0):
+	hb_donor  = 0
+	hb_accept = 0
+	# get the coordinates
+	Aoooh = np.radians(Aoooh)
+	mol1_o = mol1.getCoordinates_name('O')
+	mol1_h = mol1.getCoordinates_name('H')
+	mol2_o = mol2.getCoordinates_name('O')
+	mol2_h = mol2.getCoordinates_name('H')
+	# check O-O distance
+	if np.linalg.norm(mol2_o[0] - mol1_o[0]) > 0.0 and np.linalg.norm(mol2_o[0] - mol1_o[0]) <= Roocut: # check Roocut is met
+		# check for donor H-bonds
+		if np.linalg.norm(mol2_o[0] - mol1_h[0]) > 0.0 and np.linalg.norm(mol2_o[0] - mol1_h[0]) <= Rohcut: # check Rohcut, first H
+			vec1 = mol1_h[0]-mol1_o[0]
+			vec2 = mol2_o[0]-mol1_o[0]
+			if np.arccos((np.dot(vec1,vec2)/(np.linalg.norm(vec1)*np.linalg.norm(vec2)))) <= Aoooh:
+				hb_donor += 1
+		if np.linalg.norm(mol2_o[0] - mol1_h[1]) > 0.0 and np.linalg.norm(mol2_o[0] - mol1_h[1]) <= Rohcut: # check Rohcut, second H
+			vec1 = mol1_h[1]-mol1_o[0]
+			vec2 = mol2_o[0]-mol1_o[0]
+			if np.arccos((np.dot(vec1,vec2)/(np.linalg.norm(vec1)*np.linalg.norm(vec2)))) <= Aoooh:
+				hb_donor += 1
+		# check for acceptor H-bonds
+		if np.linalg.norm(mol2_h[0] - mol1_o[0]) > 0.0 and np.linalg.norm(mol2_h[0] - mol1_o[0]) <= Rohcut: # check Rohcut, first H
+			vec1 = mol2_o[0]-mol1_o[0]
+			vec2 = mol2_h[0]-mol1_o[0]
+			if np.arccos((np.dot(vec1,vec2)/(np.linalg.norm(vec1)*np.linalg.norm(vec2)))) <= Aoooh:
+				hb_accept += 1
+		if np.linalg.norm(mol2_h[1] - mol1_o[0]) > 0.0 and np.linalg.norm(mol2_h[1] - mol1_o[0]) <= Rohcut: # check Rohcut, socond H
+			vec1 = mol2_o[0]-mol1_o[0]
+			vec2 = mol2_h[1]-mol1_o[0]
+			if np.arccos((np.dot(vec1,vec2)/(np.linalg.norm(vec1)*np.linalg.norm(vec2)))) <= Aoooh:
+				hb_accept += 1
+	return hb_donor, hb_accept
+
+def countHbonds_orig(mol1,mol2, Roocut=3.6, Rohcut=2.4, Aoooh=30.0):
+	mol1_o = mol1.getCoordinates_name('O')
+	mol1_h = mol1.getCoordinates_name('H')
+	mol2_o = mol2.getCoordinates_name('O')
+	mol2_h = mol2.getCoordinates_name('H')
+	hbnoD1 = 0
+	if np.linalg.norm(mol2_o[0]-mol1_o[0]) > 0.0 and np.linalg.norm(mol2_o[0]-mol1_o[0]) <= Roocut:
+		if np.linalg.norm(mol2_h[0] - mol1_o[0]) <= Rohcut:
+			vec1 = mol2_h[0]-mol2_o[0]
+			vec2 = mol1_o[0]-mol2_o[0]
+			if np.degrees(np.arccos( np.dot(vec1,vec2)/(np.linalg.norm(vec2)*np.linalg.norm(vec1)))) <= Aoooh:
+				hbnoD1 += 1
+	hbnoD2 = 0
+	if np.linalg.norm(mol2_o[0]-mol1_o[0]) > 0.0 and np.linalg.norm(mol2_o[0]-mol1_o[0]) <= Roocut:
+		if np.linalg.norm(mol2_h[1]-mol1_o[0]) <= Rohcut:
+			vec1 = mol2_h[1]-mol2_o[0]
+			vec2 = mol1_o[0]-mol2_o[0]
+			if np.degrees(np.arccos( np.dot(vec1,vec2)/(np.linalg.norm(vec2)*np.linalg.norm(vec1)))) <= Aoooh:
+				hbnoD2 += 1
+	hbnoA1 = 0
+	if np.linalg.norm(mol2_o[0]-mol1_o[0]) > 0.0 and np.linalg.norm(mol2_o[0]-mol1_o[0]) <= Roocut:
+		if np.linalg.norm(mol2_o[0]-mol1_h[0]) <= Rohcut:
+			vec1 = mol2_o[0]-mol1_o[0]
+			vec2 = mol1_h[0]-mol1_o[0]
+			if np.degrees(np.arccos( np.dot(vec1,vec2)/(np.linalg.norm(vec1)*np.linalg.norm(vec2)))) <= Aoooh:
+				hbnoA1 += 1
+	hbnoA2 = 0
+	if np.linalg.norm(mol2_o[0]-mol1_o[0]) > 0.0 and np.linalg.norm(mol2_o[0]-mol1_o[0]) <= Roocut:
+		if np.linalg.norm(mol2_o[0]-mol1_h[1]) <= Rohcut:
+			vec1 = mol2_o[0]-mol1_o[0]
+			vec2 = mol1_h[1]-mol1_o[0]
+			if np.degrees(np.arccos( np.dot(vec1,vec2)/(np.linalg.norm(vec1)*np.linalg.norm(vec2)))) <= Aoooh:
+				hbnoA2 += 1
+	dbonds = hbnoD1 + hbnoD2
+	abonds = hbnoA1 + hbnoA2
+	return dbonds, abonds
+
+def repair_h2o_molecules_pbc(h2o_mols,boxLength):
+	new_mols = []
+	for mol in h2o_mols:
+		o_atom  = mol.get_atoms_by_name('O')[0]
+		h_atoms = mol.get_atoms_by_name('H')
+		new_mol = [o_atom]
+		for h_atom in h_atoms:
+			cpAtom = deepcopy(h_atom)
+			xdist  = o_atom.coordinates[0] - cpAtom.coordinates[0]
+			ydist  = o_atom.coordinates[1] - cpAtom.coordinates[1]
+			zdist  = o_atom.coordinates[2] - cpAtom.coordinates[2]
+			cpAtom.translateSelf([boxLength*round(xdist/boxLength),boxLength*round(ydist/boxLength),boxLength*round(zdist/boxLength)])
+			new_mol.append(cpAtom)
+		new_mols.append(xyzMolecule(new_mol))
+	return new_mols
+
+def find_H2O_molecules(o_atoms,h_atoms,boxLength=None):
+	h2o_molecules = []
+	if not boxLength:
+		warnings.warn('No box length provided, will not take PBC into account!')
+		for o_atom in o_atoms:
+			ho_dists = []
+			for h_atom in h_atoms:
+				ho_dists.append(np.linalg.norm(o_atom.coordinates - h_atom.coordinates))
+			order = np.argsort(ho_dists)
+			h2o_molecules.append(xyzMolecule([o_atom,h_atoms[np.where(order == 0)[0]],h_atoms[np.where(order == 1)[0]]]))
+		return h2o_molecules
+	else:
+		for o_atom in o_atoms:
+			ho_dists = []
+			for h_atom in h_atoms:
+				ho_dists.append(getDistancePbc(o_atom,h_atom,boxLength))
+			order = np.argsort(ho_dists)
+			h2o_molecules.append(xyzMolecule([o_atom,h_atoms[order[0]],h_atoms[order[1]]]))
+		return h2o_molecules
+
+def writeXYZfile(filename,numberOfAtoms, title, list_of_xyzAtoms):
+        # create file
+        xyz = open(filename,'w+')
+        # write number of atoms
+        xyz.write(str(numberOfAtoms) + ' \n')
+        # write title
+	if not title:
+		title = 'None'
+        xyz.write(title + ' \n')
+        # write coordinates
+        for atom in list_of_xyzAtoms:
+                xyz.write('%4s %8f %8f %8f \n' % (atom.name, atom.x_coord, atom.y_coord, atom.z_coord))
+        xyz.close()
+
+def count_OO_neighbors(list_of_o_atoms,Roocut,boxLength=None):
+	noo   = []
+	if not boxLength:
+		warnings.warn('No box length provided, will not take PBC into account!')
+	        for atom1 in list_of_o_atoms:
+	                dists = []
+	                for atom2 in list_of_o_atoms:
+	                        dists.append(np.linalg.norm(atom1.coordinates - atom2.coordinates))
+	                noo.append(len(np.where(np.logical_and(np.sort(np.array(dists))>0.0, np.sort(np.array(dists))<=Roocut))[0]))
+	        return noo
+	else:
+		for atom1 in list_of_o_atoms:
+			dists = []
+			for atom2 in list_of_o_atoms:
+				dists.append(getDistancePbc(atom1,atom2,boxLength))
+	                noo.append(len(np.where(np.logical_and(np.sort(np.array(dists))>0.0, np.sort(np.array(dists))<=Roocut))[0]))
+		return noo
+
+def count_OO_neighbors_pbc(list_of_o_atoms,Roocut,boxLength,numbershells=1):
+	noo = []
+	vectors = []
+	for l in range(-numbershells,numbershells+1):
+		for m in range(-numbershells,numbershells+1):
+			for n in range(-numbershells,numbershells+1):
+				vectors.append(np.array([l, m, n]))
+	pbc_atoms = []
+	for vector in vectors:
+		for atom in list_of_o_atoms:
+			cpAtom = deepcopy(atom)
+			cpAtom.translateSelf(vector*boxLength)
+			pbc_atoms.append(cpAtom)
+	for atom1 in list_of_o_atoms:
+		dists = []
+		for atom2 in pbc_atoms:
+			dists.append(np.linalg.norm(atom1.coordinates - atom2.coordinates))
+		sdists = np.sort(np.array(dists))
+		noo.append(len(np.where(np.logical_and(sdists>0.0, sdists<=Roocut))[0]))
+	return noo
+
+def boxParser(filename):
+        """**parseXYZfile**
+        Reads an xyz-style file.
+        """
+        atoms = []
+        coordinates = []
+        xyz = open(filename)
+        n_atoms = int(xyz.readline())
+        title = xyz.readline()
+        for line in xyz:
+                atom,x,y,z = line.split()
+                atoms.append(atom)
+                coordinates.append([float(x), float(y), float(z)])
+        xyz.close()
+        xyzAtoms = []
+        for ii in range(n_atoms):
+                xyzAtoms.append(xyzAtom(atoms[ii],coordinates[ii],ii))
+
+        return xyzBox(xyzAtoms)
+
+def changeOHBondLength(h2oMol, fraction, boxLength=None, oName='O', hName='H'):
+	o_atom = h2oMol.get_atoms_by_name(oName)
+	h_atom = h2oMol.get_atoms_by_name(hName)
+	# get OH bond-vectors
+	ohVectors = []
+	if not boxLength:
+		warnings.warn('No box length provided, will not take PBC into account!')
+		for atom in h_atom:
+			ohVectors.append(getDistVector(atom,o_atom[0]))
+	else:
+		for atom in h_atom:
+			ohVectors.append(getDistVector(atom,o_atom[0],boxLength))
+	# get new OH bond vectors
+	new_ohVectors = []
+	for vector in ohVectors:
+		new_ohVectors.append( vector*fraction)
+	# make new molecule
+	newmol =[deepcopy(o_atom[0])]
+	for vector in new_ohVectors:
+		newmol.append(xyzAtom(hName,o_atom[0].getCoordinates()+vector,1))
+	return xyzMolecule(newmol)
+
+
+class xyzTrajectory:
+        def __init__(self,xyzBoxes):
+                self.xyzBoxes = xyzBoxes
+
+        def writeRandBox(self,filename):
+                ind = np.random.randint(len(self.xyzBoxes))
+                self.xyzBoxes[ind].writeBox(filename)
+
+
+      
+
+def parseXYZfile(filename):
+        """**parseXYZfile**
+        Reads an xyz-style file.
+        """
+        atoms = []
+        coordinates = []
+        xyz = open(filename)
+        n_atoms = int(xyz.readline())
+        title = xyz.readline()
+        for line in xyz:
+                atom,x,y,z = line.split()
+                atoms.append(atom)
+                coordinates.append([float(x), float(y), float(z)])
+        xyz.close()
+        return n_atoms, title, atoms, coordinates
+
 
 

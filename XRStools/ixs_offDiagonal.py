@@ -213,7 +213,7 @@ class offDiagonal:
 			RCmonitor = self.scans[scanname].counters[RCmoni]
 			self.scans[scanname].offdia_energy = energy
 
-	def stitchRockingCurves(self,RCmoni='alirixs'):
+	def stitchRockingCurves(self,RCmoni='alirixs',I0moni='kaprixs'):
 		""" **stitchRockingCurves**
 		Go through all rocking curves and stitch them together to a 3D matrix.
 		"""
@@ -232,22 +232,27 @@ class offDiagonal:
 			moniMatrix   = np.zeros((dim1,dim2))
 			motorMatrix  = np.zeros((dim1,dim2))
 			signalMatrix = np.zeros((dim1,dim2))
+			I0Matrix     = np.zeros((dim1,dim2))
 			for jj in range(len(energy_points)):
 				moniCol   = np.array([])
 				motorCol  = np.array([])
 				signalCol = np.array([])
+				I0Col     = np.array([])
 				for scan in sorted_RcScans:
 					if scan.offdia_energy == energy_points[jj]:
 						moniCol   = np.insert(moniCol,np.searchsorted(moniCol,scan.counters[RCmoni]),scan.counters[RCmoni])
 						motorCol  = np.insert(motorCol,np.searchsorted(motorCol,scan.energy),scan.energy)
 						signalCol = np.insert(signalCol,np.searchsorted(signalCol,scan.signals[:,ii]),scan.signals[:,ii])
+						I0Col     = np.insert(I0Col,np.searchsorted(I0Col,scan.counters[I0moni]),scan.counters[I0moni])
 				moniMatrix[jj,:]   = moniCol
 				signalMatrix[jj,:] = signalCol
 				motorMatrix[jj,:]  = motorCol
+				I0Matrix[jj,:]     = I0Col
 
 			dataset.signalMatrix = signalMatrix
 			dataset.motorMatrix  = motorMatrix
-			dataset.moniMatrix   = moniMatrix
+			dataset.RCmonitor    = moniMatrix
+			dataset.I0Matrix     = I0Matrix
 			self.offDiaDataSets.append(dataset)
 
 	def set_roiObj(self,roiobj):

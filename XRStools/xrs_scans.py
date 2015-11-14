@@ -201,6 +201,7 @@ class offDiaDataSet:
 		self.RCmonitor    = np.array([])
 		self.signalMatrix = np.array([])
 		self.motorMatrix  = np.array([])
+		self.I0Matrix     = np.array([])
 		self.energy       = np.array([])
 		self.ROI_number   = 0
 		self.G_vector     = np.array([])
