@@ -1,0 +1,31 @@
+from XRStools import xrs_read, theory, xrs_extraction, xrs_rois, roifinder_and_gui, xrs_utilities, math_functions
+from pylab import *
+
+ion()
+import numpy as np
+from scipy import interpolate, signal, integrate, constants, optimize, ndimage
+from XRStools import ixs_offDiagonal
+
+##############################################################################
+# off-focus resolution tests
+##############################################################################
+repertorio = "/home/christoph/data/ihr_sep15/"
+
+############
+# elastic line
+############
+offdia = ixs_offDiagonal.offDiagonal(repertorio + 'rixs',scanMotor='srz',monitorName='kaprixs',edfName=None,armLength=1.0)
+
+image4roi =  offdia.SumDirect( [442] )
+roifinder = roifinder_and_gui.roi_finder()
+roifinder.get_zoom_rois(image4roi)
+
+offdia.set_roiObj(roifinder.roi_obj)
+offdia.loadRockingCurve(range(477,757,3),direct=True)
+offdia.loadRockingCurve(range(478,758,3),direct=True)
+
+offdia.stitchRockingCurves()
+
+
+
+
