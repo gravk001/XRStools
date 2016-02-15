@@ -622,12 +622,20 @@ class xyzBox:
 		return count_OO_neighbors_pbc(o_atoms,Roocut,boxLength=self.boxLength)
 
 	def get_h2o_molecules(self,o_name='O',h_name='H'):
-                o_atoms  = self.get_atoms_by_name(o_name)
-                h_atoms  = self.get_atoms_by_name(h_name)
+		o_atoms  = self.get_atoms_by_name(o_name)
+		h_atoms  = self.get_atoms_by_name(h_name)
 		if self.boxLength:
 			self.xyzMolecules = find_H2O_molecules(o_atoms,h_atoms,boxLength=self.boxLength)
 		else:
-			self.xyzMolecules = find_H2O_molecules(o_atoms,h_atoms,boxLength=self.boxLength)
+			self.xyzMolecules = find_H2O_molecules(o_atoms,h_atoms,boxLength=None)
+
+	def get_atoms_from_molecules(self):
+		if not self.xyzAtoms:
+			self.xyzAtoms = []
+			for molecule in self.xyzMolecules:
+				for atom in molecule.xyzAtoms:
+					self.xyzAtoms.append(atom)
+		self.n_atoms      = len(self.xyzAtoms)
 
 	def get_hbonds(self, Roocut=3.6, Rohcut=2.4, Aoooh=30.0):
 		hb_total_sum  = 0 # total number of H-bonds in box
@@ -648,6 +656,8 @@ class xyzBox:
 		return hb_donor_sum, hb_accept_sum #hbonds, dbonds, abonds, hbondspermol
 
 	def changeOHBondlength(self,fraction, oName='O', hName='H'):
+		o_atoms  = self.get_atoms_by_name('O')
+		h_atoms  = self.get_atoms_by_name('H')
 		# find all H2O molecules
 		if self.boxLength:
 			h2o_mols = find_H2O_molecules(o_atoms,h_atoms,boxLength=self.boxLength)
@@ -660,8 +670,8 @@ class xyzBox:
 		# redefine all molecules and atoms in box
 		self.xyzMolecules = new_h2o_mols
 		self.xyzAtoms = []
-		for mol in self.xyzMolecule:
-			for atom in mol:
+		for mol in self.xyzMolecules:
+			for atom in mol.xyzAtoms:
 				self.xyzAtoms.append(atom)
 
 def getPeriodicTestBox_molecules(Molecules,boxLength,numbershells=1):
@@ -886,7 +896,8 @@ def find_H2O_molecules(o_atoms,h_atoms,boxLength=None):
 			for h_atom in h_atoms:
 				ho_dists.append(np.linalg.norm(o_atom.coordinates - h_atom.coordinates))
 			order = np.argsort(ho_dists)
-			h2o_molecules.append(xyzMolecule([o_atom,h_atoms[np.where(order == 0)[0]],h_atoms[np.where(order == 1)[0]]]))
+			if np.linalg.norm(o_atom.coordinates - h_atoms[order[0]].getCoordinates()) <= 1.5 and np.linalg.norm(o_atom.coordinates - h_atoms[order[1]].getCoordinates()) <= 1.5:
+				h2o_molecules.append(xyzMolecule([o_atom,h_atoms[order[0]],h_atoms[order[1]]]))
 		return h2o_molecules
 	else:
 		for o_atom in o_atoms:
@@ -981,7 +992,7 @@ def changeOHBondLength(h2oMol, fraction, boxLength=None, oName='O', hName='H'):
 			ohVectors.append(getDistVector(atom,o_atom[0]))
 	else:
 		for atom in h_atom:
-			ohVectors.append(getDistVector(atom,o_atom[0],boxLength))
+			ohVectors.append(getDistVectorPbc(atom,o_atom[0],boxLength))
 	# get new OH bond vectors
 	new_ohVectors = []
 	for vector in ohVectors:

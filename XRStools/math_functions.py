@@ -181,6 +181,8 @@ def gauss(x,a):
 	returns a gaussian with peak value normalized to unity
 	a[0] = peak position
 	a[1] = Full Width at Half Maximum
+	a[2] = intensity
 	"""
-	y = np.exp(-np.log(2.0)*((x-a[0])/a[1]*2.0)**2.0)
+	y = a[2]*np.exp(-np.log(2.0)*((x-a[0])/a[1]*2.0)**2.0)
 	return y
+

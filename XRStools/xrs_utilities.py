@@ -52,7 +52,7 @@ from scipy.integrate import trapz
 from scipy import interpolate, signal, integrate, constants, optimize
 from re import findall
 from scipy.ndimage import measurements
-from scipy.optimize import leastsq, fmin
+from scipy.optimize import leastsq, fmin, fsolve
 from scipy.interpolate import Rbf, RectBivariateSpline
 from scipy.integrate import odeint
 
@@ -83,7 +83,6 @@ class maxipix_det:
 
 	def get_det_name(self):
 		return self.name
-
 
 def fermi(rs):
 	""" **fermi**
@@ -155,9 +154,6 @@ def lindhard_pol(q,w,rs=3.93,use_corr=False, lifetime=0.28):
 	x = 4.0*np.pi*x
 	x = x/(2.0*np.pi)**3
 	return x 
-
-
-
 
 def energy(d,ba):
 	"""
@@ -316,7 +312,7 @@ def convg(x,y,fwhm):
 	dx = np.min(np.absolute(np.diff(x)))
 	x2 = np.arange(np.min(x)-1.5*fwhm, np.max(x)+1.5*fwhm, dx)
 	xg = np.arange(-np.floor(2.0*fwhm/dx)*dx, np.floor(2.0*fwhm/dx)*dx, dx)
-	yg = gauss(xg,[0,fwhm])
+	yg = gauss(xg,0,fwhm)
 	yg = yg/np.sum(yg)
 	y2 = spline2(x,y,x2)
 	c  = np.convolve(y2,yg, mode='full')
@@ -462,6 +458,14 @@ def vrot(v,vaxis,phi):
 	v2 = np.dot(np.linalg.inv(R1),np.dot(np.linalg.inv(R2),v2))
 	return v2	
 
+def vrot2(vector1,vector2,angle):
+	""" **rotMatrix**
+	Rotate vector1 around vector2 by an angle.
+	"""
+	theta = np.radians(angle)
+	R=np.array([[vector2[0]**2+(1.0-vector2[0]**2)*np.cos(theta), (1.0-np.cos(theta))*vector2[0]*vector2[1]-np.sin(theta)*vector2[2], (1.0-np.cos(theta))*vector2[0]*vector2[2]+np.sin(theta)*vector2[1]], [(1.0-np.cos(theta))*vector2[0]*vector2[1]+np.sin(theta)*vector2[2], vector2[1]**2+(1.0-vector2[1]**2)*np.cos(theta), (1.0-np.cos(theta))*vector2[1]*vector2[2]-np.sin(theta)*vector2[0]],[(1.0-np.cos(theta))*vector2[0]*vector2[2]-np.sin(theta)*vector2[1], (1.0-np.cos(theta))*vector2[1]*vector2[2]+np.sin(theta)*vector2[0], vector2[2]**2+(1.0-vector2[2]**2)*np.cos(theta)]])
+	return np.dot(R,vector1)
+
 def vangle(v1, v2):
 	""" **vangle**
 	Calculates the angle between two cartesian vectors v1 and v2 in degrees.
@@ -479,131 +483,649 @@ def vangle(v1, v2):
 	"""
 	return np.arccos(np.dot(v1,v2)/np.linalg.norm(v1)/np.linalg.norm(v2))/np.pi*180.0;
 
-def cixs(theta,phi,G=np.array([-1.0,-1.0,-1.0]),x_vec=np.array([0.0, -1.0, 1.0]),crystal='Si',analRefl=[4,4,4]):
-	""" **cixs**
-	Calculates q1 for given Theta and Phi angle for coherent IXS experiments.
-
-	Args:
-	-----
-	theta (float): scattering angle.
-	phi (float): rotation angle in the plane perpendicular to G-vector.
-	G (np.array): G-vector.
-	x_vec (np.array): vector in the plane perpendicular to G-vector.
-	crystal (str): wich crystal to use,
-	analRefl (list): which analyzer reflection to use
-
-	Returns:
-	--------
-	kin (np.array):  incident beam vector (K_0)
-	kout (np.array): Bragg diffracted beam vector (K_h)
-	qout2 (np.array): inelastically scattered beam vector (K')
-	q1 (np.array): momentum transfer 1
-	q2 (np.array): momentum transfer 2
+def convtoprim(hklconv):
+	""" **convtoprim**
+	converts diamond structure reciprocal lattice expressed in conventional
+	lattice vectors to primitive one (Helsinki -> Palaiseau conversion)
+	from S. Huotari
 	"""
-	hc = 12.3984191 # CODATA 2002 recommended value, physics.nist.gov/constants
-	zz = G
-	G = 2.0*np.pi*G/dspace([1.0, 0.0, 0.0])
-	xx = vrot(x_vec,G,theta)
-	yy = vrot(xx,zz,90.0)
-	a  = dspace([1, 0, 0],xtal=crystal)
-	Eout = energy(dspace(analRefl),88.0)
-	lambdaout = hc/Eout
-	E = Eout+0.00
-	lam = hc/E
-	kin  = vrot(xx,yy,braggd(G,E))
-	kin  = kin/np.linalg.norm(kin)*2.0*np.pi/lam
-	kout =-vrot(kin,G,180.0)
-	qout2 = vrot(kin,yy,-braggd(G,E))
-	qout2 = qout2/np.linalg.norm(qout2)*2.0*np.pi/lambdaout
-	qout2 = vrot(qout2,G,phi)
-	q1 = kin-qout2
-	q2 = kout-qout2
-	return kin, kout, qout2, q1, q2, G
+	return hklconv[2]*np.array([0.5,0.5,0.0]) + hklconv[1]*np.array([0.5,0.0,0.5]) + hklconv[0]*np.array([0.0,0.5,0.5])
 
-def cixs(theta,phi,G=np.array([-1.0,-1.0,-1.0]),x_vec=np.array([0.0, -1.0, 1.0]),crystal='Si',analRefl=[4,4,4]):
-	""" **cixs**
-	Calculates q1 for given Theta and Phi angle for coherent IXS experiments.
+def primtoconv(hklprim):
+	""" **primtoconv**
+	converts diamond structure reciprocal lattice expressed in primitive basis
+	to the conventional basis (Palaiseau -> Helsinki conversion)
+	from S. Huotari
+	"""
+	a = np.array([0.0, 0.5, 0.5])
+	b = np.array([0.5, 0.0, 0.5])
+	c = np.array([0.5, 0.5, 0.0])
+	Gp = np.linalg.inv([a,b,c]).T
+	ap = Gp[0,:]
+	bp = Gp[1,:]
+	cp = Gp[2,:]
+	return hklprim[0]*ap + hklprim[1]*bp + hklprim[2]*cp
 
-	Args:
-	-----
-	theta (float): scattering angle.
-	phi (float): rotation angle in the plane perpendicular to G-vector.
-	G (np.array): G-vector.
-	x_vec (np.array): vector in the plane perpendicular to G-vector.
-	crystal (str): wich crystal to use,
-	analRefl (list): which analyzer reflection to use
+def householder(b,k):
+	"""
+	function H = householder(b, k)
+	% H = householder(b, k)
+	% Atkinson, Section 9.3, p. 611
+	% b is a column vector, k an index < length(b)
+	% Constructs a matrix H that annihilates entries
+	% in the product H*b below index k
 
-	Returns:
-	--------
-	kin (np.array):  incident beam vector (K_0)
-	kout (np.array): Bragg diffracted beam vector (K_h)
-	qout2 (np.array): inelastically scattered beam vector (K')
-	q1 (np.array): momentum transfer 1
-	q2 (np.array): momentum transfer 2
+	% $Id: householder.m,v 1.1 2008-01-16 15:33:30 mike Exp $
+	% M. M. Sussman
+	"""
+	n = len(b)
+	d = b[k:n]
+
+	if d[0] >= 0.0:
+		alpha = -np.linalg.norm(d)
+	else:
+		alpha = np.linalg.norm(d)
+
+	if alpha == 0.0:
+		H = np.eye(n)
+		return
+
+	lenD = len(d)
+	v = np.zeros(lenD)
+
+	v[0] = np.sqrt(0.5*(1.0-d[0]/alpha))
+	p = -alpha*v[0]
+	v[1:lenD] = d[1:lenD]/(2.0*p)
+	w = np.append(  np.zeros((k,1)) ,v).reshape(n,1)
+	H = np.eye(n)-2.0 * np.dot(w,w.T)
+	return H
+
+def svd_my(M,maxiter=100,eta=0.1):
+	sind = 0
+	import copy
+	import scipy as sp
+
+	# initialize U,S,V
+	X = copy.deepcopy(M)
+	m,n = np.shape(X)
+	k   = np.amin([m,n])
+	U   = np.random.rand(m,k)
+	V   = np.random.rand(n,k)
+	S   = np.random.rand(k,k)
+
+	# orthogonalize U,V
+	#U = sp.linalg.orth(U)
+	#V = sp.linalg.orth(V)
+
+	# compute S
+	#S = np.dot(np.dot(U.T,X),V)
+
+	# compute cost J0
+	J0 = 0.5*np.linalg.norm(X - np.dot(np.dot(U,S),V.T) )**2
+	J  = J0
+	dJ = J
+	while sind <= maxiter:
+		sind += 1
+		# update U and V
+		U = U + eta*(np.dot(X,V) + U.dot(V.T).dot(X.T).dot(U)  ).dot(S)
+		V = V + eta*(np.dot(X.T,U) + V.dot(U.T).dot(X).dot(V) ).dot(S)
+		# compute S
+		S = U.T.dot(X).dot(V)
+		# make S_ii positive
+		V = np.dot(V,np.sign(S))
+		S = np.abs(S)
+		Jnew = 0.5*np.linalg.norm(X - np.dot(np.dot(U,S),V.T) )**2
+		dJ   = Jnew - J
+		J    = Jnew
+		print Jnew
+	return U,S,V
+
+def bidiag_reduction(A):
+	"""
+	function [U,B,V]=bidiag_reduction(A)
+	% [U B V]=bidiag_reduction(A)
+	% Algorithm 6.5-1 in Golub & Van Loan, Matrix Computations
+	% Johns Hopkins University Press
+	% Finds an upper bidiagonal matrix B so that A=U*B*V'
+	% with U,V orthogonal.  A is an m x n matrix
 	"""
 	import copy
-	hc = 12.3984191 # CODATA 2002 recommended value, physics.nist.gov/constants
-	zz = copy.deepcopy(G)
-	G  = 2.0*np.pi*zz/dspace([1, 0, 0])
-	xx = x_vec
-	xx = vrot(xx,G,theta)
-	yy = vrot(xx,zz,90.0)   
-	a  = dspace([1, 0, 0])
-	Eout = energy(dspace([4, 4, 4]),88.0)
-	lambdaout = hc/Eout
-	E = Eout #+0.02
-	lam = hc/E
-	k0 = vrot(xx,yy,braggd(zz,E))
-	k0 = k0/np.linalg.norm(k0)*2.0*np.pi/lam
-	kh = k0+G
-	lambdaout = hc/Eout
-	kprime = vrot(k0,yy,-braggd(zz,E))
-	kprime = kprime/np.linalg.norm(kprime)*2.0*np.pi/lambdaout
-	kprime =  vrot(kprime,G,phi) 
-	q0 = k0-kprime
+	m,n = np.shape(A)
+	B = copy.deepcopy(A)
+	U = np.eye(m)
+	V = np.eye(n)
+	for k in range(n):
+		# eliminate non-zeros below the diagonal
+		H = householder(B[:,k],k)
+		B = np.dot(H,B)
+		U = np.dot(U,H)
+		# eliminate non-zeros to the right of the 
+		# superdiagonal by working with the transpose
+		if k<n-1:
+			H = householder(B[k,:].T,k+1)
+			B = np.dot(B,H.T)
+			V = np.dot(H,V)
+	return U, B, V
+
+def cixsUBgetQ(tthv, tthh, psi, G):
+	# incoming/outgoing energy/wavelength
+	hc = 12.3984191
+	bragg_ang = 86.5
+	wo = energy(dspace([4, 4, 4]),bragg_ang)
+	lambdao = hc/wo
+	wi = wo
+	lambdai = hc/wi
+
+	# lattice parameters
+	lattice = np.array([5.43095, 5.43095, 5.43095])
+	angles  = np.radians(np.array([90.0, 90.0, 90.0])) # in radians !!!
+	a = np.array([lattice[0], 0, 0])
+	b = np.array([lattice[0]*np.cos(angles[2]), lattice[1]*np.sin(angles[2]), 0])
+	c = np.array([lattice[2]*np.cos(angles[1]), lattice[2]*(-np.cos(angles[1])*np.arctan(angles[2])+np.cos(angles[0])*(1.0/np.sin(angles[2]))), lattice[2]/np.sqrt(2.0)*np.sqrt((1.0/np.sin(angles[2]))*((4.0*np.cos(angles[0])*np.cos(angles[1])*np.arctan(angles[2])-(1.0 + np.cos(2.0*angles[0])+np.cos(2.0*angles[1])+np.cos(2.0*angles[2]))*(1.0/np.sin(angles[2])))))])
+
+	# lab-to-sample reference system transformation matrix U
+	th = braggd(G,wo)
+	xxx = vrot(np.array([2.0,-1.0,-1.0]),np.array([0.0,-1.0,1.0]),th)
+	yyy = vrot(np.array([0.0,-1.0, 1.0]),np.array([0.0,-1.0,1.0]),th)
+	zzz = vrot(G,np.array([0.0,-1.0,1.0]),th)
+	U = np.zeros((3,3))
+	U[:,0] = xxx/np.linalg.norm(xxx)
+	U[:,1] = yyy/np.linalg.norm(yyy)
+	U[:,2] = zzz/np.linalg.norm(zzz)
+
+	# reciprocal lattice to absolute units transformation matrix
+	a_star = 2.0*np.pi*np.cross(b,c)/np.dot(a,np.cross(b,c))
+	b_star = 2.0*np.pi*np.cross(c,a)/np.dot(a,np.cross(b,c))
+	c_star = 2.0*np.pi*np.cross(a,b)/np.dot(a,np.cross(b,c))
+	angles_star = np.array([np.arccos(np.dot(b_star,c_star)/np.linalg.norm(b_star)/np.linalg.norm(c_star)), np.arccos(np.dot(c_star,a_star)/np.linalg.norm(c_star)/np.linalg.norm(a_star)), np.arccos(np.dot(a_star,b_star)/np.linalg.norm(a_star)/np.linalg.norm(b_star))])
+	B = np.zeros((3,3))
+	B[:,0] = np.array([np.linalg.norm(a_star), np.linalg.norm(b_star)*np.cos(angles_star[2]), np.linalg.norm(c_star)*np.cos(angles_star[1])])
+	B[:,1] = np.array([0.0, np.linalg.norm(b_star)*np.sin(angles_star[2]), -np.linalg.norm(c_star)*np.sin(angles_star[1])*np.cos(angles[0])])
+	B[:,2] = np.array([0.0, 0.0, 2.0*np.pi/np.linalg.norm(c)])
+
+	# laboratory reference frame
+	X = np.array([1.0, 0.0, 0.0])
+	Y = np.array([0.0, 1.0, 0.0])
+	Z = np.array([0.0, 0.0, 1.0])
+
+	# axis of rotation of psi
+	v = np.array([-np.sin(np.radians(th)), 0.0, np.cos(np.radians(th))])
+	Ki_test = 2.0*np.pi/lambdai*X
+	Ko_test = 2.0*np.pi/lambdao*vrot(vrot(X,Y,-tthv) ,Z, tthh)
+	Q_test = np.dot(np.linalg.lstsq(B,U)[0],vrot(Ki_test-Ko_test,v,-psi))
+	return Q_test
+
+def cixsUBgetAngles(Q, G):
+	# incoming/outgoing energy/wavelength
+	hc = 12.3984191
+	bragg_ang = 86.5
+	wo = energy(dspace([4, 4, 4]),bragg_ang)
+	lambdao = hc/wo
+	wi = wo
+	lambdai = hc/wi
+
+	# lattice parameters
+	lattice = np.array([5.43095, 5.43095, 5.43095])
+	angles  = np.radians(np.array([90.0, 90.0, 90.0])) # in radians !!!
+	a = np.array([lattice[0], 0, 0])
+	b = np.array([lattice[0]*np.cos(angles[2]), lattice[1]*np.sin(angles[2]), 0])
+	c = np.array([lattice[2]*np.cos(angles[1]), lattice[2]*(-np.cos(angles[1])*np.arctan(angles[2])+np.cos(angles[0])*(1.0/np.sin(angles[2]))), lattice[2]/np.sqrt(2.0)*np.sqrt((1.0/np.sin(angles[2]))*((4.0*np.cos(angles[0])*np.cos(angles[1])*np.arctan(angles[2])-(1.0 + np.cos(2.0*angles[0])+np.cos(2.0*angles[1])+np.cos(2.0*angles[2]))*(1.0/np.sin(angles[2])))))])
+
+	# lab-to-sample reference system transformation matrix U for Si111-crystal
+	th = braggd(G,wo)
+	xxx = vrot(np.array([2.0,-1.0,-1.0]),np.array([0.0,-1.0,1.0]),th)
+	yyy = vrot(np.array([0.0,-1.0, 1.0]),np.array([0.0,-1.0,1.0]),th)
+	zzz = vrot(G,np.array([0.0,-1.0,1.0]),th)
+	U = np.zeros((3,3))
+	U[:,0] = xxx/np.linalg.norm(xxx)
+	U[:,1] = yyy/np.linalg.norm(yyy)
+	U[:,2] = zzz/np.linalg.norm(zzz)
+
+	# lab-to-sample reference system transformation matrix U for Si220-crystal
+	#th = braggd(G,wo)
+	#xxx = vrot(np.array([1.0,-1.0,-0.0]),np.array([0.0,0.0,1.0]),th)
+	#yyy = vrot(np.array([0.0,0.0, 1.0]),np.array([0.0,0.0,1.0]),th)
+	#zzz = vrot(G,np.array([0.0,0.0,1.0]),th)
+	#U = np.zeros((3,3))
+	#U[:,0] = xxx/np.linalg.norm(xxx)
+	#U[:,1] = yyy/np.linalg.norm(yyy)
+	#U[:,2] = zzz/np.linalg.norm(zzz)
+
+	# lab-to-sample reference system transformation matrix U for Si1-11-crystal
+	#th = braggd(G,wo)
+	#xxx = vrot(np.array([2.0,1.0,-1.0]),np.array([0.0,1.0,1.0]),th)
+	#yyy = vrot(np.array([0.0,1.0, 1.0]),np.array([0.0,1.0,1.0]),th)
+	#zzz = vrot(G,np.array([0.0,1.0,1.0]),th)
+	#U = np.zeros((3,3))
+	#U[:,0] = xxx/np.linalg.norm(xxx)
+	#U[:,1] = yyy/np.linalg.norm(yyy)
+	#U[:,2] = zzz/np.linalg.norm(zzz)
+
+	# reciprocal lattice to absolute units transformation matrix
+	a_star = 2.0*np.pi*np.cross(b,c)/np.dot(a,np.cross(b,c))
+	b_star = 2.0*np.pi*np.cross(c,a)/np.dot(a,np.cross(b,c))
+	c_star = 2.0*np.pi*np.cross(a,b)/np.dot(a,np.cross(b,c))
+	angles_star = np.array([np.arccos(np.dot(b_star,c_star)/np.linalg.norm(b_star)/np.linalg.norm(c_star)), np.arccos(np.dot(c_star,a_star)/np.linalg.norm(c_star)/np.linalg.norm(a_star)), np.arccos(np.dot(a_star,b_star)/np.linalg.norm(a_star)/np.linalg.norm(b_star))])
+	B = np.zeros((3,3))
+	B[:,0] = np.array([np.linalg.norm(a_star), np.linalg.norm(b_star)*np.cos(angles_star[2]), np.linalg.norm(c_star)*np.cos(angles_star[1])])
+	B[:,1] = np.array([0.0, np.linalg.norm(b_star)*np.sin(angles_star[2]), -np.linalg.norm(c_star)*np.sin(angles_star[1])*np.cos(angles[0])])
+	B[:,2] = np.array([0.0, 0.0, 2.0*np.pi/np.linalg.norm(c)])
+
+	# laboratory reference frame
+	X = np.array([1.0, 0.0, 0.0])
+	Y = np.array([0.0, 1.0, 0.0])
+	Z = np.array([0.0, 0.0, 1.0])
+
+	# desired momentum in the laboratory reference system before any rotation is applied
+	v_c = np.dot(B,Q)
+	Q_lab = np.linalg.lstsq(U,v_c)[0]
+	
+	#$[angles,FVAL,EXITFLAG,OUTPUT] = fsolve(@(x) UBfind(x, G, Q_lab), [0 45 0]);
+	lab_angles = optimize.fsolve(cixsUBfind, [11.5, 5.0, 20.0], args=(G,Q_lab,wi,wo,lambdai,lambdao))
+
+	tthv = lab_angles[1]
+	tthh = lab_angles[0]
+	psi  = lab_angles[2]
+	if psi <= -360.0:
+		psi += 360.0
+	if psi >= 360.0:
+		psi -= 360.0
+
+	return tthv, tthh, psi
+
+def cixsUBgetAngles_secondo(Q, G):
+	# incoming/outgoing energy/wavelength
+	hc = 12.3984191
+	bragg_ang = 86.5
+	wo = energy(dspace([4, 4, 4]),bragg_ang)
+	lambdao = hc/wo
+	wi = wo
+	lambdai = hc/wi
+
+	# lattice parameters
+	lattice = np.array([5.43095, 5.43095, 5.43095])
+	angles  = np.radians(np.array([90.0, 90.0, 90.0])) # in radians !!!
+	a = np.array([lattice[0], 0, 0])
+	b = np.array([lattice[0]*np.cos(angles[2]), lattice[1]*np.sin(angles[2]), 0])
+	c = np.array([lattice[2]*np.cos(angles[1]), lattice[2]*(-np.cos(angles[1])*np.arctan(angles[2])+np.cos(angles[0])*(1.0/np.sin(angles[2]))), lattice[2]/np.sqrt(2.0)*np.sqrt((1.0/np.sin(angles[2]))*((4.0*np.cos(angles[0])*np.cos(angles[1])*np.arctan(angles[2])-(1.0 + np.cos(2.0*angles[0])+np.cos(2.0*angles[1])+np.cos(2.0*angles[2]))*(1.0/np.sin(angles[2])))))])
+
+	# lab-to-sample reference system transformation matrix U for Si220-crystal
+	th = braggd(G,wo)
+	xxx = vrot(np.array([1.0,-1.0,0.0]),np.array([0.0,0.0,1.0]),th)
+	yyy = vrot(np.array([0.0,0.0, 1.0]),np.array([0.0,0.0,1.0]),th)
+	zzz = vrot(G,np.array([0.0,0.0,1.0]),th)
+	U = np.zeros((3,3))
+	U[:,0] = xxx/np.linalg.norm(xxx)
+	U[:,1] = yyy/np.linalg.norm(yyy)
+	U[:,2] = zzz/np.linalg.norm(zzz)
+
+	# reciprocal lattice to absolute units transformation matrix
+	a_star = 2.0*np.pi*np.cross(b,c)/np.dot(a,np.cross(b,c))
+	b_star = 2.0*np.pi*np.cross(c,a)/np.dot(a,np.cross(b,c))
+	c_star = 2.0*np.pi*np.cross(a,b)/np.dot(a,np.cross(b,c))
+	angles_star = np.array([np.arccos(np.dot(b_star,c_star)/np.linalg.norm(b_star)/np.linalg.norm(c_star)), np.arccos(np.dot(c_star,a_star)/np.linalg.norm(c_star)/np.linalg.norm(a_star)), np.arccos(np.dot(a_star,b_star)/np.linalg.norm(a_star)/np.linalg.norm(b_star))])
+	B = np.zeros((3,3))
+	B[:,0] = np.array([np.linalg.norm(a_star), np.linalg.norm(b_star)*np.cos(angles_star[2]), np.linalg.norm(c_star)*np.cos(angles_star[1])])
+	B[:,1] = np.array([0.0, np.linalg.norm(b_star)*np.sin(angles_star[2]), -np.linalg.norm(c_star)*np.sin(angles_star[1])*np.cos(angles[0])])
+	B[:,2] = np.array([0.0, 0.0, 2.0*np.pi/np.linalg.norm(c)])
+
+	# laboratory reference frame
+	X = np.array([1.0, 0.0, 0.0])
+	Y = np.array([0.0, 1.0, 0.0])
+	Z = np.array([0.0, 0.0, 1.0])
+
+	# desired momentum in the laboratory reference system before any rotation is applied
+	v_c = np.dot(B,Q)
+	Q_lab = np.linalg.lstsq(U,v_c)[0]
+	
+	#$[angles,FVAL,EXITFLAG,OUTPUT] = fsolve(@(x) UBfind(x, G, Q_lab), [0 45 0]);
+	lab_angles = optimize.fsolve(cixsUBfind, [11.5, 5.0, 20.0], args=(G,Q_lab,wi,wo,lambdai,lambdao))
+
+	tthv = lab_angles[1]
+	tthh = lab_angles[0]
+	psi  = lab_angles[2]
+	if psi <= -360.0:
+		psi += 360.0
+	if psi >= 360.0:
+		psi -= 360.0
+
+	return tthv, tthh, psi
+
+def cixsUBfind(x,G,Q_sample,wi,wo,lambdai,lambdao):
+	""" **cixsUBfind**
+	"""	
+	tthh = x[0]
+	tthv = x[1]
+	psi  = x[2]
+	X = np.array([1, 0, 0])
+	Y = np.array([0, 1, 0])
+	Z = np.array([0, 0, 1])
+	Ki = 2.0*np.pi/lambdai*X
+	Ko = 2.0*np.pi/lambdao* vrot(vrot(X,Y,-tthv ),Z,tthh)
+	Q = Ki-Ko
+	th = braggd(G,wo)
+	v  = np.array([-np.sin(np.radians(th)), 0.0, np.cos(np.radians(th))])
+	y = Q - vrot(Q_sample, v, -psi)
+	tthh = y[0]
+	tthv = y[1]
+	psi  = y[2]
+	return tthh, tthv, psi
+
+def cixs_primo(tthv,tthh,psi,anal_braggd=86.5):
+	""" **cixs_primo**
+	"""
+	import copy
+	lattice_a = dspace([1., 0., 0.]) # Si lattice constant
+	# crystal vectors
+	crystVec1 = np.array([-1.,-1.,-1.])/np.linalg.norm(np.array([-1.,-1.,-1.])) # "z-axis"
+	crystVec2 = np.array([ 0.,-1., 1.])/np.linalg.norm(np.array([ 0.,-1., 1.])) # "x-axis"
+	crystVec3 = np.array([-2., 1., 1.])/np.linalg.norm(np.array([-2., 1., 1.])) # "y-axis"
+	# rotate x- and y-vectors about G by the miscut of PRIMO
+	crystVec2 = vrot(crystVec2,crystVec1,-39.8)
+	crystVec3 = vrot(crystVec3,crystVec1,-39.8)
+	# calculate energies and wavelengths
+	hc      = 12.3984191 # CODATA 2002 recommended value, physics.nist.gov/constants
+	E_out   = energy(dspace(np.array([4., 4., 4.])),anal_braggd)
+	lam_out = hc/E_out
+	E_in    = E_out #+0.02; % if want to be precise, E=Eout-20 eV @ plasmon peak
+	lam_in  = hc/E_in
+	# initially k0 is along crystVec2,
+	# then rotate k0 about crystVec3 by the Bragg angle
+	k0 = vrot(crystVec2,crystVec3,braggd(np.array([1., 1., 1.]),E_in))
+	k0 = k0/np.linalg.norm(k0)*2.0*np.pi/lam_in
+	# define lab coordinates
+	hutch_x = copy.deepcopy(k0) # k0 is along the beam
+	hutch_y = copy.deepcopy(crystVec2) # perpendicular to beam/untouched so far
+	hutch_z = vrot(crystVec1,crystVec3,braggd(np.array([1., 1., 1.]),E_in)) # toward hutch ceiling (if k0 rotates, z has to rotate with it)
+	# rotate the crystal abouts its G vector
+	k0      = vrot(k0,crystVec1,psi)
+	hutch_x = copy.deepcopy(k0) # hutch_x is always along k0
+	hutch_y = vrot(hutch_y,crystVec1,psi) # perpendicular to beam
+	hutch_z = vrot(hutch_z,crystVec1,psi) # toward hutch ceiling
+	# calculate kh using G-vector
+	kh = k0 + np.array([-1.,-1.,-1.])/np.linalg.norm(np.array([-1.,-1.,-1.]))
+	# rotate vertical
+	kprime = vrot(k0,hutch_y,-tthv) # we can rotate vertical tth from 0 to 90 (eta from 0 to 90)
+	kprime = vrot(kprime,hutch_z,tthh) # we can rotate horizontal tth from 0 to 90
+	kprime = kprime/np.linalg.norm(kprime)*2.0*np.pi/lam_out
+	# calculate momentum transfer
 	qh = kh-kprime
-	return q0, qh, G, k0, kh, kprime 
+	q0 = k0-kprime
+	return q0, qh, hutch_x, hutch_y, hutch_z
 
-def cixs2(theta,phi,xi,G=np.array([-1.0,-1.0,-1.0]),x_vec=np.array([0.0, -1.0, 1.0]),crystal='Si',analRefl=[4,4,4]):
-	""" **cixs2**
-	Calculates q1 and q2 for given Theta, Phi, and Xi angle for coherent IXS experiments with asymmetric q1, q2.
-
-	Args:
-	-----
-	theta (float): rotation angle around G.
-	phi (float): rotation angle around vector in plane perpendicular to G-vector.
-	xi (float): rotation angle for asymmetric q1, q2.
-	G (np.array): G-vector.
-	x_vec (np.array): vector in the plane perpendicular to G-vector.
-	crystal (str): wich crystal to use,
-	analRefl (list): which analyzer reflection to use
-
-	Returns:
-	--------
-	kin (np.array):  incident beam vector (K_0)
-	kout (np.array): Bragg diffracted beam vector (K_h)
-	qout2 (np.array): inelastically scattered beam vector (K')
-	q1 (np.array): momentum transfer 1
-	q2 (np.array): momentum transfer 2
+def cixs_terzo(tthv,tthh,psi,anal_braggd=86.5):
+	""" **cixs_terzo**
 	"""
 	hc = 12.3984191 # CODATA 2002 recommended value, physics.nist.gov/constants
-	zz = G
-	xx = vrot(x_vec,G,theta)
+	zz = np.array([-1., -1., -1.])
+	G  = 2.0*np.pi*zz/dspace(np.array([1., 0., 0.]))
+
+	xx = vrot(np.array([0., 1., -1.,]),np.array([-1., -1., -1.]),90-81.1)
+	xx = vrot(xx,G,psi)
 	yy = vrot(xx,zz,90.0)
-	a  = dspace([1, 0, 0],xtal=crystal)
-	Eout = energy(dspace(analRefl),89.0)
+
+	a = dspace(np.array([1., 0., 0.]))
+	Eout = energy(dspace(np.array([4., 4., 4.])),anal_braggd)
 	lambdaout = hc/Eout
-	E = Eout+0.02
-	lam = hc/E
-	kin  = vrot(xx,yy,braggd(G,E))
-	kin  = kin/np.linalg.norm(kin)*2.0*np.pi/lam
-	kout =-vrot(kin,G,180.0)
-	qout2 = vrot(kin,yy,-braggd(G,E)+xi)
-	qout2 = qout2/np.linalg.norm(qout2)*2.0*np.pi/lambdaout
-	qout2 = vrot(qout2,G,phi)
-	q1 = kin-qout2
-	q2 = kout-qout2
-	return kin, kout, qout2, q1, q2
+	E = Eout #+0.02;
+	lambdain = hc/E
+	k0 = vrot(xx,yy,braggd(zz,E))
+	k0 = k0/np.linalg.norm(k0)*2.0*np.pi/lambdain
+	nn = vrot(zz,yy,braggd(zz,E)) # nn is our spectrometer (hutch) vertical coordinate
+	kh = k0 + G
+	kprime = vrot(k0,yy,-tthv) # we can rotate vertical tth from 0 to 90 (eta from 0 to 90)
+	kprime = kprime/np.linalg.norm(kprime)*2.0*np.pi/lambdaout
+
+	kprime = vrot(kprime,nn,tthh) # we can rotate horizontal tth from 0
+	q0 = k0-kprime
+	qh = kh-kprime
+	return q0, qh
+
+def constrained_nnmf(A,W_ini,H_ini,W_up,H_up,max_iter=10000,verbose=False):
+	""" **constrained_nnmf**
+	Approximate non-negative matrix factorization with constrains.
+	
+	function [W H]=johannes_nnmf_ALS(A,W_ini,H_ini,W_up,H_up)
+	% *****************************************************************
+	% *****************************************************************
+	% ** [W H]=johannes_nnmf(A,W_ini,H_ini,W_up,H_up)   **
+	% ** performs A=WH approximate matrix factorization,             **
+	% ** where A(n*m), W(n*k), and H(k*m) are non-negative matrices, **
+	% ** and k<min(n,m). Masking arrays W_up(n*k), H_up(k*m) = 0,1   **
+	% ** control elements of W and H to be updated (1) or not (0).   **
+	% ** This fact can be used to set constraints.                   **
+	% **                                                             **
+	% **         Johannes Niskanen 13.10.2015                        **
+	% **                                                             **
+	% *****************************************************************
+	% *****************************************************************
+	by Johannes Niskanen
+	"""
+	# initialize matrices
+	H = H_ini
+	W = W_ini
+	
+	# initial cost
+	J = np.sum(np.sum(0.5 * (A-np.dot(W,H))*(A-np.dot(W,H))))
+	print('Initial cost J = %1.4f at step 0') % J
+	dJ = -0.1
+
+	sind = 0
+	while sind <= max_iter:
+		sind += 1
+		# check singularity
+		if np.isnan(np.linalg.det(np.dot(H,H.T))) or np.abs( np.linalg.det(np.dot(H,H.T))) < 1.0e-12:
+			print('H is singular, will break here.')
+			return
+
+		# solve W from (H*H')*W'=H*A'
+		W = np.linalg.lstsq( np.dot(H,H.T),np.dot(H,A.T) )[0].T
+
+		# make W nonnegative
+		inds = W < 0.0
+		W[inds] = 0.0
+
+		# restore fixed components
+		inds = W_up==0.0
+		W[inds] = W_ini[inds]
+
+		# check singularity
+		if np.isnan( np.linalg.det(np.dot(W.T,W)) ) or np.abs( np.linalg.det(np.dot(W.T,W)) ) < 1.0e-12:
+			W = np.zeros(np.shape(W))
+			H = np.zeros(np.shape(H))
+			return
+
+		# solve H from: (W'*W)*H=W'*A
+		H = np.linalg.lstsq( np.dot(W.T,W),np.dot(W.T,A) )[0]
+
+		# make H non-negative
+		inds = H < 0.0
+		H[inds] = 0.0
+
+		# restore fixed components
+		inds = H_up == 0.0
+		H[inds] = H_ini[inds]
+
+		# formalize spectra and coefficients
+		W = W/(np.dot(np.ones((np.shape(W)[0],1)),np.sum(W,axis=0).reshape(1,len(np.sum(W,axis=0))) ))
+		H = H/(np.dot(np.ones((np.shape(H)[0],1)),np.sum(H,axis=0).reshape(1,len(np.sum(H,axis=0))) ))
+
+		# print some progression
+		if sind % 100 == 0 and verbose:
+			Jnew = np.sum(np.sum(0.5 * (A-np.dot(W,H))*(A-np.dot(W,H))))
+			dJ   = Jnew-J
+			J    = Jnew
+			print('Iteration %1d J = %1.4f') %(sind,J)
+			print('dJ = %5.3f') % dJ
+			print('Fnorm = %5.3f') % np.mean(np.sum(W))
+			print('Cnorm = %5.3f') % np.mean(np.sum(H))
+
+	return W, H
+
+def constrained_svd(M,U_ini,S_ini,VT_ini,U_up,max_iter=10000,verbose=False):
+	""" **constrained_nnmf**
+	Approximate singular value decomposition with constraints.
+	
+	function [U, S, V] = constrained_svd(M,U_ini,S_ini,V_ini,U_up,max_iter=10000,verbose=False)
+	"""
+	# initialize matrices
+	# M = [n x m]
+	U  = U_ini # [n x n] (unitary)
+	S  = S_ini # [n x m] (diagonal matrix)
+	VT = VT_ini # [m x m] (unitary)
+
+	n,m = np.shape(M)
+
+	# initial cost
+	J = np.sum(np.sum(0.5 * (M-np.dot(np.dot(U,S),VT))*(M-np.dot(np.dot(U,S),VT))))
+	print('Initial cost J = %1.4f at step 0') % J
+	dJ = -0.1
+
+	sind = 0
+	while sind <= max_iter:
+		sind += 1
+
+		# solve S from: U*S = M*(VT)^-1
+		S = np.linalg.lstsq( U, np.dot(M, np.linalg.pinv(VT)))[0]
+		# make S diagonal
+		for ii in range(S.shape[0]):
+			for jj in range(S.shape[1]):
+				if ii != jj:
+					S[ii,jj] = 0.0
+
+		# solve VT from: U*S*V=M
+		VT = np.linalg.lstsq( np.dot(U,S),M )[0]
+
+		# solve U from: VT.T*S.T*U.T = M.T
+		U = np.linalg.lstsq( np.dot(VT.T,S.T) , M.T  )[0].T
+
+		# restore fixed components
+		inds = U_up==0.0
+		U[inds] = U_ini[inds]
+
+		# formalize spectra and coefficients
+		U  = U/(np.dot(np.ones((np.shape(U)[0],1)),np.sum(U,axis=0).reshape(1,len(np.sum(U,axis=0))) ))
+		VT = VT/(np.dot(np.ones((np.shape(VT)[0],1)),np.sum(VT,axis=0).reshape(1,len(np.sum(VT,axis=0))) ))
+
+
+		# print some progression
+		if sind % 100 == 0 and verbose:
+			Jnew = np.sum(np.sum(0.5 * (M-np.dot(np.dot(U,S),VT))*(M-np.dot(np.dot(U,S),VT))))
+			dJ   = Jnew-J
+			J    = Jnew
+			print('Iteration %1d J = %1.4f') %(sind,J)
+			print('dJ = %5.3f') % dJ
+
+	return U, S, VT
+
+def unconstrained_mf(A,numComp=3, maxIter=1000, tol=1.0e-8):
+	""" **unconstrained_mf**
+	Returns main components from an off-diagonal Matrix (energy-loss x angular-departure),
+	using the power method iteratively on the different main components.
+	"""
+	# initialize random coefficient matrix
+	coeff  = np.random.random((A.shape[1],numComp))
+	W      = np.random.random((numComp,A.shape[0]))
+
+	# normalize W
+	for ii in xrange(numComp):
+		W[ii,:] /= np.linalg.norm(W[ii,:])
+
+	ind  = 0
+	err  = 1.0e8
+
+	# start looping:
+	while ind <= maxIter or dJ <= tol:
+		# update coefficient matrix
+		abc   = np.linalg.lstsq( W.T,A)[0].T
+		coeff = np.copy(abc)
+		for comp in xrange(numComp):
+			# updatea coefficients and
+			# set one of the coefficient vectors to zero
+			coeff[:,comp] = np.zeros_like(abc[:,comp])
+			# calculate error matrix
+			errM = A - np.dot(coeff,W).T
+			# initialize power method
+			V =  np.random.random((len(W[comp,:]),1))
+			V /= np.linalg.norm(V)
+			for jj in xrange(1000):
+				vnew = np.dot(errM, errM.T).dot(V)
+				vnew /= np.linalg.norm(vnew)
+				V = vnew
+			V /= np.linalg.norm(V)
+			W[comp,:] = V.reshape(W[comp,:].shape)
+			# set the zeroed coefficients back to orig
+			coeff[:,comp] = abc[:,comp]
+		# calculate error
+		newerr = np.linalg.norm(A - np.dot(coeff,W).T)
+		dJ = err - newerr
+		err = newerr
+		ind += 1
+	return W, coeff, err
+
+def constrained_mf(A, W_ini, W_up, coeff_ini, coeff_up,  maxIter=1000, tol=1.0e-8):
+	""" **cfactorizeOffDiaMatrix**
+	constrained version of factorizeOffDiaMatrix
+	Returns main components from an off-diagonal Matrix (energy-loss x angular-departure).
+	"""
+	numComp = coeff_ini.shape[1]
+	# initialize random coefficient matrix
+	coeff = np.copy(coeff_ini)
+	W     = np.copy(W_ini)
+	# normalize W
+	for ii in xrange(numComp):
+		W[:,ii] /= np.linalg.norm(W[:,ii])
+	# looping index
+	ind  = 0
+	err  = 1.0e8
+	# find columns to be updated
+	W_up_cols     = []
+	coeff_up_cols = []
+	for ii in range(numComp):
+		if np.all(W_up[:,ii] == 1):
+			W_up_cols.append(ii) 
+		if np.all(coeff_up[:,ii] == 1):
+			coeff_up_cols.append(ii)
+	# start looping:
+	while ind <= maxIter:
+		# update coefficient matrix where desired
+		abc   = np.linalg.lstsq( W,A)[0].T
+		coeff = np.copy(abc)
+		coeff[:,coeff_up_cols] = abc[:,coeff_up_cols]
+		for col in W_up_cols:
+			# set one of the coefficient vectors to zero
+			coeff[:,col] = np.zeros_like(coeff[:,col])
+			# calculate error matrix
+			errM = A - np.dot(coeff,W.T).T
+			# initialize power method
+			V =  np.random.random((len(W[:,col]),1))
+			V /= np.linalg.norm(V)
+			for jj in xrange(1000):
+				vnew = np.dot(errM, errM.T).dot(V)
+				vnew /= np.linalg.norm(vnew)
+				V = vnew
+			V /= np.linalg.norm(V)
+			W[:,col] = V.reshape(W[:,col].shape)
+			# set the zeroed coefficients back to orig
+			coeff[:,col] = abc[:,col]
+		# calculate error
+		newerr = np.linalg.norm(A - np.dot(coeff,W.T).T)
+		dJ = err - newerr
+		err = newerr
+		ind += 1
+	return W, coeff, err
+
+
+
+
+
+
+
+
+
+
+
+
 
 def readbiggsdata(filename,element):
 	"""

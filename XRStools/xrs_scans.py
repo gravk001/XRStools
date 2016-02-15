@@ -36,7 +36,10 @@ __copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
 
 import numpy as np
 from itertools import groupby
+from scipy import optimize
 import xrs_utilities, math_functions
+
+from matplotlib import pylab as plt
 
 class scan:
 	"""
@@ -76,10 +79,12 @@ class scan:
 				for l in range(len(indices[n])): # each pixel on the detector
 					data[m,n] += self.edfmats[m,indices[n][l][0],indices[n][l][1]]
 		self.signals = np.array(data)
+		self.errors  = np.sqrt(data)
 		if np.any(scaling):
 			assert len(scaling) == len(indices) # make sure, there is one scaling factor for each roi
 			for ii in range(len(indices)):
 				self.signals[:,ii] *= scaling[ii]
+				self.errors[:,ii]  *= scaling[ii]
 
 	def applyrois_pw(self,indices,scaling=None):
 		"""
@@ -200,9 +205,11 @@ class offDiaDataSet:
 	def __init__(self):
 		self.RCmonitor    = np.array([])
 		self.signalMatrix = np.array([])
+		self.errorMatrix  = np.array([])
 		self.motorMatrix  = np.array([])
 		self.I0Matrix     = np.array([])
 		self.energy       = np.array([])
+		self.eloss        = np.array([])
 		self.ROI_number   = 0
 		self.G_vector     = np.array([])
 		self.q0           = np.array([])
@@ -210,6 +217,224 @@ class offDiaDataSet:
 		self.k0           = np.array([])
 		self.kh           = np.array([])
 		self.kprime       = np.array([])
+		self.alignedSignalMatrix = np.array([])
+		self.alignedErrorMatrix  = np.array([])
+		self.alignedRCmonitor    = np.array([])
+		self.masterRCmotor= np.array([])
+
+	def filterDetErrors(self,threshold=3000000):
+		inds = np.where(self.signalMatrix >= threshold)
+		for ii in range(len(inds[0])):
+			self.signalMatrix[inds[0][ii], inds[1][ii]] = 0.0
+			self.signalMatrix[inds[0][ii], inds[1][ii]] = np.interp(inds[0][ii], [inds[0][ii]-1,inds[0][ii]+1] , [self.signalMatrix[inds[0][ii], inds[1][ii]-1],self.signalMatrix[inds[0][ii], inds[1][ii]+1]])
+
+	def normalizeSignals(self):
+		self.signalMatrix /= self.I0Matrix
+		self.errorMatrix  /= self.I0Matrix
+		self.RCmonitor    /= self.I0Matrix
+		self.signalMatrix *= np.mean(self.I0Matrix)
+		self.errorMatrix  *= np.mean(self.I0Matrix)
+		self.RCmonitor    *= np.mean(self.I0Matrix)
+
+	def alignRCmonitor(self):
+		# check if data exists
+		if not np.any(self.RCmonitor):
+			print('Please load some data first.')
+			return
+		#x = np.arange(len(self.motorMatrix.T[:,0]))
+
+		#RCmonitor   = self.RCmonitor#[:,diagonal_inds[0]:-diagonal_inds[1]]
+		#motorMatrix = self.motorMatrix#[:,diagonal_inds[0]:-diagonal_inds[1]]
+		#signalMatrix= self.signalMatrix#[:,diagonal_inds[0]:-diagonal_inds[1]]
+
+		RCposition = []
+		for ii in range(len(self.RCmonitor)):
+			x = self.motorMatrix[ii,:]
+			y = self.RCmonitor[ii,:]
+			try:
+				guess = [x[np.where(y == np.amax(y))[0]][0], 0.01, 1.0, np.amax(y), 1.]
+				popt, pcov = optimize.curve_fit(math_functions.pearson7_forcurvefit, x, y,p0=guess)	
+				RCposition.append(popt[0])
+			except: 
+				RCposition.append(xrs_utilities.find_center_of_mass(x,y))
+
+		# possibly correct for deviations from Bragg's law
+		#RCfit = np.polyval(np.polyfit(self.energy,self.RCposition),self.energy)
+		#for ii in range(len(RCfit)):
+
+		master_phi = self.motorMatrix[10,:]-RCposition[10]
+		signalMatrix = np.zeros((len(self.energy),len(master_phi)))
+		errorMatrix  = np.zeros((len(self.energy),len(master_phi)))
+		RCmonitor    = np.zeros((len(self.energy),len(master_phi)))
+		for ii in range(len(self.energy)):
+			signalMatrix[ii,:] = np.interp(master_phi,self.motorMatrix[ii,:]-RCposition[ii],self.signalMatrix[ii,:])
+			errorMatrix[ii,:]  = np.interp(master_phi,self.motorMatrix[ii,:]-RCposition[ii],self.errorMatrix[ii,:])
+			RCmonitor[ii,:]    = np.interp(master_phi,self.motorMatrix[ii,:]-RCposition[ii],self.RCmonitor[ii,:])
+
+		self.alignedSignalMatrix = signalMatrix
+		self.alignedErrorMatrix  = errorMatrix
+		self.masterRCmotor       = master_phi
+		self.alignedRCmonitor    = RCmonitor
+
+	def alignRCmonitorCC(self,repeat=2):
+		""" **alignRCmonitorCC**
+		Use cross-correlation to align data matrix according to the Rockin-Curve monitor.
+		"""
+		# check if data exists
+		if not np.any(self.RCmonitor):
+			print('Please load some data first.')
+			return
+
+		signalMatrix = np.zeros((len(self.energy),len(self.motorMatrix[0,:])))
+		errorMatrix  = np.zeros((len(self.energy),len(self.motorMatrix[0,:])))
+		RCmonitor    = np.zeros((len(self.energy),len(self.motorMatrix[0,:])))
+
+		# first iteration
+		for ii in range(len(self.RCmonitor)):
+			x0 = self.RCmonitor[0,:]
+			x  = self.RCmonitor[ii,:]
+			y  = np.correlate(x0,x,mode='same')
+			ind = np.where(y == np.amax(y))[0]
+			if ii == 0:
+				master_phi = self.motorMatrix[ii,:] - self.motorMatrix[ii,ind]
+
+			signalMatrix[ii,:] = np.interp(master_phi,self.motorMatrix[ii,:]-self.motorMatrix[ii,ind],self.signalMatrix[ii,:])
+			errorMatrix[ii,:]  = np.interp(master_phi,self.motorMatrix[ii,:]-self.motorMatrix[ii,ind],self.errorMatrix[ii,:])
+			RCmonitor[ii,:]    = np.interp(master_phi,self.motorMatrix[ii,:]-self.motorMatrix[ii,ind],self.RCmonitor[ii,:])
+
+		# further iterations
+		if repeat:
+			for jj in range(repeat):
+				for ii in range(len(RCmonitor)):
+					x0 = RCmonitor[0,:]
+					x  = RCmonitor[ii,:]
+					y  = np.correlate(x0,x,mode='same')
+					ind = np.where(y == np.amax(y))[0]
+					signalMatrix[ii,:] = np.interp(master_phi,master_phi-master_phi[ind],self.signalMatrix[ii,:])
+					errorMatrix[ii,:]  = np.interp(master_phi,master_phi-master_phi[ind],self.errorMatrix[ii,:])
+					RCmonitor[ii,:]    = np.interp(master_phi,master_phi-master_phi[ind],self.RCmonitor[ii,:])
+
+		self.alignedSignalMatrix = signalMatrix
+		self.alignedErrorMatrix  = errorMatrix
+		self.masterRCmotor       = master_phi
+		self.alignedRCmonitor    = RCmonitor
+
+	def deglitchSignalMatrix(self,startpoint,stoppoint,threshold):
+		signalMatrix = self.alignedSignalMatrix
+		for ii in range(signalMatrix.shape[1]):
+			ind = np.where(signalMatrix[startpoint:stoppoint,ii] >= threshold)[0]
+			if np.any(ind):
+				signalMatrix[startpoint+ind, ii] = (signalMatrix[startpoint+ind-1,ii] + signalMatrix[startpoint+ind+1,ii] )/2.0
+		self.alignedSignalMatrix = signalMatrix
+
+	def interpolateMatrix(self,master_matrix,master_energy,master_RCmotor):
+		from scipy import interpolate
+		signalMatrix = self.alignedSignalMatrix
+		y=self.energy
+		x=self.masterRCmotor
+		xx, yy = np.meshgrid(x, y)
+		z = signalMatrix
+		f = interpolate.interp2d(x, y, z, kind='cubic')
+		ynew = master_energy
+		xnew = master_RCmotor
+		znew = f(xnew, ynew)
+		self.interpSignalMatrix = znew
+		self.interpEnergy  = ynew
+		self.interpRCmotor = xnew
+
+	def removeElastic(self,fitrange=[-6.0,2.0]):
+		self.energy = np.array(self.energy)
+		cenom = []
+		for ii in range(self.signalMatrix.shape[1]):
+			inds = np.where(np.logical_and(np.array(self.energy) >= fitrange[0], np.array(self.energy)<= fitrange[1]))[0]
+			x = self.energy[inds]
+			y = self.alignedSignalMatrix[inds,ii]
+			guess = [x[np.where(y==np.amax(y))[0]], 0.002, 100.0,  np.amax(y) ,0.0]
+			fitfct = lambda a: np.sum( (y - math_functions.pearson7(x,a) )**2.0 )
+			params = optimize.minimize(fitfct, guess, method='SLSQP').x
+			cenom.append(params[0])
+			back = math_functions.pearson7(self.energy,params )
+			plt.ion()
+			plt.cla()
+			plt.plot(self.energy,self.alignedSignalMatrix[:,ii],self.energy,back,self.energy,self.alignedSignalMatrix[:,ii]-back)
+			plt.waitforbuttonpress()
+			self.alignedSignalMatrix[:,ii] = self.alignedSignalMatrix[:,ii]-back
+		self.eloss = (self.energy - np.mean(cenom))*1.0e3
+
+	def removeElastic2(self, fitrange1, fitrange2, guess=None):
+		""" **removeElastic2**
+		Subtract Pearson7 plus linear.
+		"""
+		self.alignedSignalMatrixB = np.zeros_like(self.alignedSignalMatrix)
+		self.energy = np.array(self.energy)
+		cenom = []
+		for ii in range(self.signalMatrix.shape[1]):
+			region1 = np.where(np.logical_and(np.array(self.energy) >= fitrange1[0], np.array(self.energy) <= fitrange1[1]))[0]
+			region2 = np.where(np.logical_and(np.array(self.energy) >= fitrange2[0], np.array(self.energy) <= fitrange2[1]))[0]
+			inds    = np.append(region1,region2)
+			x = self.energy[inds]
+			y = self.alignedSignalMatrix[inds,ii]
+			if not guess:
+				guess = [x[np.where(y==np.amax(y))[0]], 0.001, 1.0,  np.amax(y) ,0.0, -0.1, 0.01]
+			fitfct = lambda a: np.sum( (y - math_functions.pearson7_linear(x,a) )**2.0 )
+			params = optimize.minimize(fitfct, guess, method='COBYLA',tol=1e-20).x
+			cenom.append(params[0])
+			back = math_functions.pearson7_linear(self.energy,params )
+			plt.ion()
+			plt.cla()
+			plt.plot(self.energy,self.alignedSignalMatrix[:,ii],self.energy,back,self.energy,self.alignedSignalMatrix[:,ii]-back)
+			plt.waitforbuttonpress()
+			self.alignedSignalMatrixB[:,ii] = self.alignedSignalMatrix[:,ii]-back
+		self.eloss = (self.energy - np.mean(cenom))*1.0e3
+
+	def windowSignalMatrix(self,estart,estop):
+		inds = np.where(np.logical_and(self.eloss>=estart, self.eloss<= estop))[0]
+		self.alignedSignalMatrix = self.alignedSignalMatrix[inds[0]:inds[-1],:]
+
+	def removeLinearBack(self,fitrange1,fitrange2):
+		self.energy = np.array(self.energy)
+		for ii in range(self.signalMatrix.shape[1]):
+			region1 = np.where(np.logical_and(np.array(self.energy) >= fitrange1[0], np.array(self.energy) <= fitrange1[1]))
+			region2 = np.where(np.logical_and(np.array(self.energy) >= fitrange2[0], np.array(self.energy) <= fitrange2[1]))
+			region  = np.append(region1,region2)
+			x = np.array(self.energy[region])
+			y = self.alignedSignalMatrix[region,ii]
+			back = np.polyval(np.polyfit(x,y,1),self.energy)
+			self.alignedSignalMatrix[:,ii] -= back
+
+	def removeConstBack(self,fitrange1,fitrange2):
+		self.energy = np.array(self.energy)
+		for ii in range(self.signalMatrix.shape[1]):
+			region1 = np.where(np.logical_and(np.array(self.energy) >= fitrange1[0], np.array(self.energy) <= fitrange1[1]))
+			region2 = np.where(np.logical_and(np.array(self.energy) >= fitrange2[0], np.array(self.energy) <= fitrange2[1]))
+			region  = np.append(region1,region2)
+			x = np.array(self.energy[region])
+			y = self.alignedSignalMatrix[region,ii]
+			back = np.polyval(np.polyfit(x,y,0),self.energy)
+			self.alignedSignalMatrix[:,ii] -= back
+
+	def removePearsonBack(self,fitrange1,fitrange2):
+		self.energy = np.array(self.energy)
+		for ii in range(self.signalMatrix.shape[1]):
+			region1 = np.where(np.logical_and(np.array(self.energy) >= fitrange1[0], np.array(self.energy) <= fitrange1[1]))
+			region2 = np.where(np.logical_and(np.array(self.energy) >= fitrange2[0], np.array(self.energy) <= fitrange2[1]))
+			region  = np.append(region1,region2)
+			x = np.array(self.energy[region])
+			y = self.alignedSignalMatrix[region,ii]
+			guess = [x[np.where(y==np.amax(y))[0]], 0.002, 100.0,  np.amax(y) ,0.0]
+			fitfct = lambda a: np.sum( (y - math_functions.pearson7(x,a) )**2.0 )
+			params = optimize.minimize(fitfct, guess, method='SLSQP').x
+			back = math_functions.pearson7(self.energy,params)
+			self.alignedSignalMatrix[:,ii] -= back
+
+	def replaceSignalByConstant(self,fitrange):
+		self.energy = np.array(self.energy)
+		for ii in range(self.signalMatrix.shape[1]):
+			inds = np.where(np.logical_and(np.array(self.energy) >= fitrange[0], np.array(self.energy) <= fitrange[1]))[0]
+			x = np.array(self.energy[inds])
+			y = self.alignedSignalMatrix[inds,ii]
+			back = np.polyval(np.polyfit(x,y,0),self.energy)
+			self.alignedSignalMatrix[:,ii] = back
 
 def findgroups(scans):
 	"""

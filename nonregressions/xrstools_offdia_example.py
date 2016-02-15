@@ -4,7 +4,7 @@ from pylab import *
 ion()
 import numpy as np
 from scipy import interpolate, signal, integrate, constants, optimize, ndimage
-from XRStools import ixs_offDiagonal
+from XRStools import ixs_offDiagonal,xrs_utilities
 
 ##############################################################################
 # off-focus resolution tests
@@ -26,6 +26,14 @@ offdia.loadRockingCurve(range(478,758,3),direct=True)
 
 offdia.stitchRockingCurves()
 
+offdia.offDiaDataSets[1].normalizeSignals()
 
+offdia.offDiaDataSets[1].alignRCmonitor()
+
+ion()
+imshow(offdia.offDiaDataSets[1].alignedRCmonitor)
+
+offdia.offDiaDataSets[1].removeElastic()
+offdia.offDiaDataSets[1].windowSignalMatrix(5.0,50)
 
 

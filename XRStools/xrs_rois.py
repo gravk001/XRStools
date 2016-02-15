@@ -213,7 +213,7 @@ class roi_object:
 		"""
 		the_indices = []
 
-		if not whichrois:
+		if not whichroi:
 			inds = range(len(self.indices))
 		else:
 			inds = whichroi

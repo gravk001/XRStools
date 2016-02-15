@@ -781,10 +781,10 @@ class read_id20:
 		"""
 		theqvals = np.zeros_like(self.signals)
 		if invangstr:
-			for n in range(len(self.tth)):
+			for n in range(len(self.signals[0,:])):
 				theqvals[:,n] = xrs_utilities.momtrans_inva(self.E0+self.eloss/1e3,self.E0,self.tth[n]) 
 		else:
-			for n in range(len(self.tth)):
+			for n in range(len(self.signals[0,:])):
 				theqvals[:,n] = xrs_utilities.momtrans_au(self.E0+self.eloss/1e3,self.E0,self.tth[n])
 		self.qvalues = theqvals
 
@@ -954,8 +954,8 @@ def alignment_image(id20read_object,scannumber,motorname,filename=None):
 		f.close()
 
 def get_scans_pw(id20read_object,scannumbers):
-	"""Sums scans from pixelwise ROI integration for use in the PW roi refinement.
-	**get_scans_pw**
+	"""	**get_scans_pw**
+	Sums scans from pixelwise ROI integration for use in the PW roi refinement.
 	"""
 	if isinstance(scannumbers,list):
 		scannums = scannumbers
@@ -967,14 +967,32 @@ def get_scans_pw(id20read_object,scannumbers):
 	if len(scannums)==1:
 		scanname = 'Scan%03d' % scannums[0]
 		pw_matrices = id20read_object.scans[scanname].signals_pw
+		# normalize data
+		pw_matrices_norm = []
+		for matrix in pw_matrices:
+			for ii in range(matrix.shape[1]):
+				matrix[:,ii] /= id20read_object.scans[scanname].monitor
+			pw_matrices_norm.append(matrix)
 	else:
 		scanname = 'Scan%03d' % scannums[0]
 		pw_matrices = id20read_object.scans[scanname].signals_pw
+		# normalize data
+		pw_matrices_norm = []
+		for matrix in pw_matrices:
+			for ii in range(matrix.shape[1]):
+				matrix[:,ii] /= id20read_object.scans[scanname].monitor
+			pw_matrices_norm.append(matrix)
+
 		for ii in scannums[1:]:
 			scanname = 'Scan%03d' % ii
 			for jj in range(len(pw_matrices)):
-				pw_matrices[jj] += id20read_object.scans[scanname].signals_pw[jj]
-	return pw_matrices
+				pw_matrix = id20read_object.scans[scanname].signals_pw[jj]
+				pw_matrices[jj]      += pw_matrix
+				for kk in range(pw_matrix.shape[1]):
+					pw_matrix[:,kk] /= id20read_object.scans[scanname].monitor
+				pw_matrices_norm[jj] += pw_matrix
+
+	return pw_matrices_norm
 
 
 

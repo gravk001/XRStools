@@ -814,7 +814,7 @@ def define_lin_roi(height,image_shape,verbose=False):
 	height = np.arange(-height,height)
 	for n in range(len(roix)):
 		for ind in height:
-			roi.append((roiy[n]+ind,roix[n]))
+			roi.append((int(roiy[n]+ind),int(roix[n])))
 	return roi
 
 def define_zoom_roi(input_image,verbose=False):
@@ -849,12 +849,12 @@ def define_zoom_roi(input_image,verbose=False):
 
 	# prepare a n*m matrix with one roi
 	T = np.zeros(input_image.shape)
-	T[limitsy[0]:limitsy[1],limitsx[0]:limitsx[1]] = 1
+	T[int(limitsy[0]):int(limitsy[1]),int(limitsx[0]):int(limitsx[1])] = 1
 	indsy,indsx = np.where(T == 1)
 
 	roi  = []
 	for n in range(len(indsx)):
-		roi.append((indsy[n],indsx[n]))
+		roi.append((int(indsy[n]),int(indsx[n])))
 	return roi
 
 def show_rois(roi_matrix):

@@ -213,7 +213,7 @@ class offDiagonal:
 			RCmonitor = self.scans[scanname].counters[RCmoni]
 			self.scans[scanname].offdia_energy = energy
 
-	def stitchRockingCurves(self,RCmoni='alirixs',I0moni='kaprixs'):
+	def stitchRockingCurves(self,RCmoni='alirixs',I0moni='kaprixs',addColumns = 0):
 		""" **stitchRockingCurves**
 		Go through all rocking curves and stitch them together to a 3D matrix.
 		"""
@@ -223,7 +223,7 @@ class offDiagonal:
 		energy_points  = sorted(list(set([scan.offdia_energy for scan in sorted_RcScans])))
 
 		dim1 = len(energy_points)
-		dim2 = sum(list(set([scan.signals.shape[0] for scan in sorted_RcScans])))
+		dim2 = sum(list(set([scan.signals.shape[0] for scan in sorted_RcScans])))+addColumns # dirty fix for 2 scans of the same length
 
 		for ii in range(len(self.roi_obj.indices)):
 			dataset = xrs_scans.offDiaDataSet()
@@ -233,6 +233,7 @@ class offDiagonal:
 			motorMatrix  = np.zeros((dim1,dim2))
 			signalMatrix = np.zeros((dim1,dim2))
 			I0Matrix     = np.zeros((dim1,dim2))
+			errorMatrix  = np.zeros((dim1,dim2))
 			for jj in range(len(energy_points)):
 				moniCol   = np.array([])
 				motorCol  = np.array([])
@@ -248,11 +249,13 @@ class offDiagonal:
 				signalMatrix[jj,:] = signalCol
 				motorMatrix[jj,:]  = motorCol
 				I0Matrix[jj,:]     = I0Col
+				errorMatrix[jj,:]  = np.sqrt(signalCol)
 
 			dataset.signalMatrix = signalMatrix
 			dataset.motorMatrix  = motorMatrix
 			dataset.RCmonitor    = moniMatrix
 			dataset.I0Matrix     = I0Matrix
+			dataset.errorMatrix  = errorMatrix
 			self.offDiaDataSets.append(dataset)
 
 	def set_roiObj(self,roiobj):
