@@ -631,7 +631,7 @@ class read_id20:
 			del(self.scans[scanname])
 			self.scannumbers.remove(number)
 
-	def getspectrum(self, include_elastic=False):
+	def getspectrum(self, include_elastic=False, absCounts=False):
 		"""
 		Groups the instances of the scan class by their scantype attribute, 
 		adds equal scans (each group of equal scans) and appends them.
@@ -642,7 +642,7 @@ class read_id20:
 		allgroups = xrs_scans.findgroups(self.scans)
 		for group in allgroups:
 			# self.makegroup(group)
-			onegroup = xrs_scans.makegroup_nointerp(group)
+			onegroup = xrs_scans.makegroup_nointerp(group, absCounts=absCounts)
 			self.groups[onegroup.get_type()] = onegroup
 		self.energy,self.signals,self.errors = xrs_scans.appendScans(self.groups,include_elastic)
 		self.signals_orig = self.signals

@@ -485,7 +485,7 @@ def makegroup(groupofscans,grouptype=None):
 	group = scangroup(theenergy,thesignals,theerrors,grouptype)
 	return group
 
-def makegroup_nointerp(groupofscans,grouptype=None):
+def makegroup_nointerp(groupofscans,grouptype=None,absCounts=False):
 	"""
 	takes a group of scans, sums up the signals and monitors, estimates poisson errors, and returns an instance of the scangroup class (turns several instances of the "scan" class into an instance of the "scangroup" class), same as makegroup but withouth interpolation to account for encoder differences... may need to add some "linspace" function in case the energy scale is not monotoneous... 
 	"""
@@ -503,10 +503,16 @@ def makegroup_nointerp(groupofscans,grouptype=None):
 	for n in range(thesignals.shape[-1]):
 		theerrors[:,n]  = np.sqrt(thesignals[:,n])
 	# and normalize
-	for n in range(thesignals.shape[-1]):
-		thesignals[:,n] = thesignals[:,n]/themonitors
-		theerrors[:,n]  = theerrors[:,n]/themonitors
-	group = scangroup(theenergy,thesignals,theerrors,grouptype)
+	if not absCounts:
+		for n in range(thesignals.shape[-1]):
+			thesignals[:,n] = thesignals[:,n]/themonitors
+			theerrors[:,n]  = theerrors[:,n]/themonitors
+		group = scangroup(theenergy,thesignals,theerrors,grouptype)
+	if absCounts:
+		for n in range(thesignals.shape[-1]):
+			thesignals[:,n] = thesignals[:,n]/themonitors*np.mean(themonitors)
+			theerrors[:,n]  = theerrors[:,n]/themonitors*np.mean(themonitors)
+		group = scangroup(theenergy,thesignals,theerrors,grouptype)
 	return group
 
 def append2Scan_right(group1,group2,inds=None,grouptype='spectrum'):

@@ -962,6 +962,16 @@ def constrained_nnmf(A,W_ini,H_ini,W_up,H_up,max_iter=10000,verbose=False):
 
 	return W, H
 
+
+
+
+
+
+
+
+
+
+
 def constrained_svd(M,U_ini,S_ini,VT_ini,U_up,max_iter=10000,verbose=False):
 	""" **constrained_nnmf**
 	Approximate singular value decomposition with constraints.
