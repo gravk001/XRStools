@@ -12,7 +12,7 @@ bend_r    = 1.0	    	# analyzer crystal bending radius
 diced     = False   	# boolean: False for bent crystals, True for diced crystals 
 thickness = 500.0   	# analyzer crystal thickness (micron)
 energy_resolution = 0.5	# expected overall resolution (eV)
-database_dir = '/home/christoph/Dropbox/XRSTools/xrstools/things/refl_database/' # directory to where already calculated reflectivities are stored
+database_dir = '/home/christoph/sources/XRStools/data/chitables/' # directory to where already calculated reflectivities are stored
 
 #### sample
 chem_formulas = ['C']	# chemical formulae (python list)

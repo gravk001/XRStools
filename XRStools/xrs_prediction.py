@@ -219,7 +219,7 @@ class analyzer:
 			self.energy_of_refl_calculation = database['energy_of_refl_calculation']
 		except:
 			# if no file exists, calculate reflectivity from scratch
-			reflectivity, e_scale, dev, e0 = taupgen(energy,hkl,material, bend_r,dev,alpha)
+			reflectivity, e_scale, dev, e0 = xrs_utilities.taupgen(energy,hkl,material, bend_r,dev,alpha)
 			self.reflectivity     = reflectivity
 			self.deviation_meV    = e_scale
 			self.deviation_arcsec = dev
@@ -380,7 +380,7 @@ class sample:
 					print 'the alpha and beta values set are not congruent to the tth value set!'
 			absorption_correction_factor = abscorr2(mu_tot_in,mu_tot_out,alpha,beta,thickness)
 		elif self.shape == 'sphere':
-			ac = 1.0/np.exp(-thickness*mu_tot_in -thickness*mu_tot_out) # spherical sample just add up in and outgoing absorption
+			ac = (mu_tot_in + mu_tot_out)/(1.0 - np.exp(-mu_tot_in*thickness -mu_tot_out*thickness)) #1.0/np.exp(-thickness*mu_tot_in -thickness*mu_tot_out) # spherical sample just add up in and outgoing absorption
 		else:
 			print 'please provide either shape=\'sphere\' (default) or \'slab\' and alpha and beta!'
 		return ac

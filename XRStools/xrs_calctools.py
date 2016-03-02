@@ -575,24 +575,35 @@ class xyzBox:
 		else:
 			self.boxLength = boxLength*constants.physical_constants['atomic unit of length'][0]*10**10
 
-        def writeBox(self, filename):
-                writeXYZfile(filename, self.n_atoms, self.title, self.xyzAtoms)
+    def writeBox(self, filename):
+        writeXYZfile(filename, self.n_atoms, self.title, self.xyzAtoms)
 
-        def getCoordinates(self):		
-                return [atom.getCoordinates() for atom in self.xyzAtoms]
+    def writeRelBox(self,filename,inclAtomNames=True):
+        if not self.boxLength:
+            print('Cannot write rel. coordinates without boxLength. Need to set it first.')
+            return
+        else:
+            writeRelXYZfile(filename, self.n_atoms, self.boxLength, self.title, self.xyzAtoms, inclAtomNames)
 
-        def get_atoms_by_name(self,name):
-                # find oxygen atoms
-                atoms = []
-                for atom in self.xyzAtoms:
-                        if atom.name == name:
-                                atoms.append(atom)
-                        else:
-                                pass
-                if len(atoms) == 0:
-                        print('Found no atoms with given name in box.')
-                        return
-                return atoms
+    def multiplyBoxPBC(self,range=[-1,1]):
+        # copy box, translate by boxLength into all directions, append to current box
+        pass
+            
+    def getCoordinates(self):		
+        return [atom.getCoordinates() for atom in self.xyzAtoms]
+
+    def get_atoms_by_name(self,name):
+        # find oxygen atoms
+        atoms = []
+        for atom in self.xyzAtoms:
+                if atom.name == name:
+                        atoms.append(atom)
+                else:
+                        pass
+        if len(atoms) == 0:
+                print('Found no atoms with given name in box.')
+                return
+        return atoms
 
 	def scatterPlot(self):
 		from mpl_toolkits.mplot3d import Axes3D
@@ -674,6 +685,9 @@ class xyzBox:
 			for atom in mol.xyzAtoms:
 				self.xyzAtoms.append(atom)
 
+    def getTetraParameter(self):
+        pass
+            
 def getPeriodicTestBox_molecules(Molecules,boxLength,numbershells=1):
 	vectors = []
 	for l in range(-numbershells,numbershells+1):
@@ -922,6 +936,24 @@ def writeXYZfile(filename,numberOfAtoms, title, list_of_xyzAtoms):
                 xyz.write('%4s %8f %8f %8f \n' % (atom.name, atom.x_coord, atom.y_coord, atom.z_coord))
         xyz.close()
 
+def writeRelXYZfile(filename, n_atoms, boxLength, title, xyzAtoms, inclAtomNames=True):
+    # create file
+    xyz = open(filename,'w+')
+    # write number of atoms
+    xyz.write(str(n_atoms) + ' \n')
+    # write title
+    if not title:
+        title = 'None'
+    xyz.write(title + ' \n')
+    # write coordinates
+    for atom in xyzAtoms:
+        if inclAtomNames:
+            xyz.write('%4s %8f %8f %8f \n' % (atom.name, atom.x_coord/boxLength, atom.y_coord/boxLength, atom.z_coord/boxLength))
+        else:
+            xyz.write('%8f %8f %8f \n' % (atom.x_coord/boxLength, atom.y_coord/boxLength, atom.z_coord/boxLength))
+    xyz.close()
+
+
 def count_OO_neighbors(list_of_o_atoms,Roocut,boxLength=None):
 	noo   = []
 	if not boxLength:
@@ -1011,9 +1043,6 @@ class xyzTrajectory:
         def writeRandBox(self,filename):
                 ind = np.random.randint(len(self.xyzBoxes))
                 self.xyzBoxes[ind].writeBox(filename)
-
-
-      
 
 def parseXYZfile(filename):
         """**parseXYZfile**

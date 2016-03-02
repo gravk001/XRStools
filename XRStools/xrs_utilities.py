@@ -721,7 +721,7 @@ def cixsUBgetAngles(Q, G):
 	Q_lab = np.linalg.lstsq(U,v_c)[0]
 	
 	#$[angles,FVAL,EXITFLAG,OUTPUT] = fsolve(@(x) UBfind(x, G, Q_lab), [0 45 0]);
-	lab_angles = optimize.fsolve(cixsUBfind, [11.5, 5.0, 20.0], args=(G,Q_lab,wi,wo,lambdai,lambdao))
+	lab_angles = optimize.fsolve(cixsUBfind, [13.5, 25.0, 155.0], args=(G,Q_lab,wi,wo,lambdai,lambdao))
 
 	tthv = lab_angles[1]
 	tthh = lab_angles[0]
@@ -779,17 +779,65 @@ def cixsUBgetAngles_secondo(Q, G):
 	Q_lab = np.linalg.lstsq(U,v_c)[0]
 	
 	#$[angles,FVAL,EXITFLAG,OUTPUT] = fsolve(@(x) UBfind(x, G, Q_lab), [0 45 0]);
-	lab_angles = optimize.fsolve(cixsUBfind, [11.5, 5.0, 20.0], args=(G,Q_lab,wi,wo,lambdai,lambdao))
+	lab_angles = optimize.fsolve(cixsUBfind, [30.5, 40.0, 280.0], args=(G,Q_lab,wi,wo,lambdai,lambdao), xtol=1.49012e-12,maxfev=1000000)
 
 	tthv = lab_angles[1]
 	tthh = lab_angles[0]
 	psi  = lab_angles[2]
-	if psi <= -360.0:
-		psi += 360.0
-	if psi >= 360.0:
-		psi -= 360.0
+	#if psi <= -360.0:
+	#	psi += 360.0
+	#if psi >= 360.0:
+	#	psi -= 360.0
 
 	return tthv, tthh, psi
+
+def cixsUBgetQ_secondo(tthv, tthh, psi, G):
+	# incoming/outgoing energy/wavelength
+	hc = 12.3984191
+	bragg_ang = 86.5
+	wo = energy(dspace([4., 4., 4.]),bragg_ang)
+	lambdao = hc/wo
+	wi = wo
+	lambdai = hc/wi
+
+	# lattice parameters
+	lattice = np.array([5.43095, 5.43095, 5.43095])
+	angles  = np.radians(np.array([90.0, 90.0, 90.0])) # in radians !!!
+	a = np.array([lattice[0], 0, 0])
+	b = np.array([lattice[0]*np.cos(angles[2]), lattice[1]*np.sin(angles[2]), 0])
+	c = np.array([lattice[2]*np.cos(angles[1]), lattice[2]*(-np.cos(angles[1])*np.arctan(angles[2])+np.cos(angles[0])*(1.0/np.sin(angles[2]))), lattice[2]/np.sqrt(2.0)*np.sqrt((1.0/np.sin(angles[2]))*((4.0*np.cos(angles[0])*np.cos(angles[1])*np.arctan(angles[2])-(1.0 + np.cos(2.0*angles[0])+np.cos(2.0*angles[1])+np.cos(2.0*angles[2]))*(1.0/np.sin(angles[2])))))])
+
+	# lab-to-sample reference system transformation matrix U
+	th = braggd(G,wo)
+	xxx = vrot(np.array([1.0,-1.0, 0.0]),np.array([0.0,0.0,1.0]),th)
+	yyy = vrot(np.array([0.0, 0.0, 1.0]),np.array([0.0,0.0,1.0]),th)
+	zzz = vrot(G,np.array([0.0,0.0,1.0]),th)
+	U = np.zeros((3,3))
+	U[:,0] = xxx/np.linalg.norm(xxx)
+	U[:,1] = yyy/np.linalg.norm(yyy)
+	U[:,2] = zzz/np.linalg.norm(zzz)
+
+	# reciprocal lattice to absolute units transformation matrix
+	a_star = 2.0*np.pi*np.cross(b,c)/np.dot(a,np.cross(b,c))
+	b_star = 2.0*np.pi*np.cross(c,a)/np.dot(a,np.cross(b,c))
+	c_star = 2.0*np.pi*np.cross(a,b)/np.dot(a,np.cross(b,c))
+	angles_star = np.array([np.arccos(np.dot(b_star,c_star)/np.linalg.norm(b_star)/np.linalg.norm(c_star)), np.arccos(np.dot(c_star,a_star)/np.linalg.norm(c_star)/np.linalg.norm(a_star)), np.arccos(np.dot(a_star,b_star)/np.linalg.norm(a_star)/np.linalg.norm(b_star))])
+	B = np.zeros((3,3))
+	B[:,0] = np.array([np.linalg.norm(a_star), np.linalg.norm(b_star)*np.cos(angles_star[2]), np.linalg.norm(c_star)*np.cos(angles_star[1])])
+	B[:,1] = np.array([0.0, np.linalg.norm(b_star)*np.sin(angles_star[2]), -np.linalg.norm(c_star)*np.sin(angles_star[1])*np.cos(angles[0])])
+	B[:,2] = np.array([0.0, 0.0, 2.0*np.pi/np.linalg.norm(c)])
+
+	# laboratory reference frame
+	X = np.array([1.0, 0.0, 0.0])
+	Y = np.array([0.0, 1.0, 0.0])
+	Z = np.array([0.0, 0.0, 1.0])
+
+	# axis of rotation of psi
+	v = np.array([-np.sin(np.radians(th)), 0.0, np.cos(np.radians(th))])
+	Ki_test = 2.0*np.pi/lambdai*X
+	Ko_test = 2.0*np.pi/lambdao*vrot(vrot(X,Y,-tthv) ,Z, tthh)
+	Q_test = np.dot(np.linalg.lstsq(B,U)[0],vrot(Ki_test-Ko_test,v,-psi))
+	return Q_test
 
 def cixsUBfind(x,G,Q_sample,wi,wo,lambdai,lambdao):
 	""" **cixsUBfind**
@@ -844,6 +892,48 @@ def cixs_primo(tthv,tthh,psi,anal_braggd=86.5):
 	hutch_z = vrot(hutch_z,crystVec1,psi) # toward hutch ceiling
 	# calculate kh using G-vector
 	kh = k0 + np.array([-1.,-1.,-1.])/np.linalg.norm(np.array([-1.,-1.,-1.]))
+	# rotate vertical
+	kprime = vrot(k0,hutch_y,-tthv) # we can rotate vertical tth from 0 to 90 (eta from 0 to 90)
+	kprime = vrot(kprime,hutch_z,tthh) # we can rotate horizontal tth from 0 to 90
+	kprime = kprime/np.linalg.norm(kprime)*2.0*np.pi/lam_out
+	# calculate momentum transfer
+	qh = kh-kprime
+	q0 = k0-kprime
+	return q0, qh, hutch_x, hutch_y, hutch_z
+
+def cixs_secondo(tthv,tthh,psi,anal_braggd=86.5):
+	""" **cixs_secondo**
+	"""
+	import copy
+	lattice_a = dspace([1., 0., 0.]) # Si lattice constant
+	# crystal vectors
+	crystVec1 = np.array([-2.,-2., 0.])/np.linalg.norm(np.array([-2.,-2., 0.])) # "z-axis"
+	crystVec2 = np.array([ 1.,-1., 0.])/np.linalg.norm(np.array([ 1.,-1., 0.])) # "x-axis"
+	crystVec3 = np.array([ 0., 0., 1.])/np.linalg.norm(np.array([ 0., 0., 1.])) # "y-axis"
+	# rotate x- and y-vectors about G by the miscut of PRIMO
+	crystVec2 = vrot(crystVec2,crystVec1,0.0)
+	crystVec3 = vrot(crystVec3,crystVec1,0.0)
+	# calculate energies and wavelengths
+	hc      = 12.3984191 # CODATA 2002 recommended value, physics.nist.gov/constants
+	E_out   = energy(dspace(np.array([4., 4., 4.])),anal_braggd)
+	lam_out = hc/E_out
+	E_in    = E_out #+0.02; % if want to be precise, E=Eout-20 eV @ plasmon peak
+	lam_in  = hc/E_in
+	# initially k0 is along crystVec2,
+	# then rotate k0 about crystVec3 by the Bragg angle
+	k0 = vrot(crystVec2,crystVec3,braggd(np.array([1., 1., 1.]),E_in))
+	k0 = k0/np.linalg.norm(k0)*2.0*np.pi/lam_in
+	# define lab coordinates
+	hutch_x = copy.deepcopy(k0) # k0 is along the beam
+	hutch_y = copy.deepcopy(crystVec2) # perpendicular to beam/untouched so far
+	hutch_z = vrot(crystVec1,crystVec3,braggd(np.array([2., 2., 0.]),E_in)) # toward hutch ceiling (if k0 rotates, z has to rotate with it)
+	# rotate the crystal abouts its G vector
+	k0      = vrot(k0,crystVec1,psi)
+	hutch_x = copy.deepcopy(k0) # hutch_x is always along k0
+	hutch_y = vrot(hutch_y,crystVec1,psi) # perpendicular to beam
+	hutch_z = vrot(hutch_z,crystVec1,psi) # toward hutch ceiling
+	# calculate kh using G-vector
+	kh = k0 + np.array([-2.,-2.,0.])/np.linalg.norm(np.array([-2.,-2.,0.]))
 	# rotate vertical
 	kprime = vrot(k0,hutch_y,-tthv) # we can rotate vertical tth from 0 to 90 (eta from 0 to 90)
 	kprime = vrot(kprime,hutch_z,tthh) # we can rotate horizontal tth from 0 to 90
@@ -1310,7 +1400,10 @@ def makeprofile_comp(formula,filename=os.path.join(data_installation_dir,'data/C
 		V += v
 	return eloss, J,C,V,q
 
-def makeprofile_compds(formulas,concentrations=None,filename=os.path.join(data_installation_dir,'data/ComptonProfiles.dat'),E0=9.69,tth=35.0,correctasym=None):
+
+#os.path.join(data_installation_dir,'data/ComptonProfiles.dat')
+
+def makeprofile_compds(formulas,concentrations=None,filename='/home/christoph/sources/XRStools/data/ComptonProfiles.dat',E0=9.69,tth=35.0,correctasym=None):
 	"""
 	returns sum of compton profiles from a lost of chemical compounds weighted by the given concentration
 	"""
@@ -1465,7 +1558,9 @@ def element(z):
 		print 'type '+ type(z) + 'not supported.'	
 	return Z
 
-def myprho(energy,Z,logtablefile=os.path.join(data_installation_dir,'data/logtable.dat')):
+#os.path.join(data_installation_dir,'data/logtable.dat')
+
+def myprho(energy,Z,logtablefile='/home/christoph/sources/XRStools/data/logtable.dat'):
 	"""Calculates the photoelectric, elastic, and inelastic absorption of 
 	an element Z 
 
@@ -1994,7 +2089,7 @@ def taupgen(e, hkl = [6,6,0], crystals = 'Si', R = 1.0, dev = np.arange(-50.0,15
 	% Complaints -> /dev/null
 	"""
 	prefix = data_installation_dir+'/'
-	path = prefix + 'data/chitables/chitable_' # path to chitables
+	path = '/home/christoph/sources/XRStools/data/chitables/chitable_' # prefix + 'data/chitables/chitable_' # path to chitables
 	# load the according chitable (tabulated)
 	hkl_string = str(int(hkl[0])) + str(int(hkl[1])) + str(int(hkl[2]))
 	filestring = path + crystals.lower() + hkl_string + '.dat'
