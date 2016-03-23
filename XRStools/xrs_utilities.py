@@ -52,7 +52,7 @@ from scipy.integrate import trapz
 from scipy import interpolate, signal, integrate, constants, optimize
 from re import findall
 from scipy.ndimage import measurements
-from scipy.optimize import leastsq, fmin, fsolve
+from scipy.optimize import leastsq, fmin, fsolve, minimize
 from scipy.interpolate import Rbf, RectBivariateSpline
 from scipy.integrate import odeint
 
@@ -721,16 +721,11 @@ def cixsUBgetAngles(Q, G):
 	Q_lab = np.linalg.lstsq(U,v_c)[0]
 	
 	#$[angles,FVAL,EXITFLAG,OUTPUT] = fsolve(@(x) UBfind(x, G, Q_lab), [0 45 0]);
-	lab_angles = optimize.fsolve(cixsUBfind, [13.5, 25.0, 155.0], args=(G,Q_lab,wi,wo,lambdai,lambdao))
+	lab_angles = optimize.fsolve(cixsUBfind, [20.5, 15.0, 5.0], args=(G,Q_lab,wi,wo,lambdai,lambdao))
 
 	tthv = lab_angles[1]
 	tthh = lab_angles[0]
 	psi  = lab_angles[2]
-	if psi <= -360.0:
-		psi += 360.0
-	if psi >= 360.0:
-		psi -= 360.0
-
 	return tthv, tthh, psi
 
 def cixsUBgetAngles_secondo(Q, G):
@@ -779,7 +774,7 @@ def cixsUBgetAngles_secondo(Q, G):
 	Q_lab = np.linalg.lstsq(U,v_c)[0]
 	
 	#$[angles,FVAL,EXITFLAG,OUTPUT] = fsolve(@(x) UBfind(x, G, Q_lab), [0 45 0]);
-	lab_angles = optimize.fsolve(cixsUBfind, [30.5, 40.0, 280.0], args=(G,Q_lab,wi,wo,lambdai,lambdao), xtol=1.49012e-12,maxfev=1000000)
+	lab_angles = optimize.fsolve(cixsUBfind, [25.5, 0.0, 0.0], args=(G,Q_lab,wi,wo,lambdai,lambdao), xtol=1.49012e-12,maxfev=1000000)
 
 	tthv = lab_angles[1]
 	tthh = lab_angles[0]
@@ -839,6 +834,120 @@ def cixsUBgetQ_secondo(tthv, tthh, psi, G):
 	Q_test = np.dot(np.linalg.lstsq(B,U)[0],vrot(Ki_test-Ko_test,v,-psi))
 	return Q_test
 
+
+def cixsUBgetAngles_terzo(Q, G):
+	# incoming/outgoing energy/wavelength
+	hc = 12.3984191
+	bragg_ang = 86.5
+	wo = energy(dspace([4, 4, 4]),bragg_ang)
+	lambdao = hc/wo
+	wi = wo
+	lambdai = hc/wi
+
+	# lattice parameters
+	lattice = np.array([5.43095, 5.43095, 5.43095])
+	angles  = np.radians(np.array([90.0, 90.0, 90.0])) # in radians !!!
+	a = np.array([lattice[0], 0, 0])
+	b = np.array([lattice[0]*np.cos(angles[2]), lattice[1]*np.sin(angles[2]), 0])
+	c = np.array([lattice[2]*np.cos(angles[1]), lattice[2]*(-np.cos(angles[1])*np.arctan(angles[2])+np.cos(angles[0])*(1.0/np.sin(angles[2]))), lattice[2]/np.sqrt(2.0)*np.sqrt((1.0/np.sin(angles[2]))*((4.0*np.cos(angles[0])*np.cos(angles[1])*np.arctan(angles[2])-(1.0 + np.cos(2.0*angles[0])+np.cos(2.0*angles[1])+np.cos(2.0*angles[2]))*(1.0/np.sin(angles[2])))))])
+
+	# lab-to-sample reference system transformation matrix U for Si220-crystal
+	th = braggd(G,wo)
+	xxx = vrot(np.array([0.0,-1.0,1.0]),np.array([-2.0,1.0,1.0]),th)
+	yyy = vrot(np.array([-2.0,1.0,1.0]),np.array([-2.0,1.0,1.0]),th)
+	zzz = vrot(G,np.array([-2.0,1.0,1.0]),th)
+	#xxx = vrot(np.array([0.0,1.0,-1.0]),np.array([2.0,-1.0,-1.0]),th)
+	#yyy = vrot(np.array([2.0,-1.0,-1.0]),np.array([2.0,-1.0,-1.0]),th)
+	#zzz = vrot(G,np.array([2.0,-1.0,-1.0]),th)
+	U = np.zeros((3,3))
+	U[:,0] = xxx/np.linalg.norm(xxx)
+	U[:,1] = yyy/np.linalg.norm(yyy)
+	U[:,2] = zzz/np.linalg.norm(zzz)
+
+	# reciprocal lattice to absolute units transformation matrix
+	a_star = 2.0*np.pi*np.cross(b,c)/np.dot(a,np.cross(b,c))
+	b_star = 2.0*np.pi*np.cross(c,a)/np.dot(a,np.cross(b,c))
+	c_star = 2.0*np.pi*np.cross(a,b)/np.dot(a,np.cross(b,c))
+	angles_star = np.array([np.arccos(np.dot(b_star,c_star)/np.linalg.norm(b_star)/np.linalg.norm(c_star)), np.arccos(np.dot(c_star,a_star)/np.linalg.norm(c_star)/np.linalg.norm(a_star)), np.arccos(np.dot(a_star,b_star)/np.linalg.norm(a_star)/np.linalg.norm(b_star))])
+	B = np.zeros((3,3))
+	B[:,0] = np.array([np.linalg.norm(a_star), np.linalg.norm(b_star)*np.cos(angles_star[2]), np.linalg.norm(c_star)*np.cos(angles_star[1])])
+	B[:,1] = np.array([0.0, np.linalg.norm(b_star)*np.sin(angles_star[2]), -np.linalg.norm(c_star)*np.sin(angles_star[1])*np.cos(angles[0])])
+	B[:,2] = np.array([0.0, 0.0, 2.0*np.pi/np.linalg.norm(c)])
+
+	# laboratory reference frame
+	X = np.array([1.0, 0.0, 0.0])
+	Y = np.array([0.0, 1.0, 0.0])
+	Z = np.array([0.0, 0.0, 1.0])
+
+	# desired momentum in the laboratory reference system before any rotation is applied
+	v_c = np.dot(B,Q)
+	Q_lab = np.linalg.lstsq(U,v_c)[0]
+	
+	#$[angles,FVAL,EXITFLAG,OUTPUT] = fsolve(@(x) UBfind(x, G, Q_lab), [0 45 0]);
+	lab_angles = optimize.fsolve(cixsUBfind, [15., 20.0, 0.0], args=(G,Q_lab,wi,wo,lambdai,lambdao), xtol=1.49012e-12,maxfev=1000000)
+
+	tthv = lab_angles[1]
+	tthh = lab_angles[0]
+	psi  = lab_angles[2]
+	#if psi <= -360.0:
+	#	psi += 360.0
+	#if psi >= 360.0:
+	#	psi -= 360.0
+
+	return tthv, tthh, psi
+
+def cixsUBgetQ_terzo(tthv, tthh, psi, G):
+	# incoming/outgoing energy/wavelength
+	hc = 12.3984191
+	bragg_ang = 86.5
+	wo = energy(dspace([4., 4., 4.]),bragg_ang)
+	lambdao = hc/wo
+	wi = wo
+	lambdai = hc/wi
+
+	# lattice parameters
+	lattice = np.array([5.43095, 5.43095, 5.43095])
+	angles  = np.radians(np.array([90.0, 90.0, 90.0])) # in radians !!!
+	a = np.array([lattice[0], 0, 0])
+	b = np.array([lattice[0]*np.cos(angles[2]), lattice[1]*np.sin(angles[2]), 0])
+	c = np.array([lattice[2]*np.cos(angles[1]), lattice[2]*(-np.cos(angles[1])*np.arctan(angles[2])+np.cos(angles[0])*(1.0/np.sin(angles[2]))), lattice[2]/np.sqrt(2.0)*np.sqrt((1.0/np.sin(angles[2]))*((4.0*np.cos(angles[0])*np.cos(angles[1])*np.arctan(angles[2])-(1.0 + np.cos(2.0*angles[0])+np.cos(2.0*angles[1])+np.cos(2.0*angles[2]))*(1.0/np.sin(angles[2])))))])
+
+	# lab-to-sample reference system transformation matrix U
+	th = braggd(G,wo)
+	xxx = vrot(np.array([0.0,-1.0,1.0]),np.array([-2.0,1.0,1.0]),th)
+	yyy = vrot(np.array([-2.0,1.0,1.0]),np.array([-2.0,1.0,1.0]),th)
+	zzz = vrot(G,np.array([-2.0,1.0,1.0]),th)
+	#xxx = vrot(np.array([0.0,1.0,-1.0]),np.array([2.0,-1.0,-1.0]),th)
+	#yyy = vrot(np.array([2.0,-1.0,-1.0]),np.array([2.0,-1.0,-1.0]),th)
+	#zzz = vrot(G,np.array([2.0,-1.0,-1.0]),th)
+	U = np.zeros((3,3))
+	U[:,0] = xxx/np.linalg.norm(xxx)
+	U[:,1] = yyy/np.linalg.norm(yyy)
+	U[:,2] = zzz/np.linalg.norm(zzz)
+
+	# reciprocal lattice to absolute units transformation matrix
+	a_star = 2.0*np.pi*np.cross(b,c)/np.dot(a,np.cross(b,c))
+	b_star = 2.0*np.pi*np.cross(c,a)/np.dot(a,np.cross(b,c))
+	c_star = 2.0*np.pi*np.cross(a,b)/np.dot(a,np.cross(b,c))
+	angles_star = np.array([np.arccos(np.dot(b_star,c_star)/np.linalg.norm(b_star)/np.linalg.norm(c_star)), np.arccos(np.dot(c_star,a_star)/np.linalg.norm(c_star)/np.linalg.norm(a_star)), np.arccos(np.dot(a_star,b_star)/np.linalg.norm(a_star)/np.linalg.norm(b_star))])
+	B = np.zeros((3,3))
+	B[:,0] = np.array([np.linalg.norm(a_star), np.linalg.norm(b_star)*np.cos(angles_star[2]), np.linalg.norm(c_star)*np.cos(angles_star[1])])
+	B[:,1] = np.array([0.0, np.linalg.norm(b_star)*np.sin(angles_star[2]), -np.linalg.norm(c_star)*np.sin(angles_star[1])*np.cos(angles[0])])
+	B[:,2] = np.array([0.0, 0.0, 2.0*np.pi/np.linalg.norm(c)])
+
+	# laboratory reference frame
+	X = np.array([1.0, 0.0, 0.0])
+	Y = np.array([0.0, 1.0, 0.0])
+	Z = np.array([0.0, 0.0, 1.0])
+
+	# axis of rotation of psi
+	v = np.array([-np.sin(np.radians(th)), 0.0, np.cos(np.radians(th))])
+	Ki_test = 2.0*np.pi/lambdai*X
+	Ko_test = 2.0*np.pi/lambdao*vrot(vrot(X,Y,-tthv) ,Z, tthh)
+	Q_test = np.dot(np.linalg.lstsq(B,U)[0],vrot(Ki_test-Ko_test,v,-psi))
+	return Q_test
+
+
 def cixsUBfind(x,G,Q_sample,wi,wo,lambdai,lambdao):
 	""" **cixsUBfind**
 	"""	
@@ -853,7 +962,7 @@ def cixsUBfind(x,G,Q_sample,wi,wo,lambdai,lambdao):
 	Q = Ki-Ko
 	th = braggd(G,wo)
 	v  = np.array([-np.sin(np.radians(th)), 0.0, np.cos(np.radians(th))])
-	y = Q - vrot(Q_sample, v, -psi)
+	y = Q - vrot(Q_sample, v, psi)
 	tthh = y[0]
 	tthv = y[1]
 	psi  = y[2]
@@ -1053,6 +1162,71 @@ def constrained_nnmf(A,W_ini,H_ini,W_up,H_up,max_iter=10000,verbose=False):
 	return W, H
 
 
+
+
+def mat2con(W,H,W_up,H_up):
+	x = W[W_up == 1]
+	x = np.append(x, H[H_up == 1])
+	return x
+
+def con2mat(x,W,H,W_up,H_up):
+	W[W_up == 1] = x[0:len(W[W_up == 1])]
+	H[H_up == 1] = x[len(W[W_up == 1]):len(W[W_up == 1])+len(H[H_up == 1])]
+	return W, H
+
+def NNMFcost(x,A,W,H,W_up,H_up):
+	""" **NNMFcost**
+	Returns cost and gradient for NNMF with constraints.
+	"""
+	# calculate W, H
+	W, H = con2mat(x,W,H,W_up,H_up)
+	# calculate cost and gradient
+	J = np.sum(np.sum(0.5*(A-np.dot(W,H))*(A-np.dot(W,H))))
+	gradW = -(np.dot((A-np.dot(W,H)),H.T))
+	gradH = -(np.dot((A-np.dot(W,H)).T,W)).T
+	# return constraint only for updates
+	xgrad = mat2con(gradW,gradH,W_up,H_up)
+	return J, xgrad
+
+def bootstrapCNNMF(A,k,Aerr, F_ini, C_ini, F_up, C_up, Niter=100):
+	""" **bootstrapCNNMF**
+	Constrained non-negative matrix factorization with bootstrapping
+	for error estimates.
+	"""
+	n,m = A.shape
+	import copy
+	F1s = np.zeros((Niter,n,k))
+	C1s = np.zeros((Niter,C_ini.shape[0],C_ini.shape[1]))
+	for ii in range(Niter):
+		A1 = copy.deepcopy(A)
+		# add random noise
+		A1 += np.random.random((n,m))*Aerr
+		F1 = F_ini*(1.0-F_up) + F_up*np.random.random((n,k))
+		C1 = C_ini*(1.0-C_up) + C_up*np.random.random((k,m))
+		F1[F1<0.0]=0.0
+		C1[C1<0.0]=0.0
+		# minimize with trust-region-algorithm
+		# get starting values
+		x0 = mat2con(F1,C1,F_up,C_up)
+		cons = ({'args': (A1,F1,C1,F_up,C_up)})
+		bnds = [(0.0,1.0) for ii in x0]
+		costfun = lambda x:NNMFcost(x,A1,F1,C1,F_up,C_up) #[0]
+		#gradfun = lambda x:NNMFcost(x,A1,F1,C1,F_up,C_up)[1]
+		x=minimize(NNMFcost,x0,args=(A1,F1,C1,F_up,C_up), method='Newton-CG', tol=1e-5, jac=True, bounds=bnds,options={'maxiter' : 1e6, 'disp': True} ).x
+		Fbs1, Cbs1 = con2mat(x,F1,C1,F_up,C_up)
+		# store meaningful data 
+		print F1s.shape
+		print C1s.shape
+		F1s[ii,:,:] = Fbs1/(np.dot(np.ones((np.shape(Fbs1)[0],1)), np.sum(Fbs1,axis=0).reshape(1,len(np.sum(Fbs1,axis=0))) ))
+		C1s[ii,:,:] = Cbs1*(np.dot(np.ones( (Cbs1.shape[1],1) ),sum(Fbs1))).T
+	# do RMS
+	print F1s.shape, C1s.shape
+	Cerr=np.squeeze(np.std(C1s,axis=0))
+	Ferr=np.squeeze(np.std(F1s,axis=0))
+	# average
+	C=np.squeeze(np.mean(C1s,axis=0))
+	F=np.squeeze(np.mean(F1s,axis=0))
+	return F, C, Ferr, Cerr
 
 
 

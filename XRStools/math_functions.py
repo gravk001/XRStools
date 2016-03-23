@@ -186,3 +186,6 @@ def gauss(x,a):
 	y = a[2]*np.exp(-np.log(2.0)*((x-a[0])/a[1]*2.0)**2.0)
 	return y
 
+def gauss2D(M,):
+	np.exp(-4*np.log(2) * ((x-x0)**2 + (y-y0)**2) / fwhm**2)
+

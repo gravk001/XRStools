@@ -152,6 +152,9 @@ class roi_finder:
 	def __init__(self):
 		self.roi_obj = xrs_rois.roi_object() # empty roi object
 
+	def appendROIobject(self,roi_object):
+		self.roi_obj.append(roi_object)
+
 	def deleterois(self):
 		"""
 		Clear the existing ROIs by creating a fresh roi_object.

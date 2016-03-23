@@ -1,6 +1,7 @@
 #!/usr/bin/python
-# Filename: stobe_analyze.py
+# Filename: xrs_calctools.py
 
+import xrs_utilities
 import os
 import warnings
 from copy import deepcopy
@@ -516,18 +517,19 @@ class xyzAtom:
 			print('Vector must be 3D np.array!') 
 
 class xyzMolecule:
-        def __init__(self,xyzAtoms):
-                self.xyzAtoms = xyzAtoms
+	def __init__(self,xyzAtoms):
+		self.xyzAtoms = xyzAtoms
+		self.title = None
 
-        def getCoordinates(self):
-                return [atom.getCoordinates() for atom in self.xyzAtoms]
+	def getCoordinates(self):
+		return [atom.getCoordinates() for atom in self.xyzAtoms]
 
-        def getCoordinates_name(self,name):
-                atoms = []
-                for atom in self.xyzAtoms:
-                        if atom.name == name:
-                                atoms.append(atom.coordinates)
-                return atoms
+	def getCoordinates_name(self,name):
+		atoms = []
+		for atom in self.xyzAtoms:
+			if atom.name == name:
+				atoms.append(atom.coordinates)
+		return atoms
 
         def get_atoms_by_name(self,name):
                 atoms = []
@@ -561,6 +563,21 @@ class xyzMolecule:
 		ax.scatter(x_vals, y_vals, z_vals)
 		show()
 
+	def appendAtom(self,Atom):
+		if isinstance(Atom,xyzAtom):
+			self.xyzAtoms.append(Atom)
+		elif isinstance(Atom,list):
+			self.xyzAtoms.extend(Atom)
+
+	def popAtom(self,xyzAtom):
+		self.xyzAtoms.remove(xyzAtom)
+
+	def writeXYZfile(self,fname):
+		if not self.title:
+			self.title = 'None'
+		writeXYZfile(fname, len(self.xyzAtoms), self.title, self.xyzAtoms)
+
+
 class xyzBox:
         def __init__(self,xyzAtoms,boxLength=None):
                 self.xyzMolecules = []
@@ -575,42 +592,125 @@ class xyzBox:
 		else:
 			self.boxLength = boxLength*constants.physical_constants['atomic unit of length'][0]*10**10
 
-    def writeBox(self, filename):
-        writeXYZfile(filename, self.n_atoms, self.title, self.xyzAtoms)
+	def writeBox(self, filename):
+		writeXYZfile(filename, self.n_atoms, self.title, self.xyzAtoms)
 
-    def writeRelBox(self,filename,inclAtomNames=True):
-        if not self.boxLength:
-            print('Cannot write rel. coordinates without boxLength. Need to set it first.')
-            return
-        else:
-            writeRelXYZfile(filename, self.n_atoms, self.boxLength, self.title, self.xyzAtoms, inclAtomNames)
+	def writeRelBox(self,filename,inclAtomNames=True):
+		if not self.boxLength:
+			print('Cannot write rel. coordinates without boxLength. Need to set it first.')
+			return
+		else:
+			writeRelXYZfile(filename, self.n_atoms, self.boxLength, self.title, self.xyzAtoms, inclAtomNames)
 
-    def multiplyBoxPBC(self,range=[-1,1]):
-        # copy box, translate by boxLength into all directions, append to current box
-        pass
-            
-    def getCoordinates(self):		
-        return [atom.getCoordinates() for atom in self.xyzAtoms]
+	def multiplyBoxPBC(self,numShells):
+		if not self.boxLength:
+			print('Cannot multiply without boxLength. Need to set it first.')
+			return
+		all_atoms = getPeriodicTestBox(xyzAtoms,boxLength,numbershells=numShells)
+		self.xyzMolecules = []
+		self.xyzAtoms     = all_atoms
+		self.n_atoms      = self.n_atoms*(numShells*2.+1.)**3.
+		self.boxLength    = self.boxLength*(numShells*2.0+1.0)
 
-    def get_atoms_by_name(self,name):
-        # find oxygen atoms
-        atoms = []
-        for atom in self.xyzAtoms:
-                if atom.name == name:
-                        atoms.append(atom)
-                else:
-                        pass
-        if len(atoms) == 0:
-                print('Found no atoms with given name in box.')
-                return
-        return atoms
+	def deleteTip4pCOM(self):
+		for atom in self.xyzAtoms:
+			if atom.name == 'M':
+				self.xyzAtoms.remove(atom)
+				self.n_atoms -= 1
+
+	def writeClusters(self,cenatom_name, number,cutoff,prefix,postfix='.xyz'):
+		""" **writeXYZclusters**
+		Write water clusters into files.
+		"""
+		# find central atom
+		cen_atom = self.get_atoms_by_name(cenatom_name)[number]
+		coor1 = cen_atom.getCoordinates()
+		# cut clusters and write files
+		atoms = []
+		atoms.append(cen_atom)
+		for atom2 in self.xyzAtoms:
+			coor2 = atom2.getCoordinates()
+			if np.linalg.norm( coor1 - coor2) > 0.0 and np.linalg.norm( coor1 - coor2) <= cutoff:
+				atoms.append(atom2)
+		fname = prefix + '_%03d' % number + postfix
+		box = xyzBox(atoms)
+		box.writeBox(fname)
+
+	def writeH2Oclusters(self,cutoff,prefix,postfix='.xyz',o_name='O',h_name='H'):
+		""" **writeXYZclusters**
+		Write water clusters into files.
+		"""
+		if not self.boxLength:
+			print('Cannot multiply without boxLength. Need to set it first.')
+			return
+		# find H2O molecules
+		self.get_h2o_molecules(o_name,h_name)
+		# get a test box
+		pbcMols = getPeriodicTestBox_molecules(self.xyzMolecules,self.boxLength,numbershells=1)
+		# cut clusters and write files
+		for o_atom, ii in zip(o_atoms,range(len(o_atoms))):
+			cluster = []
+			for molecule in pbcMols:
+				coor = molecule.getCoordinates_name(o_name)
+				if np.linalg.norm( o_atom.coordinates - coor) <= cutoff:
+					cluster.extend(molecule.xyzAtoms)
+			fname = prefix + '_%03d' % ii + postfix
+			box = xyzBox(cluster)
+			box.writeBox(fname)
+
+	def writeMoleculeCluster(self,molAtomList,fname,cutoff=None,numH2Omols=None,o_name='O',h_name='H',mol_center=None):
+		""" **writeMoleculeCluster**
+		Careful, this works only for a single molecule in water.
+		"""
+		if not self.boxLength:
+			print('Cannot multiply without boxLength. Need to set it first.')
+			return
+		# find H2O molecules
+		self.get_h2o_molecules(o_name,h_name)
+		# get a test box
+		pbcMols = getPeriodicTestBox_molecules(self.xyzMolecules,self.boxLength,numbershells=1)
+		# find the solute molecule
+		cluster = findMolecule(self.xyzAtoms,molAtomList)
+		# find center of mass of molecule
+		if not mol_center:
+			cenom = cluster.getGeometricCenter()
+		else:
+			cenom = cluster.getCoordinates_name(mol_center)
+		if cutoff:
+			# use cutoff criterium
+			waters = findAllWaters(cenom,pbcMols,o_name,cutoff)
+			cluster.appendAtom(waters)
+		elif numH2Omols:
+			# use number of waters to include
+			dists = getDistsFromMolecule(cenom,pbcMols,o_name=o_name)
+			inds  = np.argsort(dists)
+			for ii in range(numH2Omols):
+				cluster.appendAtom(pbcMols[inds[ii]].xyzAtoms)
+		else:
+			print('Something is fishy!')
+			return
+		cluster.writeXYZfile(fname)
+
+	def getCoordinates(self):		
+		return [atom.getCoordinates() for atom in self.xyzAtoms]
+
+	def get_atoms_by_name(self,name):
+		# find oxygen atoms
+		atoms = []
+		for atom in self.xyzAtoms:
+			if atom.name == name:
+				atoms.append(atom)
+			else:
+				pass
+		if len(atoms) == 0:
+			print('Found no atoms with given name in box.')
+			return
+		return atoms
 
 	def scatterPlot(self):
 		from mpl_toolkits.mplot3d import Axes3D
 		fig = figure()
 		ax  = Axes3D(fig)
-		#coordinates = self.getCoordinates()
-		#print type(coordinates), coordinates
 		x_vals = [coord[0] for coord in self.getCoordinates()]
 		y_vals = [coord[1] for coord in self.getCoordinates()]
 		z_vals = [coord[2] for coord in self.getCoordinates()]
@@ -685,9 +785,66 @@ class xyzBox:
 			for atom in mol.xyzAtoms:
 				self.xyzAtoms.append(atom)
 
-    def getTetraParameter(self):
-        pass
-            
+	def getTetraParameter(self):
+		if not self.boxLength:
+			print('This only works with PBC. Need to set boxLength first.')
+			return
+		else:
+			o_atoms  = self.get_atoms_by_name('O')
+			return getTetraParameter(o_atoms,self.boxLength)
+
+
+class xyzTrajectory:
+	def __init__(self,xyzBoxes):
+		self.xyzBoxes = xyzBoxes
+
+	def writeRandBox(self,filename):
+		ind = np.random.randint(len(self.xyzBoxes))
+		self.xyzBoxes[ind].writeBox(filename)
+
+
+
+
+
+def getDistsFromMolecule(point,listOfMolecules,o_name=None):
+	dists = []
+	if not o_name:
+		for mol in listOfMolecules:
+			dists.append(np.linalg.norm(point - mol.getGeometricCenter()))
+		return dists
+	else:
+		for mol in listOfMolecules:
+			coor = mol.getCoordinates_name(o_name)[0]
+			dists.append(np.linalg.norm(point - coor))
+		return dists
+			
+def findAllWaters(point,waterMols,o_name,cutoff):
+	atoms = []
+	for mol in waterMols:
+		coor = mol.getCoordinates_name(o_name)
+		if np.linalg.norm( point - coor) <= cutoff:
+			atoms.extend(mol.xyzAtoms)
+	return atoms
+
+def findMolecule(xyzAtoms,molAtomList):
+	molecule = []
+	for atom in xyzAtoms:
+		if atom.name in molAtomList:
+			molecule.append(atom)
+	return xyzMolecule(molecule)
+
+def calculateCOMlist(atomList):
+	""" **calculateCOMlist**
+	Calculates center of mass for a list of atoms.
+	"""
+	r   = np.array([0.,0.,0.])
+	cou = 0
+	for atom in atomList:
+		r   += atom.coordinates
+		cou += 1
+	return r/cou
+
+
 def getPeriodicTestBox_molecules(Molecules,boxLength,numbershells=1):
 	vectors = []
 	for l in range(-numbershells,numbershells+1):
@@ -885,6 +1042,29 @@ def countHbonds_orig(mol1,mol2, Roocut=3.6, Rohcut=2.4, Aoooh=30.0):
 	abonds = hbnoA1 + hbnoA2
 	return dbonds, abonds
 
+def getTetraParameter(o_atoms,boxLength=None):
+	"""
+	according to NATURE, VOL 409, 18 JANUARY 2001
+	"""
+	tetra_params = []
+	for atom1 in o_atoms:
+		NN_dists = []
+		NN_atoms = []
+		for atom2 in o_atoms:
+			NN_dists.append(np.linalg.norm(atom1.coordinates - atom2.coordinates))
+		order = np.argsort(NN_dists)
+		for ii in order[1:5]:
+			NN_atoms.append(o_atoms[ii])
+		tetra_param = 0
+		for j in range(0,3):
+			for k in range(j+1,4):
+				vec1 = getDistVectorPbc(atom1,NN_atoms[j],boxLength)
+				vec2 = getDistVectorPbc(atom1,NN_atoms[k],boxLength)
+				psi = np.arccos(np.dot(vec1,vec2)/np.linalg.norm(vec1)/np.linalg.norm(vec2))
+				tetra_param += (np.cos(psi) + 1./3.)**2
+		tetra_params.append(1-3./8.*tetra_param)
+	return tetra_params
+
 def repair_h2o_molecules_pbc(h2o_mols,boxLength):
 	new_mols = []
 	for mol in h2o_mols:
@@ -1013,6 +1193,103 @@ def boxParser(filename):
 
         return xyzBox(xyzAtoms)
 
+def groBoxParser(filename,nanoMeter=True):
+	""" **groBoxParser**
+	Parses an gromacs GRO-style file for the xyzBox class.
+	"""
+	atoms       = []
+	coordinates = []
+	boxLength   = None
+	if nanoMeter:
+		scale = 10.0
+	else:
+		scale = 1.0
+	xyz     = open(filename)
+	title   = xyz.readline()
+	n_atoms = int(xyz.readline())
+	for line in xyz:
+		if len(line.split()) == 9:
+			name = line.split()[1][0]
+			x = float(line.split()[3])*scale
+			y = float(line.split()[4])*scale
+			z = float(line.split()[5])*scale
+			atoms.append(name)
+			coordinates.append([x, y, z])
+		elif len(line.split()) == 8:
+			name = line.split()[1][0]
+			x = float(line.split()[2])*scale
+			y = float(line.split()[3])*scale
+			z = float(line.split()[4])*scale
+			atoms.append(name)
+			coordinates.append([x, y, z])
+		elif len(line.split()) == 3:
+			boxLength = float(line.split()[0])*scale
+		else:
+			print('Something is fishy!')
+	xyz.close()
+	AllxyzAtoms = []
+	for ii in range(n_atoms):
+		AllxyzAtoms.append(xyzAtom(atoms[ii],coordinates[ii],ii))
+
+	return xyzBox(AllxyzAtoms,boxLength=boxLength)
+
+def groTrajecParser(filename,nanoMeter=True):
+	""" **groTrajecParser**
+	Parses an gromacs GRO-style file for the xyzBox class.
+	"""
+	boxes       = []
+	atoms       = []
+	coordinates = []
+	boxLength   = None
+	if nanoMeter:
+		scale = 10.0
+	else:
+		scale = 1.0
+	# read the header
+	xyz     = open(filename)
+	title   = xyz.readline()
+	n_atoms = int(xyz.readline())
+	xyz.close()
+	# how many lines per box
+	headerlines = 2
+	taillines   = 1
+	linesPerBox = headerlines + n_atoms + taillines
+	# read the rest
+	xyz     = open(filename)
+	counter = 0
+	for line in xyz:
+		if counter%linesPerBox == 0:
+			# new box 
+			title = line
+			atoms = []
+			coordinates = []
+		if counter%linesPerBox == 1:
+			n_atoms = int(line)
+		if counter in range(linesPerBox)[2::]:
+			if len(line.split()) == 9:
+				atoms.append(line.split()[1][0])
+				x = float(line.split()[3])*scale
+				y = float(line.split()[4])*scale
+				z = float(line.split()[5])*scale
+				coordinates.append([x, y, z])
+			elif len(line.split()) == 8:
+				atoms.append(line.split()[1][0])
+				x = float(line.split()[2])*scale
+				y = float(line.split()[3])*scale
+				z = float(line.split()[4])*scale
+				coordinates.append([x, y, z])
+		if counter > 1 and counter%(linesPerBox-1) == 0:
+			boxLength = float(line.split()[0])*scale
+			AllxyzAtoms = []
+			for ii in range(n_atoms):
+				AllxyzAtoms.append(xyzAtom(atoms[ii],coordinates[ii],ii))
+			boxes.append(xyzBox(AllxyzAtoms,boxLength=boxLength))
+			counter = -1
+		counter += 1
+	return boxes
+
+
+
 def changeOHBondLength(h2oMol, fraction, boxLength=None, oName='O', hName='H'):
 	o_atom = h2oMol.get_atoms_by_name(oName)
 	h_atom = h2oMol.get_atoms_by_name(hName)
@@ -1036,14 +1313,6 @@ def changeOHBondLength(h2oMol, fraction, boxLength=None, oName='O', hName='H'):
 	return xyzMolecule(newmol)
 
 
-class xyzTrajectory:
-        def __init__(self,xyzBoxes):
-                self.xyzBoxes = xyzBoxes
-
-        def writeRandBox(self,filename):
-                ind = np.random.randint(len(self.xyzBoxes))
-                self.xyzBoxes[ind].writeBox(filename)
-
 def parseXYZfile(filename):
         """**parseXYZfile**
         Reads an xyz-style file.
@@ -1059,6 +1328,15 @@ def parseXYZfile(filename):
                 coordinates.append([float(x), float(y), float(z)])
         xyz.close()
         return n_atoms, title, atoms, coordinates
+
+def alterGROatomNames(filename,oldName, newName):
+	import re
+	with open(filename, "r") as sources:
+		lines = sources.readlines()
+	with open(filename, "w") as sources:
+		for line in lines:
+			sources.write(re.sub(r'%s'%oldName, '%s'%newName, line))
+
 
 
 

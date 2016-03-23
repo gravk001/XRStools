@@ -172,6 +172,16 @@ class roi_object:
                 self.load_rois_fromMasksDict(roi_obj.red_rois)
 		f.close()
 
+	def append(self,roi_object):
+		#self.roi_matrix     = np.array([]) # single matrix of zeros, ones, twos, ... , n's (where n is the number of ROIs defined)
+		#self.red_rois       = {}           # dictionary, one entry for each ROI, each ROI has an origin and a rectangular box of ones and zeros defining the ROI
+		self.indices.extend(roi_object.indices) # list of list of tuples (one list of tuples for each ROI)
+		self.number_of_rois =+ roi_object.number_of_rois  # number of ROIs defined
+		self.x_indices.extend(roi_object.x_indices) # list of numpy arrays of x-indices (for each ROI)
+		self.y_indices.extend(roi_object.y_indices) # list of numpy arrays of y-indices (for each ROI)
+		#self.masks          = [] # 3D numpy array with slices of zeros and ones (same size as detector image) for each roi
+		#self.input_image	+= [] # 2D imput image that was used to define the ROIs
+
 	def get_number_of_rois(self):
 		return self.number_of_rois
 

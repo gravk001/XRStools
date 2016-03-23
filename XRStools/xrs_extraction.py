@@ -174,13 +174,22 @@ class edge_extraction:
 		self.avqvals    = np.array([])
 
 		# rough normalization over range given by prenormrange
+		scales = []
 		if prenormrange:
 			for n in range(self.signals.shape[1]):
 				HFnorm  = np.trapz(self.HF_dataset.J_total[:,n], self.eloss)
 				inds    = np.where(np.logical_and(self.eloss >= prenormrange[0], self.eloss <= prenormrange[1]))[0]
 				EXPnorm = np.trapz(self.signals[inds,n], self.eloss[inds])
-				self.signals[:,n] = self.signals[:,n]/EXPnorm*HFnorm
-				self.errors[:,n]  = self.errors[:,n]/EXPnorm*HFnorm
+				scales.append(EXPnorm*HFnorm)
+				#print 'HFnorm = ', HFnorm, ', EXPnorm = ', EXPnorm
+				#self.signals[:,n] /= EXPnorm
+				#self.signals[:,n] *= HFnorm
+				#self.errors[:,n]  /= EXPnorm
+				#self.errors[:,n]  *= HFnorm
+			scale = np.mean(scales)
+			for n in range(self.signals.shape[1]):
+				self.signals[:,n] *= scale
+				self.errors[:,n]  *= scale
 
 	def analyzerAverage(self,roi_numbers,errorweighing=True):
 		"""
@@ -234,8 +243,8 @@ class edge_extraction:
 
 		# sum things up
 		if errorweighing:
-			self.avsignals = np.sum( av/averr**2.0 ,axis=1)/( np.sum(1.0/averr**2.0,axis=1))
-			self.averrors  = np.sqrt( 1.0/np.sum(1.0/(averr)**2.0,axis=1) )
+			self.avsignals = np.sum( av/(averr**2.0) ,axis=1)/( np.sum(1.0/(averr**2.0),axis=1))
+			self.averrors  = np.sqrt( 1.0/np.sum(1.0/(averr**2.0),axis=1) )
 		else: 
 			self.avsignals = np.sum(av,axis=1)
 			self.averrors  = np.sqrt(np.sum(np.absolute(averr)**2.0,axis=1)) # check this again
