@@ -412,7 +412,7 @@ class edge_extraction:
 																np.polyval(x[4:6],self.eloss[region2])-HF_core[region2],
 																self.eloss[region2])})
 
-		fitfct = lambda a: np.sum( (a[0]*the_signals[region] - 
+		fitfct = lambda a: np.sum( (a[6]*the_signals[region] - 
 									pearson7_zeroback(self.eloss[region],a[0:4]) - 
 									np.polyval(a[4:6],self.eloss[region]) - 
 									HF_core[region] )**2.0 )

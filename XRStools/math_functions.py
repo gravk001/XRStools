@@ -37,6 +37,28 @@ __copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
 
 import numpy as np
 
+def flat2DGaussian((xx, yy), amplitude, xo, yo, sigma_x, sigma_y, offset):
+	""" **flat2DGaussian**
+
+	Returns a flattened 2D Gaussian profile.
+
+	Args: 
+	-----
+	(xx,yy) (tuple): tuple containing x-y-meshgrid for 2D object to be fitted.
+	amplitude (float): amplitude for Gaussian.
+	xo (float): x-offset for Gaussian.
+	yo (float): y-offset for Gaussian.
+	sigma_x (float): FWHM in x-direction.
+	sigma_y (float): FWHM in y-direction.
+	offset (float): Background/offset.
+
+	Returns:
+	--------
+	g (np.array): flattened array of a 2D Gaussian profile.
+	"""
+	g = offset + amplitude*np.exp( - (((xx-xo)**2/(2.0*sigma_x**2)) + ((yy-yo)**2/(2.0*sigma_y**2))))
+	return g.ravel()
+
 def gauss1(x,x0,fwhm):
 	"""
 	area-normalized gaussian

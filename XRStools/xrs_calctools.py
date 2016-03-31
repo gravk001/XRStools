@@ -691,6 +691,9 @@ class xyzBox:
 			return
 		cluster.writeXYZfile(fname)
 
+	def writeFDMNESinput(self,fname,Filout,Range,Radius,Edge,NRIXS,Absorber):
+		writeFDMNESinput_file(self.xyzAtoms,fname,Filout,Range,Radius,Edge,NRIXS,Absorber)
+
 	def getCoordinates(self):		
 		return [atom.getCoordinates() for atom in self.xyzAtoms]
 
@@ -792,6 +795,7 @@ class xyzBox:
 		else:
 			o_atoms  = self.get_atoms_by_name('O')
 			return getTetraParameter(o_atoms,self.boxLength)
+
 
 
 class xyzTrajectory:
@@ -1288,8 +1292,6 @@ def groTrajecParser(filename,nanoMeter=True):
 		counter += 1
 	return boxes
 
-
-
 def changeOHBondLength(h2oMol, fraction, boxLength=None, oName='O', hName='H'):
 	o_atom = h2oMol.get_atoms_by_name(oName)
 	h_atom = h2oMol.get_atoms_by_name(hName)
@@ -1336,6 +1338,61 @@ def alterGROatomNames(filename,oldName, newName):
 	with open(filename, "w") as sources:
 		for line in lines:
 			sources.write(re.sub(r'%s'%oldName, '%s'%newName, line))
+
+def writeFDMNESinput_file(xyzAtoms,fname,Filout,Range,Radius,Edge,NRIXS,Absorber):
+	""" **writeFDMNESinput_file**
+	Writes an input file to be used for FDMNES.
+	"""
+	# create file
+	inp = open(fname,'w+')
+	# write some header line
+	inp.write('! Fdmnes indata file \n')
+	inp.write('\n')
+	# Filout
+	inp.write(' Filout \n')
+	inp.write('  ' + Filout + ' \n')
+	inp.write('\n')
+	# Range
+	inp.write(' Range \n')
+	inp.write('  ')
+	for rr in [str(ii) for ii in Range]:
+		inp.write(rr + ' ')
+	inp.write(' \n')
+	inp.write('\n')
+	# Radius
+	inp.write(' Radius \n')
+	inp.write('  ' + str(Radius) + ' \n')
+	inp.write('\n')
+	# Edge
+	inp.write(' Edge \n')
+	inp.write('  ' + Edge + ' \n')
+	inp.write('\n')
+	# NRIXS
+	if NRIXS:
+		inp.write(' NRIXS \n')
+		inp.write('  ')
+		for nn in [str(ii) for ii in NRIXS]:
+			inp.write(nn + ' ')
+		inp.write(' \n')
+		inp.write('\n')
+	# Absorber
+	inp.write(' Absorber \n')
+	inp.write('  ' + str(Absorber) + ' \n')
+	inp.write('\n')
+	# molecule
+	inp.write(' molecule \n')
+	inp.write('  1.0 1.0 1.0 90.0 90.0 90.0 \n')
+	# Atoms
+	for atom in xyzAtoms:
+		inp.write('%4d %10f %10f %10f \n' % (xrs_utilities.element(atom.name), atom.x_coord, atom.y_coord, atom.z_coord))
+	inp.write('\n')
+	# Convolution
+	inp.write(' Convolution \n')
+	inp.write('\n')
+	# End
+	inp.write(' End \n')
+	inp.write('\n')
+
 
 
 
