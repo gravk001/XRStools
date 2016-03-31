@@ -607,11 +607,12 @@ def bidiag_reduction(A):
 			V = np.dot(H,V)
 	return U, B, V
 
-def cixsUBgetQ(tthv, tthh, psi, G):
+def cixsUBgetQ_primo(tthv, tthh, psi):
+	G = np.array([-1.,-1.,-1.])
 	# incoming/outgoing energy/wavelength
 	hc = 12.3984191
 	bragg_ang = 86.5
-	wo = energy(dspace([4, 4, 4]),bragg_ang)
+	wo = energy(dspace([5., 3., 3.]),bragg_ang)
 	lambdao = hc/wo
 	wi = wo
 	lambdai = hc/wi
@@ -625,9 +626,12 @@ def cixsUBgetQ(tthv, tthh, psi, G):
 
 	# lab-to-sample reference system transformation matrix U
 	th = braggd(G,wo)
-	xxx = vrot(np.array([2.0,-1.0,-1.0]),np.array([0.0,-1.0,1.0]),th)
-	yyy = vrot(np.array([0.0,-1.0, 1.0]),np.array([0.0,-1.0,1.0]),th)
-	zzz = vrot(G,np.array([0.0,-1.0,1.0]),th)
+	xxx = vrot(np.array([0.0,-1.0, 1.0]),np.array([-2.0,1.0,1.0]),th)
+	yyy = vrot(np.array([-2.0,1.0, 1.0]),np.array([-2.0,1.0,1.0]),th)
+	zzz = vrot(G,np.array([-2.0,1.0,1.0]),th)
+	#xxx = vrot(np.array([2.0,-1.0,-1.0]),np.array([0.0,-1.0,1.0]),th)
+	#yyy = vrot(np.array([0.0,-1.0, 1.0]),np.array([0.0,-1.0,1.0]),th)
+	#zzz = vrot(G,np.array([0.0,-1.0,1.0]),th)
 	U = np.zeros((3,3))
 	U[:,0] = xxx/np.linalg.norm(xxx)
 	U[:,1] = yyy/np.linalg.norm(yyy)
@@ -655,11 +659,12 @@ def cixsUBgetQ(tthv, tthh, psi, G):
 	Q_test = np.dot(np.linalg.lstsq(B,U)[0],vrot(Ki_test-Ko_test,v,-psi))
 	return Q_test
 
-def cixsUBgetAngles(Q, G):
+def cixsUBgetAngles_primo(Q):
+	G = np.array([-1.,-1.,-1.])
 	# incoming/outgoing energy/wavelength
 	hc = 12.3984191
 	bragg_ang = 86.5
-	wo = energy(dspace([4, 4, 4]),bragg_ang)
+	wo = energy(dspace([5., 3., 3.]),bragg_ang)
 	lambdao = hc/wo
 	wi = wo
 	lambdai = hc/wi
@@ -673,9 +678,12 @@ def cixsUBgetAngles(Q, G):
 
 	# lab-to-sample reference system transformation matrix U for Si111-crystal
 	th = braggd(G,wo)
-	xxx = vrot(np.array([2.0,-1.0,-1.0]),np.array([0.0,-1.0,1.0]),th)
-	yyy = vrot(np.array([0.0,-1.0, 1.0]),np.array([0.0,-1.0,1.0]),th)
-	zzz = vrot(G,np.array([0.0,-1.0,1.0]),th)
+	xxx = vrot(np.array([0.0,-1.0, 1.0]),np.array([-2.0,1.0,1.0]),th)
+	yyy = vrot(np.array([-2.0,1.0, 1.0]),np.array([-2.0,1.0,1.0]),th)
+	zzz = vrot(G,np.array([-2.0,1.0,1.0]),th)
+	#xxx = vrot(np.array([2.0,-1.0,-1.0]),np.array([0.0,-1.0,1.0]),th)
+	#yyy = vrot(np.array([0.0,-1.0, 1.0]),np.array([0.0,-1.0,1.0]),th)
+	#zzz = vrot(G,np.array([0.0,-1.0,1.0]),th)
 	U = np.zeros((3,3))
 	U[:,0] = xxx/np.linalg.norm(xxx)
 	U[:,1] = yyy/np.linalg.norm(yyy)
@@ -728,11 +736,12 @@ def cixsUBgetAngles(Q, G):
 	psi  = lab_angles[2]
 	return tthv, tthh, psi
 
-def cixsUBgetAngles_secondo(Q, G):
+def cixsUBgetAngles_secondo(Q):
+	G = np.array([-2.,-2.,0.0])
 	# incoming/outgoing energy/wavelength
 	hc = 12.3984191
 	bragg_ang = 86.5
-	wo = energy(dspace([4, 4, 4]),bragg_ang)
+	wo = energy(dspace([5., 3., 3.]),bragg_ang)
 	lambdao = hc/wo
 	wi = wo
 	lambdai = hc/wi
@@ -786,11 +795,12 @@ def cixsUBgetAngles_secondo(Q, G):
 
 	return tthv, tthh, psi
 
-def cixsUBgetQ_secondo(tthv, tthh, psi, G):
+def cixsUBgetQ_secondo(tthv, tthh, psi):
+	G = np.array([-2.,-2.,0.0])
 	# incoming/outgoing energy/wavelength
 	hc = 12.3984191
 	bragg_ang = 86.5
-	wo = energy(dspace([4., 4., 4.]),bragg_ang)
+	wo = energy(dspace([5., 3., 3.]),bragg_ang)
 	lambdao = hc/wo
 	wi = wo
 	lambdai = hc/wi
@@ -835,11 +845,12 @@ def cixsUBgetQ_secondo(tthv, tthh, psi, G):
 	return Q_test
 
 
-def cixsUBgetAngles_terzo(Q, G):
+def cixsUBgetAngles_terzo(Q):
+	G = np.array([-1.0,-1.0,-1.0])
 	# incoming/outgoing energy/wavelength
 	hc = 12.3984191
 	bragg_ang = 86.5
-	wo = energy(dspace([4, 4, 4]),bragg_ang)
+	wo = energy(dspace([5., 3., 3.]),bragg_ang)
 	lambdao = hc/wo
 	wi = wo
 	lambdai = hc/wi
@@ -853,12 +864,12 @@ def cixsUBgetAngles_terzo(Q, G):
 
 	# lab-to-sample reference system transformation matrix U for Si220-crystal
 	th = braggd(G,wo)
-	xxx = vrot(np.array([0.0,-1.0,1.0]),np.array([-2.0,1.0,1.0]),th)
-	yyy = vrot(np.array([-2.0,1.0,1.0]),np.array([-2.0,1.0,1.0]),th)
-	zzz = vrot(G,np.array([-2.0,1.0,1.0]),th)
-	#xxx = vrot(np.array([0.0,1.0,-1.0]),np.array([2.0,-1.0,-1.0]),th)
-	#yyy = vrot(np.array([2.0,-1.0,-1.0]),np.array([2.0,-1.0,-1.0]),th)
-	#zzz = vrot(G,np.array([2.0,-1.0,-1.0]),th)
+	#xxx = vrot(np.array([0.0,-1.0,1.0]),np.array([-2.0,1.0,1.0]),th)
+	#yyy = vrot(np.array([-2.0,1.0,1.0]),np.array([-2.0,1.0,1.0]),th)
+	#zzz = vrot(G,np.array([-2.0,1.0,1.0]),th)
+	xxx = vrot(np.array([0.0,1.0,-1.0]),np.array([2.0,-1.0,-1.0]),th)
+	yyy = vrot(np.array([2.0,-1.0,-1.0]),np.array([2.0,-1.0,-1.0]),th)
+	zzz = vrot(G,np.array([2.0,-1.0,-1.0]),th)
 	U = np.zeros((3,3))
 	U[:,0] = xxx/np.linalg.norm(xxx)
 	U[:,1] = yyy/np.linalg.norm(yyy)
@@ -896,11 +907,12 @@ def cixsUBgetAngles_terzo(Q, G):
 
 	return tthv, tthh, psi
 
-def cixsUBgetQ_terzo(tthv, tthh, psi, G):
+def cixsUBgetQ_terzo(tthv, tthh, psi):
+	G = np.array([-1.0,-1.0,-1.0])
 	# incoming/outgoing energy/wavelength
 	hc = 12.3984191
 	bragg_ang = 86.5
-	wo = energy(dspace([4., 4., 4.]),bragg_ang)
+	wo = energy(dspace([5., 3., 3.]),bragg_ang)
 	lambdao = hc/wo
 	wi = wo
 	lambdai = hc/wi
@@ -914,12 +926,12 @@ def cixsUBgetQ_terzo(tthv, tthh, psi, G):
 
 	# lab-to-sample reference system transformation matrix U
 	th = braggd(G,wo)
-	xxx = vrot(np.array([0.0,-1.0,1.0]),np.array([-2.0,1.0,1.0]),th)
-	yyy = vrot(np.array([-2.0,1.0,1.0]),np.array([-2.0,1.0,1.0]),th)
-	zzz = vrot(G,np.array([-2.0,1.0,1.0]),th)
-	#xxx = vrot(np.array([0.0,1.0,-1.0]),np.array([2.0,-1.0,-1.0]),th)
-	#yyy = vrot(np.array([2.0,-1.0,-1.0]),np.array([2.0,-1.0,-1.0]),th)
-	#zzz = vrot(G,np.array([2.0,-1.0,-1.0]),th)
+	#xxx = vrot(np.array([0.0,-1.0,1.0]),np.array([-2.0,1.0,1.0]),th)
+	#yyy = vrot(np.array([-2.0,1.0,1.0]),np.array([-2.0,1.0,1.0]),th)
+	#zzz = vrot(G,np.array([-2.0,1.0,1.0]),th)
+	xxx = vrot(np.array([0.0,1.0,-1.0]),np.array([2.0,-1.0,-1.0]),th)
+	yyy = vrot(np.array([2.0,-1.0,-1.0]),np.array([2.0,-1.0,-1.0]),th)
+	zzz = vrot(G,np.array([2.0,-1.0,-1.0]),th)
 	U = np.zeros((3,3))
 	U[:,0] = xxx/np.linalg.norm(xxx)
 	U[:,1] = yyy/np.linalg.norm(yyy)
@@ -946,7 +958,6 @@ def cixsUBgetQ_terzo(tthv, tthh, psi, G):
 	Ko_test = 2.0*np.pi/lambdao*vrot(vrot(X,Y,-tthv) ,Z, tthh)
 	Q_test = np.dot(np.linalg.lstsq(B,U)[0],vrot(Ki_test-Ko_test,v,-psi))
 	return Q_test
-
 
 def cixsUBfind(x,G,Q_sample,wi,wo,lambdai,lambdao):
 	""" **cixsUBfind**
