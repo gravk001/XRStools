@@ -368,21 +368,28 @@ class sample:
 			thickness = self.thickness
 
 		mu_tot_in, mu_tot_out = self.get_murho(energy1,energy2)
-		if self.shape == 'slab' and alpha and beta:
-			if tth:
-				if self.beta<0: # transmission geometry
-					test_tth = alpha-beta
-				else: # reflection geometry
-					test_tth = 180.0 - (alpha+beta)
-				if tth == test_tth:
-					pass
-				else:
-					print 'the alpha and beta values set are not congruent to the tth value set!'
-			absorption_correction_factor = abscorr2(mu_tot_in,mu_tot_out,alpha,beta,thickness)
-		elif self.shape == 'sphere':
-			ac = (mu_tot_in + mu_tot_out)/(1.0 - np.exp(-mu_tot_in*thickness -mu_tot_out*thickness)) #1.0/np.exp(-thickness*mu_tot_in -thickness*mu_tot_out) # spherical sample just add up in and outgoing absorption
+
+		if isinstance(tth,list):
+			self.shape == 'sphere' # list of tth only for sphere geometry
+			ac = (mu_tot_in + mu_tot_out)/(1.0 - np.exp(-mu_tot_in*thickness -mu_tot_out*thickness))
+
 		else:
-			print 'please provide either shape=\'sphere\' (default) or \'slab\' and alpha and beta!'
+			if self.shape == 'slab' and alpha and beta:
+				if tth:
+					if self.beta<0: # transmission geometry
+						test_tth = alpha-beta
+					else: # reflection geometry
+						test_tth = 180.0 - (alpha+beta)
+					if tth == test_tth:
+						pass
+					else:
+						print 'the alpha and beta values set are not congruent to the tth value set!'
+				absorption_correction_factor = abscorr2(mu_tot_in,mu_tot_out,alpha,beta,thickness)
+			elif self.shape == 'sphere':
+				ac = (mu_tot_in + mu_tot_out)/(1.0 - np.exp(-mu_tot_in*thickness -mu_tot_out*thickness)) 
+				#1.0/np.exp(-thickness*mu_tot_in -thickness*mu_tot_out) # spherical sample just add up in and outgoing absorption
+			else:
+				print 'please provide either shape=\'sphere\' (default) or \'slab\' and alpha and beta!'
 		return ac
 
 	def plot_inv_absorption(self,energy1,energy2,range_of_thickness = np.arange(0.0,0.5,0.01)):
@@ -415,18 +422,30 @@ class thomson:
 		self.scattering_plane  = scattering_plane # keyword to indicate scattering plane relative to lab frame ('vertical' or 'horizontal')
 		self.polarization      = polarization     # degree of polarization (close to 1.0 for undulator radiation)
 		self.r0 = constants.physical_constants['classical electron radius'][0]*1e2 # classical electron radius in [cm]
+
 	def get_thomson_factor(self):
 		"""
 		Calculates the Thomson scattering factor.
 		"""
-		if self.scattering_plane == 'vertical':
-			thomson = self.omega_2/self.omega_1 * self.r0**2.0
-		elif self.scattering_plane == 'horizontal':
-			polarization_factor = 1.0 - self.polarization + self.polarization * np.cos(tth)**2.0
-			thomson = self.omega_2/self.omega_1 * self.r0**2.0 * polarization_factor
+		# mutiple tth values in a list
+		if isinstance(self.tth,list):
+			if self.scattering_plane == 'vertical':
+				thomson = [self.omega_2/self.omega_1*self.r0**2.0 for ii in range(len(self.tth))]
+			elif self.scattering_plane == 'horizontal':
+				thomson = []
+				for ii in range(len(self.tth)):
+					polarization_factor = 1.0 - self.polarization + self.polarization * np.cos(self.tth[ii])**2.0
+					thomson.append(self.omega_2/self.omega_1 * self.r0**2.0 * polarization_factor)
+		# just one tth value
 		else:
-			print 'the scattering plane can only be \'vertical\' or \'horizontal\'.'
-			return
+			if self.scattering_plane == 'vertical':
+				thomson = self.omega_2/self.omega_1 * self.r0**2.0
+			elif self.scattering_plane == 'horizontal':
+				polarization_factor = 1.0 - self.polarization + self.polarization * np.cos(self.tth)**2.0
+				thomson = self.omega_2/self.omega_1 * self.r0**2.0 * polarization_factor
+			else:
+				print 'the scattering plane can only be \'vertical\' or \'horizontal\'.'
+				return
 		return thomson
 
 class beam:
@@ -478,35 +497,59 @@ class compton_profiles:
 		self.ac_factor      = sample_obj.get_absorption_correction(E0+eloss_range,E0)
 
 		# output
-		self.J = np.array([])
-		self.C = np.array([])
-		self.V = np.array([])
-		self.q = np.array([])
+		if isinstance(self.tth,list):
+			self.J = np.zeros((len(self.eloss_range),len(self.tth)))
+			self.C = np.zeros((len(self.eloss_range),len(self.tth)))
+			self.V = np.zeros((len(self.eloss_range),len(self.tth)))
+			self.q = np.zeros((len(self.eloss_range),len(self.tth)))
+		else:
+			self.J = np.array([])
+			self.C = np.array([])
+			self.V = np.array([])
+			self.q = np.array([])
+
 	def get_E0(self):
 		return self.E0
 	def get_energy_in_keV(self):
 		return self.eloss_range/1e3 + self.E0
 	def get_tth(self):
 		return self.tth
+
 	def calc_pure_HF_profiles(self):
-		eloss,J,C,V,q = xrs_utilities.makeprofile_compds(self.chem_formulas,concentrations=self.concentrations,E0=self.E0,tth=self.tth)
-		self.J = np.interp(self.eloss_range,eloss,J)
-		self.C = np.interp(self.eloss_range,eloss,C)
-		self.V = np.interp(self.eloss_range,eloss,V)
-		self.q = np.interp(self.eloss_range,eloss,q)
+		if isinstance(self.tth,list):
+			for tth,ii in zip(self.tth,range(len(self.tth))):
+				eloss,J,C,V,q = xrs_utilities.makeprofile_compds(self.chem_formulas,concentrations=self.concentrations,E0=self.E0,tth=tth)
+				self.J[:,ii] = np.interp(self.eloss_range,eloss,J)
+				self.C[:,ii] = np.interp(self.eloss_range,eloss,C)
+				self.V[:,ii] = np.interp(self.eloss_range,eloss,V)
+				self.q[:,ii] = np.interp(self.eloss_range,eloss,q)
+		else:
+			eloss,J,C,V,q = xrs_utilities.makeprofile_compds(self.chem_formulas,concentrations=self.concentrations,E0=self.E0,tth=self.tth)
+			self.J = np.interp(self.eloss_range,eloss,J)
+			self.C = np.interp(self.eloss_range,eloss,C)
+			self.V = np.interp(self.eloss_range,eloss,V)
+			self.q = np.interp(self.eloss_range,eloss,q)
+
 	def calc_HF_profiles(self):
-		if not np.any(self.J) and not np.any(self.C) and not np.any(self.V) and not np.any(self.q):
-			self.calc_pure_HF_profiles() # calculate uncorrected profiles
-		self.J = self.J/self.ac_factor*self.mean_density
-		self.C = self.C/self.ac_factor*self.mean_density
-		self.V = self.V/self.ac_factor*self.mean_density
+		if isinstance(self.tth,list):
+			if not np.any(self.J) and not np.any(self.C) and not np.any(self.V) and not np.any(self.q):
+				self.calc_pure_HF_profiles()
+			for tth,ii in zip(self.tth,range(len(self.tth))):
+				self.J[:,ii] = self.J[:,ii]/self.ac_factor*self.mean_density
+				self.C[:,ii] = self.C[:,ii]/self.ac_factor*self.mean_density
+				self.V[:,ii] = self.V[:,ii]/self.ac_factor*self.mean_density
+		else:
+			if not np.any(self.J) and not np.any(self.C) and not np.any(self.V) and not np.any(self.q):
+				self.calc_pure_HF_profiles() # calculate uncorrected profiles
+			self.J = self.J/self.ac_factor*self.mean_density
+			self.C = self.C/self.ac_factor*self.mean_density
+			self.V = self.V/self.ac_factor*self.mean_density
+
 	def get_HF_profiles(self):
 		if not np.any(self.J) and not np.any(self.C) and not np.any(self.V) and not np.any(self.q):
 			self.calc_HF_profiles() # calculate uncorrected profiles
-		J = self.J/self.ac_factor*self.mean_density
-		C = self.C/self.ac_factor*self.mean_density
-		V = self.V/self.ac_factor*self.mean_density
-		return self.eloss_range, J, C, V, self.q
+		return self.eloss_range, self.J, self.C, self.V, self.q
+
 	def plot_HF_profile(self):
 		if not np.any(self.J) and not np.any(self.C) and not np.any(self.V) and not np.any(self.q):
 			self.calc_HF_profiles()
@@ -530,6 +573,7 @@ class absolute_cross_section:
 		self.I0      = beam_obj.get_i0_intensity()
 		self.beam_h  = beam_obj.get_beam_width_cm()
 		self.beam_v  = beam_obj.get_beam_height_cm()
+		self.sample_tth            = sample_obj.get_tth()
 		self.sample_densities      = sample_obj.get_densities()
 		self.sample_molar_masses   = sample_obj.get_molar_masses()
 		self.sample_formulas       = sample_obj.get_formulas()
@@ -556,10 +600,16 @@ class absolute_cross_section:
 			sample_weight[ii] += self.sample_densities[ii] * sample_volume * self.sample_concentrations[ii]
 			sample_amount[ii] += sample_weight[ii] * self.sample_molar_masses[ii]
 		return np.sum(sample_amount)*constants.physical_constants['Avogadro constant'][0]
+
 	def calc_abs_cross_section(self):
 		num_of_scatterers = self.calc_num_scatterers()
-		# print 'det efficiency ', self.det_efficiency, ' analyzer efficiency ', self.ana_efficiency 
-		self.absolute_counts = self.I0 * self.thomson * self.J * self.ana_solid_angle * self.ana_energy_resolution *  num_of_scatterers * self.sample_thickness * self.sample_abs_in * self.ana_efficiency * self.det_efficiency
+		if isinstance(self.sample_tth, list):
+			self.absolute_counts = np.zeros_like(self.J)
+			for ii in range(len(self.sample_tth)):
+				self.absolute_counts[:,ii] = self.I0 * self.thomson[ii] * self.J[:,ii] * self.ana_solid_angle * self.ana_energy_resolution *  num_of_scatterers * self.sample_thickness * self.sample_abs_in * self.ana_efficiency * self.det_efficiency
+		else:
+			self.absolute_counts = self.I0 * self.thomson * self.J * self.ana_solid_angle * self.ana_energy_resolution *  num_of_scatterers * self.sample_thickness * self.sample_abs_in * self.ana_efficiency * self.det_efficiency
+
 	def plot_abs_cross_section(self):
 		if not np.any(self.absolute_counts):
 			self.calc_abs_cross_section()

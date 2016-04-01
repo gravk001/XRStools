@@ -436,7 +436,7 @@ class stobe:
 
 class erkale:
 	"""
-	class to analyze ERKALE results
+	class to analyze ERKALE XRS results.
 	"""
 	def __init__(self,prefix,postfix,fromnumber,tonumber,step,stepformat=2):
 		self.energy   = [] # array of final energy scale for all snapshots of this run
@@ -484,25 +484,32 @@ class erkale:
 		plt.plot(self.energy,self.sqw)
 		plt.show()
 
-
-#### calculations
-# cut clusters from xyz files
-# cut clusters from gro files
-
 ################################### 
 # reading function for cowan's code output
 
 class xyzAtom:
-        def __init__(self,name,coordinates,number):
-                self.name        = name
-                self.coordinates = np.array(coordinates)
-                self.x_coord     = self.coordinates[0]
-                self.y_coord     = self.coordinates[1]
-                self.z_coord     = self.coordinates[2]
-                self.number      = number
+	""" **xyzAtom**
 
-        def getNorm(self):
-                return np.linalg.norm(self.coordinates)
+	Class to hold information about and manipulate a single atom in xyz-style format.
+
+	Args.:
+	------
+		name (str): Atomic symbol.
+		coordinates (np.array): Array of xyz-coordinates.
+		number (int): Integer, e.g. number of atom in a cluster.
+
+	"""
+	def __init__(self,name,coordinates,number):
+		self.name        = name
+		self.coordinates = np.array(coordinates)
+		self.x_coord     = self.coordinates[0]
+		self.y_coord     = self.coordinates[1]
+		self.z_coord     = self.coordinates[2]
+		self.Z           = xrs_utilities.element(name)
+		self.number      = number
+
+	def getNorm(self):
+		return np.linalg.norm(self.coordinates)
 
 	def getCoordinates(self):
 		return self.coordinates
@@ -510,50 +517,78 @@ class xyzAtom:
 	def translateSelf(self, vector):
 		try:
 			self.coordinates += vector
-        	        self.x_coord     += vector[0]
-        	        self.y_coord     += vector[1]
-        	        self.z_coord     += vector[2]
+			self.x_coord     += vector[0]
+			self.y_coord     += vector[1]
+			self.z_coord     += vector[2]
 		except ValueError:
 			print('Vector must be 3D np.array!') 
 
 class xyzMolecule:
-	def __init__(self,xyzAtoms):
+	""" **xyzMolecule**
+
+	Class to hold information about and manipulate an xyz-style molecule.
+
+	Args.:
+	------
+		xyzAtoms (list): List of instances of the xyzAtoms class that make up the molecule.
+
+	"""
+
+	def __init__(self,xyzAtoms,title=None):
 		self.xyzAtoms = xyzAtoms
-		self.title = None
+		self.title = title
 
 	def getCoordinates(self):
+		""" **getCoordinates**
+		Return coordinates of all atoms in the cluster.
+		"""
 		return [atom.getCoordinates() for atom in self.xyzAtoms]
 
 	def getCoordinates_name(self,name):
+		""" **getCoordinates_name**
+		Return coordintes of all atoms with 'name'.
+		"""
 		atoms = []
 		for atom in self.xyzAtoms:
 			if atom.name == name:
 				atoms.append(atom.coordinates)
 		return atoms
 
-        def get_atoms_by_name(self,name):
-                atoms = []
-                for atom in self.xyzAtoms:
-                        if atom.name == name:
-                                atoms.append(atom)
-                        else:
-                                pass
-                if len(atoms) == 0:
-                        print('Found no atoms with given name in box.')
-                        return
-                return atoms
+	def get_atoms_by_name(self,name):
+		""" **get_atoms_by_name**
+		Return a list of all xyzAtoms of a given name 'name'.
+		"""
+		atoms = []
+		for atom in self.xyzAtoms:
+			if atom.name == name:
+				atoms.append(atom)
+			else:
+				pass
+			if len(atoms) == 0:
+				print('Found no atoms with given name in box.')
+				return
+		return atoms
 
-        def getGeometricCenter(self):
-                for_average = np.zeros((len(self.xyzAtoms),3))
-                for ii in range(len(self.xyzAtoms)):
-                        for_average[ii, :] = self.xyzAtoms[ii].coordinates
-                return np.mean(for_average,axis = 0)
+	def getGeometricCenter(self):
+		""" **getGeometricCenter**
+		Return the geometric center of the xyz-molecule.
+		"""
+		for_average = np.zeros((len(self.xyzAtoms),3))
+		for ii in range(len(self.xyzAtoms)):
+			for_average[ii, :] = self.xyzAtoms[ii].coordinates
+		return np.mean(for_average,axis = 0)
 
 	def translateSelf(self,vector):
+		""" **translateSelf**
+		Translate all atoms of the molecule by a vector 'vector'.
+		"""
 		for atom in self.xyzAtoms:
 			atom.translateSelf(vector)
 
 	def scatterPlot(self):
+		""" **scatterPlot**
+		Opens a plot window with a scatter-plot of all coordinates of the molecule.
+		"""
 		from mpl_toolkits.mplot3d import Axes3D
 		fig = figure()
 		ax  = Axes3D(fig)
@@ -564,38 +599,67 @@ class xyzMolecule:
 		show()
 
 	def appendAtom(self,Atom):
+		""" **appendAtom**
+		Add an xzyAtom to the molecule.
+		"""
 		if isinstance(Atom,xyzAtom):
 			self.xyzAtoms.append(Atom)
 		elif isinstance(Atom,list):
 			self.xyzAtoms.extend(Atom)
 
 	def popAtom(self,xyzAtom):
+		""" **popAtom**
+		Delete an xyzAtom from the molecule.
+		"""
 		self.xyzAtoms.remove(xyzAtom)
 
 	def writeXYZfile(self,fname):
+		""" **writeXYZfile**
+		Creates an xyz-style text file with all coordinates of the molecule.
+		"""
 		if not self.title:
 			self.title = 'None'
 		writeXYZfile(fname, len(self.xyzAtoms), self.title, self.xyzAtoms)
 
 
 class xyzBox:
-        def __init__(self,xyzAtoms,boxLength=None):
-                self.xyzMolecules = []
-                self.xyzAtoms     = xyzAtoms
-                self.n_atoms      = len(self.xyzAtoms)
-                self.title        = None
+	""" **xyzBox**
+
+	Class to hold information about and manipulate a xyz-periodic cubic box.
+
+	Args.:
+	------
+		xyzAtoms (list): List of instances of the xyzAtoms class that make up the molecule.
+		boxLength (float): Box length.
+
+	"""
+
+	def __init__(self,xyzAtoms,boxLength=None):
+		self.xyzMolecules = []
+		self.xyzAtoms     = xyzAtoms
+		self.n_atoms      = len(self.xyzAtoms)
+		self.title        = None
 		self.boxLength    = boxLength
 
 	def setBoxLength(self,boxLength,angstrom=True):
+		""" **setBoxLength**
+		Set the box length.
+		"""
 		if angstrom:
 			self.boxLength = boxLength
 		else:
 			self.boxLength = boxLength*constants.physical_constants['atomic unit of length'][0]*10**10
 
 	def writeBox(self, filename):
+		""" **writeBox**
+		Creates an xyz-style text file with all coordinates of the box.
+		"""
 		writeXYZfile(filename, self.n_atoms, self.title, self.xyzAtoms)
 
 	def writeRelBox(self,filename,inclAtomNames=True):
+		""" **writeRelBox**
+		Writes all relative atom coordinates into a text file (useful as OCEAN input).
+		"""
 		if not self.boxLength:
 			print('Cannot write rel. coordinates without boxLength. Need to set it first.')
 			return
@@ -603,6 +667,9 @@ class xyzBox:
 			writeRelXYZfile(filename, self.n_atoms, self.boxLength, self.title, self.xyzAtoms, inclAtomNames)
 
 	def multiplyBoxPBC(self,numShells):
+		""" **multiplyBoxPBC**
+		Applies the periodic boundary conditions and multiplies the box in shells around the original.
+		"""
 		if not self.boxLength:
 			print('Cannot multiply without boxLength. Need to set it first.')
 			return
@@ -613,6 +680,9 @@ class xyzBox:
 		self.boxLength    = self.boxLength*(numShells*2.0+1.0)
 
 	def deleteTip4pCOM(self):
+		""" **deleteTip4pCOM**
+		Deletes the ficticious atoms used in the TIP4P water model.
+		"""
 		for atom in self.xyzAtoms:
 			if atom.name == 'M':
 				self.xyzAtoms.remove(atom)
@@ -692,12 +762,21 @@ class xyzBox:
 		cluster.writeXYZfile(fname)
 
 	def writeFDMNESinput(self,fname,Filout,Range,Radius,Edge,NRIXS,Absorber):
+		""" **writeFDMNESinput**
+		Creates an input file to be used for q-dependent calculations with FDMNES.
+		"""
 		writeFDMNESinput_file(self.xyzAtoms,fname,Filout,Range,Radius,Edge,NRIXS,Absorber)
 
-	def getCoordinates(self):		
+	def getCoordinates(self):
+		""" **getCoordinates**
+		Return coordinates of all atoms in the cluster.
+		"""
 		return [atom.getCoordinates() for atom in self.xyzAtoms]
 
 	def get_atoms_by_name(self,name):
+		""" **get_atoms_by_name**
+		Return a list of all xyzAtoms of a given name 'name'.
+		"""
 		# find oxygen atoms
 		atoms = []
 		for atom in self.xyzAtoms:
@@ -711,6 +790,9 @@ class xyzBox:
 		return atoms
 
 	def scatterPlot(self):
+		""" **scatterPlot**
+		Opens a plot window with a scatter-plot of all coordinates of the box.
+		"""
 		from mpl_toolkits.mplot3d import Axes3D
 		fig = figure()
 		ax  = Axes3D(fig)
@@ -721,21 +803,28 @@ class xyzBox:
 		ax.scatter(x_vals, y_vals, z_vals)
 		draw()
 
-        def get_OO_neighbors(self,Roocut=3.6):
-                """
-                Returns list of numbers of nearest oxygen neighbors in readius 'Roocut'
-                """
-                o_atoms = self.get_atoms_by_name('O')
+	def get_OO_neighbors(self,Roocut=3.6):
+		""" **get_OO_neighbors**
+		Returns list of numbers of nearest oxygen neighbors within readius 'Roocut'.
+		"""
+		o_atoms = self.get_atoms_by_name('O')
 		if not self.boxLength:
-        	        return count_OO_neighbors(o_atoms,Roocut)
+			return count_OO_neighbors(o_atoms,Roocut)
 		else:
-	       	        return count_OO_neighbors(o_atoms,Roocut,boxLength=self.boxLength)
+			return count_OO_neighbors(o_atoms,Roocut,boxLength=self.boxLength)
 
 	def get_OO_neighbors_pbc(self,Roocut=3.6):
+		""" **get_OO_neighbors_pbc**
+		Returns a list of numbers of nearest oxygen atoms, uses periodic boundary conditions.
+		"""
 		o_atoms = self.get_atoms_by_name('O')
 		return count_OO_neighbors_pbc(o_atoms,Roocut,boxLength=self.boxLength)
 
 	def get_h2o_molecules(self,o_name='O',h_name='H'):
+		""" **get_h2o_molecules*
+		Finds all water molecules inside the box and collects them inside 
+		the self.xyzMolecules attribute.
+		"""
 		o_atoms  = self.get_atoms_by_name(o_name)
 		h_atoms  = self.get_atoms_by_name(h_name)
 		if self.boxLength:
@@ -744,6 +833,10 @@ class xyzBox:
 			self.xyzMolecules = find_H2O_molecules(o_atoms,h_atoms,boxLength=None)
 
 	def get_atoms_from_molecules(self):
+		""" **get_atoms_from_molecules**
+		Parses all atoms inside self.xyzMolecules into self.xyzAtoms (useful for turning
+		an xyzMolecule into an xyzBox).
+		"""
 		if not self.xyzAtoms:
 			self.xyzAtoms = []
 			for molecule in self.xyzMolecules:
@@ -752,10 +845,14 @@ class xyzBox:
 		self.n_atoms      = len(self.xyzAtoms)
 
 	def get_hbonds(self, Roocut=3.6, Rohcut=2.4, Aoooh=30.0):
+		""" **get_hbonds**
+		Counts the hydrogen bonds inside the box, returns the number
+		of H-bond donors and H-bond acceptors.
+		"""
 		hb_total_sum  = 0 # total number of H-bonds in box
 		hb_donor_sum  = 0 # total number of donor H-bonds in box
-                o_atoms  = self.get_atoms_by_name('O')
-                h_atoms  = self.get_atoms_by_name('H')
+		o_atoms  = self.get_atoms_by_name('O')
+		h_atoms  = self.get_atoms_by_name('H')
 		if self.boxLength:
 			h2o_mols = find_H2O_molecules(o_atoms,h_atoms,boxLength=self.boxLength)
 			self.xyzMolecules = h2o_mols
@@ -770,6 +867,9 @@ class xyzBox:
 		return hb_donor_sum, hb_accept_sum #hbonds, dbonds, abonds, hbondspermol
 
 	def changeOHBondlength(self,fraction, oName='O', hName='H'):
+		""" **changeOHBondlength**
+		Changes all OH covalent bond lengths inside the box by a fraction.
+		"""
 		o_atoms  = self.get_atoms_by_name('O')
 		h_atoms  = self.get_atoms_by_name('H')
 		# find all H2O molecules
@@ -789,6 +889,11 @@ class xyzBox:
 				self.xyzAtoms.append(atom)
 
 	def getTetraParameter(self):
+		""" **getTetraParameter**
+		Returns a list of tetrahedrality paprameters, according to NATURE, VOL 409, 18 JANUARY (2001).
+
+		UNTESTED!!!
+		"""
 		if not self.boxLength:
 			print('This only works with PBC. Need to set boxLength first.')
 			return

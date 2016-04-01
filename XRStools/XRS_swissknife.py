@@ -40,6 +40,7 @@ and even include graphics.
 
 """
 import string
+import numpy as np
 from yaml import load, dump
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
@@ -53,6 +54,7 @@ import xrs_rois
 import xrs_read
 import theory
 import extraction
+import xrs_prediction
 inputtext=""
 
 def main():
@@ -435,7 +437,145 @@ but : was not found
             h5.flush()
             h5.close()
 
-           
+
+def XRSprediction(yamlData):
+	""" **prediction**
+
+	This launches the XRS prediction routines.
+
+	If yamlData contains information about: the sample, the incident beam, 
+	the analyzer, the detector, the polarization, and the HF compton profiles,
+	this will create the desired predicted XRS data.
+
+	At the end you have the possibility to write the predicted profiles into a container hdf5 file.
+
+	In the extreme case when you give no argument ( parameters) ::
+
+		xrs_prediction :
+
+	The following canonical example will be run.
+
+	example ::
+
+		xrs_prediction :
+			active : 1
+
+			sample :
+				chem_formulas : ['C']	# list of strings of chemical sum formulas
+				concentrations : [1.0]	# list of concentrations, should contain values between 0.0 and 1.0
+				densities : [2.266]		# list of densities of the constituents [g/cm^3]
+				angle_tth : 35.0		# scattering angle [deg]
+				sample_thickness : 0.1	# sample thickness/diameter in [cm]
+				angle_in : None			# incident beam angle in [deg] relative to sample surface normal
+				angle_out : None		# beam exit angle in [deg] relatice to sample surface normal
+										# (negative for transmission geometry)
+				shape : 'sphere'		# keyword, can be 'slab' or 'sphere'
+				molar_masses : [12.0]	# list of molar masses of all constituents
+
+			incident_beam :
+				i0_intensity : 1e13		#  # number of incident photons [1/sec]
+				beam_height : 10.0		# in micron
+				beam_width : 20.0		# in micron
+				
+			analyzer :
+				material : 'Si'			# analyzer material (e.g. 'Si', 'Ge')
+				hkl : [6,6,0]			# [hkl] indices of reflection used
+				mask_d : 60.0			# analyzer mask diameter in [mm]
+				bend_r : 1.0			# bending radius of the crystal [mm]
+				energy_resolution : 0.5 # energy resolution [eV]
+				diced : False			# boolean (True or False) if a diced crystal is used or not (defalt is False)
+				thickness : 500.0		# thickness of the analyzer crystal
+				database_dir : installation_dir
+
+			compton_profiles :
+				eloss_range : np.arange(0.0,1000.0,0.1)
+				E0 : 9.7
+
+			detector :
+				energy : 9.7			# analyzer energy [keV]
+				thickness : 500.0		# thickness of the active material [microns]
+				material : 'Si'			# detector active material
+
+			thomson :
+				scattering_plane : 'vertical'	# keyword to indicate scattering plane relative to lab frame ('vertical' or 'horizontal')
+				polarization : 0.99				# degree of polarization (close to 1.0 for undulator radiation)
+
+			saveaddress : "myfile.hdf5:/path/to/hdf5/group"  # the target destination, if data should be saved
+   
+	"""
+	mydata = yamlData["XRSprediction"]
+	if mydata is not None and mydata.has_key("active"):
+		if mydata["active"]==0:
+			return
+
+	if mydata is not None:
+		try:
+			sample = mydata["sample"]
+		except:
+			sample = {}
+		chem_formulas    = gvord(sample,"chem_formulas",["C"])
+		concentrations   = gvord(sample,"concentrations", [1.0])
+		densities        = gvord(sample,"densities", [2.266])
+		angle_tth        = gvord(sample,"angle_tth", 35.0)
+		sample_thickness = gvord(sample,"sample_thickness", 0.1)
+		angle_in         = gvord(sample,"angle_in", None)
+		angle_out        = gvord(sample,"angle_out", None)
+		shape            = gvord(sample,"shape", 'sphere')
+		molar_masses     = gvord(sample,"molar_masses", [12.0])
+		sample_obj = xrs_prediction.sample(chem_formulas, concentrations, densities, angle_tth, sample_thickness, angle_in, angle_out, shape, molar_masses)
+	
+		try:
+			incident_beam = mydata["incident_beam"]
+		except:
+			incident_beam = {}
+		i0_intensity  = gvord(incident_beam,"i0_intensity", 1e13)
+		beam_height   = gvord(incident_beam,"beam_height", 10.0)
+		beam_width    = gvord(incident_beam,"beam_width", 20.0)
+		beam_obj = xrs_prediction.beam(i0_intensity, beam_height, beam_width, 0.0)
+
+		try:
+			analyzer = mydata["analyzer"]
+		except:
+			analyzer = {}
+		material          = gvord(analyzer,"material", 'Si')
+		hkl               = gvord(analyzer,"hkl", [6,6,0])
+		mask_d            = gvord(analyzer,"mask_d", 60.0)
+		bend_r            = gvord(analyzer,"bend_r", 1.0)
+		energy_resolution = gvord(analyzer,"energy_resolution", 0.5)
+		diced             = gvord(analyzer,"diced", False)
+		thickness         = gvord(analyzer,"thickness", 500.0)
+		database_dir      = gvord(analyzer,"database_dir", "/home/christoph/sources/XRStools/data/chitables/")
+		analyzer_obj = xrs_prediction.analyzer(material, hkl, mask_d, bend_r, energy_resolution, diced, thickness, database_dir)
+
+		try:
+			detector = mydata["detector"]
+		except:
+			detector = {}
+		energy    = gvord(detector,"energy", 9.7)
+		thickness = gvord(detector,"thickness", 500.0)
+		material  = gvord(detector,"material", 'Si')
+		detector_obj  = xrs_prediction.detector(energy, thickness, material, [256,768])
+
+		try:
+			compton_profile = mydata["compton_profile"]
+		except:
+			compton_profile = {}
+		eloss_range = gvord(compton_profile,"eloss_range", np.arange(0.0,1000.0,0.1))
+		E0          = gvord(compton_profile,"E0", 9.7)
+		compton_profile_obj = xrs_prediction.compton_profiles(sample_obj, eloss_range, E0)
+
+		try:
+			thomson = mydata["polarization"]
+		except:
+			thomson = {}
+		scattering_plane = gvord(thomson,"scattering_plane", 'vertical')
+		polarization     = gvord(thomson,"polarization", 0.99)
+		thomson_obj = xrs_prediction.thomson(compton_profile_obj.get_energy_in_keV(),compton_profile_obj.get_E0(),compton_profile_obj.get_tth())
+
+		abs_cross_section_obj = xrs_prediction.absolute_cross_section(beam_obj, sample_obj, analyzer_obj, detector_obj, thomson_obj, compton_profile_obj)
+		abs_cross_section_obj.plot_abs_cross_section()
+
+
 def read_reader(mydata, name="dataadress"):
 
     dataadress = mydata[name]
@@ -453,11 +593,12 @@ but : was not found
   
 
 swissknife_operations={
-    "help"        :  help,
-    "create_rois" :  create_rois,
-    "load_scans" :  load_scans,
-    "HFspectrum"          : HFspectrum,
-    "Extraction"    :  Extraction
+	"help"        :  help,
+	"create_rois" :  create_rois,
+	"load_scans" :  load_scans,
+	"HFspectrum"  : HFspectrum,
+	"Extraction"    :  Extraction,
+	"XRSprediction" : XRSprediction
 }
 
 if __name__=="__main__":
