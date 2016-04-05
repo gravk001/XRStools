@@ -36,6 +36,7 @@ __copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
 
 import numpy as np
 import copy
+import h5py
 
 from xrs_utilities import *
 from math_functions import *
@@ -111,6 +112,17 @@ class roi_object:
 		self.y_indices      = [] # list of numpy arrays of y-indices (for each ROI)
 		self.masks          = [] # 3D numpy array with slices of zeros and ones (same size as detector image) for each roi
 		self.input_image	= [] # 2D imput image that was used to define the ROIs
+
+	def writeH5(self,fname):
+		f   = h5py.File(fname, "w")
+		grp = f.create_group("roi_obj")
+		roi_dset = grp.create_dataset("roi_matrix", (self.roi_matrix.shape[0],self.roi_matrix.shape[1]), dtype='i')
+		roi_dset[...] = roifinder.roi_obj.roi_matrix
+
+	def loadH5(self,fname):
+		f   = h5py.File(fname, "r")
+		pass
+
 		
 	def load_rois_fromMasksDict(self, masksDict, newshape=None, kind="zoom"):
 		self.kind=kind
