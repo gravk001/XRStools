@@ -37,6 +37,7 @@ __copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
 import numpy as np
 import copy
 import h5py
+import matplotlib.pyplot as plt
 
 from xrs_utilities import *
 from math_functions import *
@@ -100,7 +101,7 @@ def get_geo_informations(shape):
 
 class roi_object:
 	"""
-	Container class to hold all relevant information about given ROIs.
+	Class to hold all relevant information about given ROIs.
 	"""
 	def __init__(self):
 		self.roi_matrix     = np.array([]) # single matrix of zeros, ones, twos, ... , n's (where n is the number of ROIs defined)
@@ -114,79 +115,40 @@ class roi_object:
 		self.input_image	= [] # 2D imput image that was used to define the ROIs
 
 	def writeH5(self,fname):
-		f   = h5py.File(fname, "w")
-		grp = f.create_group("roi_obj")
-		roi_dset = grp.create_dataset("roi_matrix", (self.roi_matrix.shape[0],self.roi_matrix.shape[1]), dtype='i')
-		roi_dset[...] = roifinder.roi_obj.roi_matrix
+		""" **writeH5**
+		Creates an HDF5 file and writes the ROIs into it.
+
+		Args:
+		-----
+		fname (str) : Full path and filename for the HDF5 file to be created.
+		"""
+		f = h5py.File(fname, "w")
+		f.require_group("rois_definition")
+		f["rois_definition"]["image"] = self.input_image
+		f["rois_definition"].require_group("rois_dict")
+		write_rois_toh5(f["rois_definition"]["rois_dict"],self.red_rois)
+		f.close()
 
 	def loadH5(self,fname):
+		""" **loadH5**
+		Loads ROIs from an HDF5 file written by the self.writeH5() method.
+
+		Args:
+		-----
+		fname (str) : Full path and filename for the HDF5 file to be read.
+		"""
 		f   = h5py.File(fname, "r")
-		pass
-
-		
-	def load_rois_fromMasksDict(self, masksDict, newshape=None, kind="zoom"):
-		self.kind=kind
-		self.red_rois = masksDict
-		if newshape is not None:
-			self.roi_matrix = np.zeros(newshape)
-		self.roi_matrix = convert_redmatrix_to_matrix( masksDict,self.roi_matrix , offsetX=0, offsetY=0)
-
-		self.masks          = convert_roi_matrix_to_masks(self.roi_matrix)
+		self.input_image = f["rois_definition"]["image"][:]
+		self.red_rois    = {}
+		load_rois_fromh5(f,self.red_rois)
+		self.roi_matrix     = convert_redmatrix_to_matrix( self.red_rois, np.zeros_like(self.input_image), offsetX=0, offsetY=0)
 		self.indices        = convert_matrix_rois_to_inds(self.roi_matrix)
-		self.number_of_rois = np.amax(self.roi_matrix)
+		self.number_of_rois = int(np.amax(self.roi_matrix))
 		self.x_indices      = convert_inds_to_xinds(self.indices)
 		self.y_indices      = convert_inds_to_yinds(self.indices)
-
-	def save_rois(self,filename):
-		"""
-		Saves the  roi_bj in a pick
-		"""
-		import pickle
-		f = open(filename, 'wb')
-		pickle.dump(self, f,protocol=-1)
-		f.close()
-
-	def loadrois(self,filename):
-		"""
-		loads a file written with the saverois-function using pickle
-		filename = absolute path to file and filename
-		"""
-		import pickle
-		f = open(filename,'rb')
-		roi_obj = pickle.load(f)
-		f.close()
-		self.roi_matrix = roi_obj.roi_matrix
-		self.red_rois       = roi_obj.red_rois   
-		self.indices        = roi_obj.indices  
-		self.number_of_rois = roi_obj.number_of_rois
-		self.kind           = roi_obj.kind 
-		self.x_indices      = roi_obj.x_indices
-		self.y_indices      = roi_obj.y_indices 
-		self.masks          = roi_obj.masks 
-		self.input_image	= roi_obj.input_image
-
-		#print len(roiob.indices), roiob.roi_matrix.shape
-		
-		#indices = swap_indices_old_rois(roiob.indices)
-		#roi_matrix     = convert_inds_to_matrix(indices,roiob.input_image.shape)
-		#red_rois       = convert_matrix_to_redmatrix(self.roi_obj.roi_matrix)
-		#self.load_rois_fromMasksDict(red_rois)
-
-
-	def load_rois(self,filename):
-		"""
-		Loads ROIs from a file written with the save_rois-function.
-		filename = absolute path to file and filename
-		"""
-		import pickle
-		f = open(filename,'rb')
-		roi_obj = pickle.load(f)
-                self.load_rois_fromMasksDict(roi_obj.red_rois)
-		f.close()
+		self.masks          = convert_roi_matrix_to_masks(self.roi_matrix)
 
 	def append(self,roi_object):
-		#self.roi_matrix     = np.array([]) # single matrix of zeros, ones, twos, ... , n's (where n is the number of ROIs defined)
-		#self.red_rois       = {}           # dictionary, one entry for each ROI, each ROI has an origin and a rectangular box of ones and zeros defining the ROI
 		self.indices.extend(roi_object.indices) # list of list of tuples (one list of tuples for each ROI)
 		self.number_of_rois =+ roi_object.number_of_rois  # number of ROIs defined
 		self.x_indices.extend(roi_object.x_indices) # list of numpy arrays of x-indices (for each ROI)
@@ -213,25 +175,20 @@ class roi_object:
 		return self.masks
 
 	def get_copy(self):
-		"""
-		**get_copy**
+		""" **get_copy**
 		Returns a deep copy of self.
 		"""
 		return copy.deepcopy(self)
 
 	def shift_rois(self,shiftVal,direction='horiz',whichroi=None):
-		"""
-		**shift_rois**
+		""" **shift_rois**
 		Displaces the defined ROIs by the provided value.
 
 		Args
 		----
-		shiftVal : int
-			Value by which the ROIs should be shifted.
-		direction : string
-			Description of which direction to shit by.
-		whichroi : sequence
-			Sequence (iterable) for which ROIs should be shifted.
+		shiftVal (int) : Value by which the ROIs should be shifted.
+		direction (string) : Description of which direction to shit by.
+		whichroi (sequence) : Sequence (iterable) for which ROIs should be shifted.
 		"""
 		the_indices = []
 
@@ -261,6 +218,33 @@ class roi_object:
 		self.x_indices      = convert_inds_to_xinds(self.indices)
 		self.y_indices      = convert_inds_to_yinds(self.indices)
 		self.masks          = convert_roi_matrix_to_masks(self.roi_matrix)
+
+	def show_rois(self,colormap='jet',interpolation='nearest'):
+		""" **show_rois**
+		Creates a figure with the defined ROIs as numbered boxes on it.
+		"""
+		roi_matrix = self.roi_matrix
+
+		# check if there are ROIs defined
+		if not np.any(roi_matrix):
+			print 'Please select some rois first.'
+
+		# make a figure
+		else:
+			plt.cla()
+			figure_obj = plt.imshow(roi_matrix,interpolation=interpolation)
+			figure_obj.set_cmap(colormap)
+			plt.xlabel('x-axis [pixel]')
+			plt.ylabel('y-axis [pixel]')
+			plt.show()
+			# add a label with the number to the center of each ROI
+			for ii in range(int(np.amax(roi_matrix))):
+				# find center of the ROI and write the label
+				inds    = np.where(roi_matrix[:,:] == ii+1)
+				xcenter = np.mean(inds[1])
+				ycenter = np.mean(inds[0])
+				string  = '%02d' % (ii+1)
+				plt.text(xcenter,ycenter,string)
 
 def convert_redmatrix_to_matrix( masksDict,mask, offsetX=0, offsetY=0):
     for key, (pos,M)  in masksDict.iteritems():

@@ -2,14 +2,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from matplotlib.path import Path
-import  xrs_utilities 
+import xrs_utilities 
 import math_functions 
 from matplotlib.widgets import Cursor, Button
 from scipy.ndimage import measurements
 from scipy import signal
-import  xrs_rois 
+import xrs_rois 
 import xrs_scans
-		
+import copy
+
 
 def findroisColumns(scans,scannumbers,roi_obj, whichroi,logscaling=False):
         """
@@ -180,14 +181,14 @@ class roi_finder:
 			print 'Please provide a 2D numpy array as input!'
 			return
 
+		# save input image for later use
+		self.roi_obj.input_image = copy.deepcopy(input_image)
+
 		# calculate the logarithm if 'logscaling' == True
 		if logscaling:
 			# set all zeros to ones:
 			input_image[input_image[:,:] == 0.0] = 1.0
 			input_image = np.log(np.abs(input_image))
-
-		# save input image for later use
-		self.roi_obj.input_image = input_image
 
 		# prepare a figure
 		fig, ax = plt.subplots()
@@ -279,14 +280,14 @@ class roi_finder:
 			print 'please provide a 2D numpy array as input!'
 			return                
 
+		# save input image for later use
+		self.roi_obj.input_image = copy.deepcopy(input_image)
+
 		# calculate the logarithm if 'logscaling' == True
 		if logscaling:
 			# set all zeros to ones:
 			input_image[input_image[:,:] == 0.0] = 1.0
 			input_image = np.log(np.abs(input_image))
-
-		# save input image for later use
-		self.roi_obj.input_image = input_image
 
 		# prepare a figure
 		fig, ax = plt.subplots()
@@ -427,14 +428,14 @@ class roi_finder:
 		# clear existing figure
 		# plt.clf()
 
+		# save input image for later use
+		self.roi_obj.input_image = copy.deepcopy(input_image)
+
 		# calculate the logarithm if 'logscaling' == True
 		if logscaling:
 			# set all zeros to ones:
 			input_image[input_image[:,:] == 0.0] = 1.0
 			input_image = np.log(np.abs(input_image))
-
-		# save input image for later use
-		self.roi_obj.input_image = input_image
 
 		ax = plt.subplot(111) 
 		plt.subplots_adjust(left=0.05, bottom=0.2)
@@ -533,14 +534,14 @@ class roi_finder:
 			print 'Please provide a 2D numpy array as input!'
 			return
 
+		# save input image for later use
+		self.roi_obj.input_image = copy.deepcopy(input_image)
+
 		# calculate the logarithm if 'logscaling' == True
 		if logscaling:
 			# set all zeros to ones:
 			input_image[input_image[:,:] == 0.0] = 1.0
 			input_image = np.log(np.abs(input_image))
-
-		# save input image for later use
-		self.roi_obj.input_image = input_image
 
 		# prepare a figure
 		fig, ax = plt.subplots()
@@ -627,31 +628,16 @@ class roi_finder:
 		self.roi_obj.masks          = xrs_rois.convert_roi_matrix_to_masks(self.roi_obj.roi_matrix)
 		self.roi_obj.number_of_rois = np.amax(self.roi_obj.roi_matrix)
 
-	def show_rois(self,interpolation='nearest'):
-		"""
+	def show_rois(self,interpolation='nearest',colormap='Blues'):
+		""" **show_rois**
 		Creates a figure with the defined ROIs as numbered boxes on it.
+
+		Args:
+		-----
+		interpolation (str) : Interpolation scheme used in the plot.
+		colormap (str) : Colormap used in the plot.
 		"""
-		roi_matrix = self.roi_obj.roi_matrix
-
-		# check if there are ROIs defined
-		if not np.any(roi_matrix):
-			print 'Please select some rois first.'
-
-		# make a figure
-		else:
-			plt.cla()
-			plt.imshow(roi_matrix,interpolation=interpolation)
-			plt.xlabel('x-axis [pixel]')
-			plt.ylabel('y-axis [pixel]')
-
-			# add a label with the number to the center of each ROI
-			for ii in range(int(np.amax(roi_matrix))):
-				# find center of the ROI and write the label
-				inds    = np.where(roi_matrix[:,:] == ii+1)
-				xcenter = np.mean(inds[1])
-				ycenter = np.mean(inds[0])
-				string  = '%02d' % (ii+1)
-				plt.text(xcenter,ycenter,string)
+		self.roi_obj.show_rois(colormap=colormap,interpolation=interpolation)
 
 	def import_simo_style_rois(self,roiList,detImageShape=(512,768)):
 		""" **import_simo_style_rois**
