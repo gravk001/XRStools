@@ -28,7 +28,7 @@ try:
     import numpy
 except ImportError:
     text = "You must have numpy installed.\n"
-    raise ImportError, text
+    raise Exception(text)
 
 try:
     from Cython.Distutils import build_ext
@@ -51,12 +51,12 @@ class smart_install_data(install_data):
         global  version
         install_cmd = self.get_finalized_command('install')
         self.install_dir = os.path.join(getattr(install_cmd, 'install_lib'),"xrstools"+version,"..","..","..","..","share","xrstools","data")
-        print "DATA to be installed in %s" %  self.install_dir
+        print("DATA to be installed in %s" % self.install_dir)
 
         install_lib_dir = os.path.join(getattr(install_cmd, 'install_lib'),"xrstools"+version )
         if not os.path.exists(self.install_dir):
             os.makedirs(self.install_dir)
-        print " QUI " 
+        print " QUI "
         for filein in glob.glob('xrstools/*ui'):
             filedest = os.path.join(install_lib_dir, os.path.basename(filein))
             print "cp %s %s"%(filein,filedest)
@@ -69,17 +69,17 @@ from distutils.command.install_scripts import install_scripts
 class smart_install_scripts(install_scripts):
     def run (self):
         global  version
-        
+
         install_cmd = self.get_finalized_command('install')
         self.install_dir = getattr(install_cmd, 'install_scripts')
         self.install_lib_dir = getattr(install_cmd, 'install_lib')
-            
+
         self.outfiles = []
         for filein in glob.glob('xrstools/scripts/*'):
             if filein in glob.glob('xrstools/scripts/*~'): continue
-            
+
             print "INSTALLO ", filein
-            
+
             if not os.path.exists(self.install_dir):
                 os.makedirs(self.install_dir)
 
@@ -88,7 +88,7 @@ class smart_install_scripts(install_scripts):
 
             if os.path.exists(filedest):
                 os.remove(filedest)
-                
+
             text = open(filein, 'r').read()
             text=string.replace(text,"import xrstools", "import xrstools"+version)
             text=string.replace(text,"python", sys.executable)
@@ -127,7 +127,7 @@ if sys.platform == "win32":
     #        shutil.copyfile(filein, filein + ".py")
     #        script_files.append(filein + ".py")
 else:
-    script_files = glob.glob("xrstools/scripts/*")
+    script_files = glob.glob("./xrstools/scripts/*")
 
 version = '' #[eval(l.split("=")[1]) for l in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "xrstools", "__init__.py")) if l.strip().startswith("version")][0]
 # version = '0.0' #[eval(l.split("=")[1]) for l in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "xrstools", "__init__.py")) if l.strip().startswith("version")][0]
@@ -164,10 +164,10 @@ class build_ext_tds2el(build_ext):
 
         if self.compiler.compiler_type in translator:
             trans = translator[self.compiler.compiler_type]
-        else:            
+        else:
             trans = translator['default']
 
- 
+
 
         for e in self.extensions:
             e.extra_compile_args = [ trans[a][0] if a in trans else a
@@ -297,7 +297,7 @@ setup(name='xrstools',
       url="christoph.sahle@esrf.fr",
       download_url="",
       ext_package="xrstools"+version,
-      scripts=script_files,
+      scripts=glob.glob("./xrstools/scripts/*"),
       # ext_modules=[Extension(**dico) for dico in ext_modules],
       packages=["xrstools"+version],
       package_dir={"xrstools"+version:"xrstools" },
@@ -314,8 +314,3 @@ setup(name='xrstools',
 # This python module can be found on:
 # http://pypi.python.org/pypi/pyopencl
 # """)
-
-
-
-
-

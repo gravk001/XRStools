@@ -34,6 +34,20 @@ __contact__ = "christoph.sahle@esrf.fr"
 __license__ = "MIT"
 __copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
 
+# These values are used in read_Lerix class but may be useful elsewhere? LJRH
+TINY = 1.e-7
+MAX_FILESIZE = 100*1024*1024  # 100 Mb limit
+COMMENTCHARS = '#;%*!$'
+NAME_MATCH = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$").match
+VALID_SNAME_CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'
+VALID_NAME_CHARS = '.%s' % VALID_SNAME_CHARS
+RESERVED_WORDS = ('and', 'as', 'assert', 'break', 'class', 'continue',
+                'def', 'del', 'elif', 'else', 'eval', 'except', 'exec',
+                'execfile', 'finally', 'for', 'from', 'global', 'if',
+                'import', 'in', 'is', 'lambda', 'not', 'or', 'pass',
+                'print', 'raise', 'return', 'try', 'while', 'with',
+                'group', 'end', 'endwhile', 'endif', 'endfor', 'endtry',
+                'enddef', 'True', 'False', 'None')
 
 #from helpers import *
 import xrs_rois, xrs_scans, xrs_utilities, math_functions
@@ -41,7 +55,7 @@ import xrs_rois, xrs_scans, xrs_utilities, math_functions
 from numpy import array
 import scipy.io
 
-import os
+import os, re
 import numpy as np
 import array as arr
 import pickle
@@ -1654,20 +1668,7 @@ class read_lerix:
         import pandas as pd
     except:
         print('LERIX class requires the following module: pandas')
-
-    TINY = 1.e-7
-    MAX_FILESIZE = 100*1024*1024  # 100 Mb limit
-    COMMENTCHARS = '#;%*!$'
-    NAME_MATCH = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$").match
-    VALID_SNAME_CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'
-    VALID_NAME_CHARS = '.%s' % VALID_SNAME_CHARS
-    RESERVED_WORDS = ('and', 'as', 'assert', 'break', 'class', 'continue',
-                    'def', 'del', 'elif', 'else', 'eval', 'except', 'exec',
-                    'execfile', 'finally', 'for', 'from', 'global', 'if',
-                    'import', 'in', 'is', 'lambda', 'not', 'or', 'pass',
-                    'print', 'raise', 'return', 'try', 'while', 'with',
-                    'group', 'end', 'endwhile', 'endif', 'endfor', 'endtry',
-                    'enddef', 'True', 'False', 'None')
+	import re
 
     def __init__(self):
         self.scans         = {}
