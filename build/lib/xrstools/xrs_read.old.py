@@ -34,6 +34,21 @@ __contact__ = "christoph.sahle@esrf.fr"
 __license__ = "MIT"
 __copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
 
+# These values are used in read_Lerix class but may be useful elsewhere? LJRH
+TINY = 1.e-7
+MAX_FILESIZE = 100*1024*1024  # 100 Mb limit
+COMMENTCHARS = '#;%*!$'
+NAME_MATCH = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$").match
+VALID_SNAME_CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'
+VALID_NAME_CHARS = '.%s' % VALID_SNAME_CHARS
+RESERVED_WORDS = ('and', 'as', 'assert', 'break', 'class', 'continue',
+                'def', 'del', 'elif', 'else', 'eval', 'except', 'exec',
+                'execfile', 'finally', 'for', 'from', 'global', 'if',
+                'import', 'in', 'is', 'lambda', 'not', 'or', 'pass',
+                'print', 'raise', 'return', 'try', 'while', 'with',
+                'group', 'end', 'endwhile', 'endif', 'endfor', 'endtry',
+                'enddef', 'True', 'False', 'None')
+
 #from helpers import *
 import xrs_rois, xrs_scans, xrs_utilities, math_functions
 
@@ -50,23 +65,8 @@ from scipy.interpolate import interp1d
 from pylab import *
 from scipy import signal
 from scipy.ndimage import measurements
-import pandas as pd
-import matplotlib.pyplot as plt
 
-# These values are used in read_Lerix class but may be useful elsewhere? LJRH
-TINY = 1.e-7
-MAX_FILESIZE = 100*1024*1024  # 100 Mb limit
-COMMENTCHARS = '#;%*!$'
-NAME_MATCH = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$").match
-VALID_SNAME_CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'
-VALID_NAME_CHARS = '.%s' % VALID_SNAME_CHARS
-RESERVED_WORDS = ('and', 'as', 'assert', 'break', 'class', 'continue',
-                'def', 'del', 'elif', 'else', 'eval', 'except', 'exec',
-                'execfile', 'finally', 'for', 'from', 'global', 'if',
-                'import', 'in', 'is', 'lambda', 'not', 'or', 'pass',
-                'print', 'raise', 'return', 'try', 'while', 'with',
-                'group', 'end', 'endwhile', 'endif', 'endfor', 'endtry',
-                'enddef', 'True', 'False', 'None')
+import matplotlib.pyplot as plt
 
 __metaclass__ = type # new style classes
 
@@ -1664,32 +1664,25 @@ class read_p01:
 			show()
 
 class read_lerix:
-    def __init__(self,exp_dir,elastic_name='elastic',nixs_name='nixs',wide_name='wide',energycolumn='energy',monitorcolumn='__enc'):
-        self.scans         = {} # was a dictionary before
-        self.path          = os.path.split(exp_dir)[0] + '/'
-        self.monicolumn    = monitorcolumn
-        self.encolumn      = energycolumn
-        self.nixs_name, self.nixs_scans       = str.lower(nixs_name), []
-        self.wide_name, self.wide_scans       = str.lower(wide_name), []
-        self.elastic_name, self.elastic_scans = str.lower(elastic_name), []
-        #split scans into NIXS and elastic and begin instance of XRStools scan class for each scan
-        if not self.isValidDir(exp_dir):
-            raise Exception('IOError! No such file, please check filename.')
-        for file in self.sort_dir(self.path):
-                scan_info = self.scan_info(file)
-                if scan_info[2]=='elastic':
-                    self.elastic_scans.append(file)
-                if scan_info[2]=='nixs':
-                    self.nixs_scans.append(file)
-                if scan_info[2]=='wide':
-                    self.wide_scans.append(file)
-                else:
-                    continue
+    try:
+        import pandas as pd
+    except:
+        print('LERIX class requires the following module: pandas')
+	import re
+
+    def __init__(self):
+        self.scans         = {}
+        self.data          = {} #np dictionary of arrays separated into their column headers
         self.header_attrs  = {} #dictionary of useful information from scan files, inc. e0, comments, scan_time+date
-        self.key           = {'Analyzer01':0, 'Analyzer02':1, 'Analyzer03':2,'Analyzer04':3,'Analyzer05':4,
-                            'Analyzer06':5,'Analyzer07':6,'Analyzer08':7,'Analyzer09':8,'Analyzer10':9,'Analyzer11':10,'Analyzer12':11
+        self.key           = {'Analyzer1':0, 'Analyzer2':1, 'Analyzer3':2,'Analyzer4':3,'Analyzer5':4,
+                            'Analyzer6':5,'Analyzer7':6,'Analyzer8':7,'Analyzer9':8,'Analyzer10':9,'Analyzer11':10,'Analyzer12':11
                             ,'Analyzer13':12,'Analyzer14':13,'Analyzer15':14,'Analyzer16':15,'Analyzer17':16,'Analyzer18':17,'Analyzer19':18}
-        self.scannumbers   = []
+        self.elastic_scans = []
+        self.elastic_name  = 'elastic'
+        self.nixs_scans    = []
+        self.nixs_name     = 'nixs'
+        self.wide_scans    = []
+        self.wide_name     = 'wide'
         self.scan_name     = []
         self.sample_name   = []
         self.eloss_avg     = [] #elastic eloss average
@@ -1703,11 +1696,7 @@ class read_lerix:
         self.E0            = []
         self.cenom         = []
         self.cenom_dict    = {}
-        self.data          = {}
-        #make cenom_dict which holds e0 and fwhm for all analyser
-        for key in self.key.keys():
-            self.cenom_dict[key] = {}
-            self.data[key]       = {}
+
     ################################################################################
     # Get Ascii Info - parse a file and return the key details
     ################################################################################
@@ -1722,7 +1711,10 @@ class read_lerix:
             try:
                 val = float(w)
             except ValueError:
-                pass
+                try:
+                    val = mktime(dateparse(w).timetuple())
+                except ValueError:
+                    pass
         words[i] = val
         return(words)
 
@@ -1880,12 +1872,7 @@ class read_lerix:
 
     def scan_info(self, f):
         """get the scan number, name, type and file extention from the title of
-        the scan assuming typical format e.g. elastic.0001, nixs.0001
-        returns:
-        [0] -> scan number (e.g. 0001)
-        [1] -> scan name (e.g. nixs0001)
-        [2] -> scan_type (e.g. nixs)
-        [3] -> file name (e.g. nixs.0001)"""
+        the scan assuming typical format e.g. elastic.0001, nixs.0001"""
         f = os.path.basename(f) #this allows both directories and files to be passed to get scan_info
         fn,fext = os.path.splitext(f)
         if str.lower(fn)==str.lower(self.nixs_name):
@@ -1948,200 +1935,6 @@ class read_lerix:
             return True
         else:
             return True
-
-    ################################################################################
-    # Read Scan
-    ################################################################################
-    def update_cenom(self, analyzers="all"):
-        """Internal Function to get the centre of mass of the elastic peak and
-        the E0 for each elastic scan using XRStools"""
-        self.cenom = []
-        if not self.cenom_dict: #check that the cenom-dict is populated first.
-            print('Cenom Dictionary is empty. Please load elastics first!')
-            return(0)
-        if analyzers == "all":
-            print("Running 'Update_Cenom' Script for All analysers")
-            analyzers = sorted(self.key.keys())
-        elif type(analyzers) is list:
-            print("Running 'Update_Cenom' Script for analysers:", analyzers)
-            tmp = []
-            for i in analyzers:
-                i = i - 1
-                tmp.append(sorted(self.key.keys())[i])
-            analyzers = tmp
-        else:
-            print("list of analysers for E0 calculation must be a list type.")
-            return(False)
-        for analyzer in analyzers:
-            avg_fwhm, avg_cenom = [],[]
-            for scan in self.elastic_scans:
-                scan = self.scan_info(scan)[1] # change from elastic.0001 to elastic0001
-                avg_cenom.append(self.cenom_dict[analyzer][scan]['e0'])
-                avg_fwhm.append(self.cenom_dict[analyzer][scan]['fwhm'])
-            # annoying bit of code because np.nanmean() of a list of just nan's returns a warning, this step avoids ugly (yet harmless) warnings.
-            if np.all(np.isnan(avg_cenom)):
-                avg_cenom = np.nan
-            else:
-                avg_cenom = nanmean(np.array(avg_cenom))
-            if np.all(np.isnan(avg_fwhm)):
-                avg_fwhm = np.nan
-            else:
-                avg_fwhm = nanmean(np.array(avg_fwhm))
-            self.cenom_dict[analyzer].update({'average': {'fwhm': avg_fwhm, 'e0': avg_cenom}})
-            self.cenom.append(avg_cenom / 1e3) #divide by thousand to go from eV to keV
-        self.E0 = nanmean(np.array(self.cenom))
-        print("{} {}".format("E0 was found to be (keV): ", self.E0))
-        print("{} {}".format("Average FWHM for the elastics is (eV): ", avg_fwhm))
-        for i in range(len(analyzers)):
-            if np.isnan(self.cenom[i]):
-                print(analyzers[i], 'Elastic peak is less than 100 counts, setting to average e0')
-                self.cenom[i] = self.E0
-            else:
-                continue
-        #self.resolution['Resolution'] = round(np.mean(resolution),3)
-
-    def readscan_20ID(self, file):
-        """Read an ID20-type ASCII file and return header attributes and data as
-        a dictionary. Takes a file path.
-        header_attrs -> int_times, scan_steps, scan_bounds, e0, comments, beamline,
-                        scan_time, scan_date
-        data         -> dictionary of np.array (float64) with callable column names
-
-        New XRStools uses scan class:
-        # create an instance of "scan" class for every scan
-        onescan = xrs_scans.scan(edfmats,number,energy,monitor,counters,motors,data,scantype)
-        # assign one dictionary entry to each scan
-        self.scans[scanname] = onescan
-        edfmats: 2D images from pixel counting detector (not required here)
-        number: scan number
-        energy: energy axis
-        monitor: i0 axis
-        counters: interpreted as the detector channels
-        motors: motor positions (not required)
-        data: full data matrix
-        scantype: elastic, nixs or long
-        """
-        import pandas as pd
-        scan_info = self.scan_info(file)
-        qixs_list = []
-        f = open(file, "r") #read starts here
-        text = f.read()
-        text = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
-        headers, dat, footers = self.separate_infile(text)
-        try:
-            dat = [map(list,zip(*dat))[i][::-1] for i in range(len(dat[1]))] # this function does the inverse ([::-1]) transposition of the dat object, doesn't seem to work in windows
-        except:
-            dat = [list(map(list,zip(*dat)))[i][::-1] for i in range(len(dat[1]))]
-        names = self.get_col_headers(self.strip_headers(headers)) #returns a list of names in the order found in the data file.
-        data = pd.DataFrame(np.array(dat).T,columns = np.array(names).T, dtype='float64') #returns a pandas array with the data arranged into labelled columns
-        for column in sorted(data.columns): #sort by name so that analyzers are in correct (numerical) order
-            if not column.rfind('i0') == -1:
-                tmp_monitor = np.array(data[column].values)
-            if not column.rfind('__enc') == -1:
-                tmp_energy = np.array(data[column].values)
-            if not column.rfind('qixs') == -1:
-                qixs_list.append(column)
-        tmp_signals = np.array(data[qixs_list].values)
-        tmp_errors = np.sqrt(np.absolute(tmp_signals))
-        scan_attrs = self.pull_id20attrs(self.strip_headers(headers)) #get scan_attrs
-        if scan_info[2]=='elastic':
-            for analyzer in self.key.keys(): #The analyzer channels in the scan ASCII
-                # check counts are high-enough, using XIA filters avoids broadening FWHM
-                if 200 <= np.max(tmp_signals[:,self.key[analyzer]]) <= 4000:
-                    fwhm, cenom = xrs_utilities.fwhm(tmp_energy,tmp_signals[:,self.key[analyzer]])
-                    fwhm = fwhm*0.5
-                else:
-                    fwhm, cenom = np.nan, np.nan
-                self.cenom_dict[analyzer].update({scan_info[1]: {'fwhm': fwhm, 'e0': cenom}})
-        elif scan_info[2]=='nixs' or scan_info[2]=='wide':
-            #create empty array with shape energy.v.signals
-            eloss = np.zeros(tmp_signals.shape)
-            self.tth = list(range(9,180,9)) #assign tth to self
-            try:
-                e_zero = self.E0 * 1e3 # convert e0 back to eV to perform subtraction
-                tmp_eloss = np.subtract(tmp_energy,e_zero)
-            except:
-                print('>> No elastic <class>.E0 found! Make sure elastic scans have been loaded first')
-                e_zero = scan_attrs['e0'] * 1e3 # convert e0 back to eV to perform subtraction
-                tmp_eloss = np.subtract(tmp_energy,e_zero)
-        # create an instance of "scan" class for every scan
-        edfmats, motors = [],scan_attrs #no 2D pixel detector at LERIX
-        number          = scan_info[0]
-        energy          = tmp_energy
-        monitor         = tmp_monitor
-        counters        = tmp_signals
-        data            = data
-        scantype        = scan_info[2]
-        onescan = xrs_scans.scan(edfmats,number,energy,monitor,counters,motors,data,scantype)
-        self.scans[scan_info[1]] = onescan
-        if scan_info[2]=='nixs' or scan_info[2]=='wide':
-            self.scans[scan_info[1]].eloss = tmp_eloss
-            self.scans[scan_info[1]].signals = np.divide(tmp_signals.T,monitor).T #transpose seems to be necessary, but don't know why?
-            self.scans[scan_info[1]].errors = tmp_errors
-        f.close()
-
-    ################################################################################
-    # Begin the reading
-    ################################################################################
-    def load_elastics(self,exp_dir=None,scans='all',analyzers='all'):
-        """Function to load scan data from a typical APS 20ID Non-Resonant inelastic
-        X-ray scattering experiment. With data in the form of elastic.0001, allign.0001
-        and NIXS.0001. Function reteurns the averaged energy loss, signals, errors, E0
-        and 2theta angles for the scans in the chosen directory."""
-        scann = []
-        if exp_dir is None:
-            exp_dir = self.path
-        if scans is 'all':
-            chosen_scans = self.elastic_scans
-        elif isinstance(scans,list):
-            scann[:] = [x - 1 for x in scans] #scan 1 will be the 0th item in the list
-            chosen_scans = [self.nixs_scans[i] for i in scann]
-        else:
-            print("scans must be list of scan numbers (e.g. [1,2,3]) or all")
-        for file in chosen_scans:
-            scan_info = self.scan_info(file)
-            print("{} {}".format("Reading elastic scan: ", file))
-            self.readscan_20ID(exp_dir + '/' + file)
-        self.update_cenom(analyzers)
-
-    def load_nixs(self,exp_dir=None,scans='all',analyzers='all'):
-        """Blah Blah"""
-        scann = []
-        if exp_dir is None:
-            exp_dir = self.path
-        if scans is 'all':
-            chosen_scans = self.nixs_scans
-        elif isinstance(scans,list):
-            scann[:] = [x - 1 for x in scans] #scan 1 will be the 0th item in the list
-            chosen_scans = [self.nixs_scans[i] for i in scann]
-        else:
-            print("scans must be list of scan numbers (e.g. [1,2,3]) or all")
-        for file in chosen_scans:
-            scan_info = self.scan_info(file)
-            print("{} {}".format("Reading NIXS scan: ", file))
-            self.readscan_20ID(exp_dir + '/' + file)
-        #average the data over the chosen scans
-        self.energy   = np.array([self.scans[self.scan_info(i)[1]].energy  for i in chosen_scans]).mean(axis=0)
-        self.signals  = np.array([self.scans[self.scan_info(i)[1]].signals for i in chosen_scans]).mean(axis=0)
-        self.eloss    = np.array([self.scans[self.scan_info(i)[1]].eloss   for i in chosen_scans]).mean(axis=0)
-        self.errors   = np.array([self.scans[self.scan_info(i)[1]].errors  for i in chosen_scans]).mean(axis=0)
-
-    def load_wides(self,exp_dir=None,scans='all',analyzers='all'):
-        """Blah Blah"""
-        scann = []
-        if exp_dir is None:
-            exp_dir = self.path
-        if scans is 'all':
-            chosen_scans = self.wide_scans
-        elif isinstance(scans,list):
-            scann[:] = [x - 1 for x in scans] #scan 1 will be the 0th item in the list
-            chosen_scans = [self.nixs_scans[i] for i in scann]
-        else:
-            print("scans must be list of scan numbers (e.g. [1,2,3]) or all")
-        for file in chosen_scans:
-            scan_info = self.scan_info(file)
-            print("{} {}".format("Reading Wide scan: ", file))
-            self.readscan_20ID(exp_dir + '/' + file)
 
     def plot_data(self,analyzer=False):
         """<classObj>.plot_data() Function that can be called to plot the eloss
@@ -2213,19 +2006,14 @@ class read_lerix:
         cursor = Cursor(ax, useblit=False, color='red', linewidth=2)
         plt.show()
 
-    def save_H5(self,H5name='20ID_APS_data.H5'):
-        #if the user asks, call function to write all info to H5 file
-        H5path = self.path + H5name
-        if not os.path.isdir(os.path.dirname(H5path)):
-            print('H5 path directory does not exist!')
-        if os.path.isfile(H5path):
-            H5file = h5py.File(saveloc, "a")
-        else:
-            H5file = h5py.File(saveloc, "w")
+    def write_H5scanData(self,dir,H5file,H5name,averaged='False'):
+        """Writes all the scan information into a H5 file named after the sample name. inside
+        this H5 directory scans are split into elastic and NIXS and the averaged scans. No support
+        yet for wide scans"""
         g = H5file.create_group(H5name) #H5 subgroup with the name of the sample
         H5_ela = g.create_group('elastic') #H5 subgroup for elastics
         H5_xrs = g.create_group('XRS')     #H5 subgroup for NIXS
-        all_scans = self.elastic_scans + self.nixs_scans + self.wide_scans
+        all_scans = self.elastic_scans+self.nixs_scans
         for file in all_scans:
             scan_info = self.scan_info(file)
             if scan_info[2] == 'elastic':
@@ -2240,12 +2028,278 @@ class read_lerix:
                 h5group.create_dataset("signals",data=self.scans[scan_info[1]].signals)
                 h5group.create_dataset("eloss",data=self.scans[scan_info[1]].eloss)
                 h5group.create_dataset("errors",data=self.scans[scan_info[1]].errors)
-                #h5group.create_dataset("tth",data=self.scans[scan_info[1]].tth)
+                h5group.create_dataset("tth",data=self.scans[scan_info[1]].tth)
+
         g.create_dataset("energy",data=self.energy)
         g.create_dataset("signals",data=self.signals)
         g.create_dataset("eloss",data=self.eloss)
         g.create_dataset("errors",data=self.errors)
         g.create_dataset("tth",data=self.tth)
         g.create_dataset("Mean Resolutions", data=np.array(self.resolution.items()))
+
         #Never forget to close an open H5 file!!!
         H5file.close()
+
+    ################################################################################
+    # Read Scan
+    ################################################################################
+    def get_cenoms(self, file):
+        """Internal Function to get the centre of mass of the elastic peak and
+        the E0 for each elastic scan using XRStools"""
+        cenom_list, cenom_analyzers = [], []
+        scan_info = self.scan_info(file)
+        for analyzer in range(19): #The analyzer channels in the scan ASCII
+            #self.scans[scan_info[1]].cenom.append(xrs_utilities.find_center_of_mass(self.scans[scan_info[1]].energy,self.scans[scan_info[1]].signals[:,analyzer]))
+            cenom_analyzers.append(xrs_utilities.find_center_of_mass(self.scans[scan_info[1]].energy,self.scans[scan_info[1]].signals[:,analyzer]))
+            self.scans[scan_info[1]].cenom = np.mean(cenom_analyzers) #list of cenoms not necessary here since energy is the same for each analyser in a scan.
+        cenom_list.append(self.scans[scan_info[1]].cenom)
+        # self.cenom = [sum(a)/len(a) for a in zip(*cenom_list)]
+        print(cenom_list)
+        self.cenom = np.mean(cenom_list)
+        self.E0 = np.mean(self.cenom)/1e3
+
+    def readscan_20ID(self, file, valid_elastic=False):
+        """Read an ID20-type ASCII file and return header attributes and data as
+        a dictionary. Takes a file path.
+        header_attrs -> int_times, scan_steps, scan_bounds, e0, comments, beamline,
+                        scan_time, scan_date
+        data         -> dictionary of np.array (float64) with callable column names"""
+        scan_info = self.scan_info(file)
+        qixs_list = []
+        f = open(file, "r") #read starts here
+        text = f.read()
+        text = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+        headers, dat, footers = self.separate_infile(text)
+        try:
+            dat = [map(list,zip(*dat))[i][::-1] for i in range(len(dat[1]))] # this function does the inverse ([::-1]) transposition of the dat object, doesn't seem to work in windows
+        except:
+            dat = [list(map(list,zip(*dat)))[i][::-1] for i in range(len(dat[1]))]
+        names = self.get_col_headers(self.strip_headers(headers)) #returns a list of names in the order found in the data file.
+        data = pd.DataFrame(np.array(dat).T,columns = np.array(names).T, dtype='float64') #returns a pandas array with the data arranged into labelled columns
+        for column in sorted(data.columns): #sort by name so that analyzers are in correct (numerical) order
+            if not column.rfind('i0') == -1:
+                self.scans[scan_info[1]].monitor = data[column].values
+            if not column.rfind('__alt') == -1:
+                self.scans[scan_info[1]].energy = data[column].values
+            if not column.rfind('qixs') == -1:
+                qixs_list.append(column)
+        self.scans[scan_info[1]].signals = data[qixs_list].values
+        self.scans[scan_info[1]].errors  = np.sqrt(np.absolute(self.scans[scan_info[1]].signals))
+        if scan_info[2]=='elastic':
+            self.get_cenoms(file)
+            self.scans[scan_info[1]].eloss = np.subtract(self.scans[scan_info[1]].energy,self.scans[scan_info[1]].cenom)
+        elif scan_info[2]=='nixs' or scan_info[2]=='wide':
+            #create empty array with shape energy.v.signals
+            eloss = np.zeros(self.scans[scan_info[1]].signals.shape)
+            self.scans[scan_info[1]].tth = list(range(9,180,9)) #assign tth to each scan
+            self.tth = list(range(9,180,9)) #assign tth to self
+            if valid_elastic:
+                print('>>>>>>> VALID ELASTIC')
+                self.scans[scan_info[1]].eloss = np.subtract(self.scans[scan_info[1]].energy,self.scans['elastic%04d'%scan_info[0]].cenom)
+            elif not valid_elastic:
+                print('>>>>>>> NO VALID ELASTIC')
+                try:
+                    self.scans[scan_info[1]].eloss = np.subtract(self.scans[scan_info[1]].energy,self.cenom)
+                except:
+                    print('>> LERIX >> Reading a NIXS scan without any elastic scans reduces confidence in the result. LERIX is now taking E0 from the scan header file')
+                    scan_attrs = self.pull_id20attrs(self.strip_headers(headers)) #get scan_attrs
+                    self.scans[scan_info[1]].eloss = np.subtract(self.scans[scan_info[1]].energy,scan_attrs['e0'])
+        f.close()
+
+    def average_scans(self,scan_numbers='all'):
+        """Function to calculate the average eloss, energy, signals and errors over
+        all the read scans (default) or over a list of scans e.g. [1,3,5]"""
+        energy_running = []
+        signals_running = []
+        eloss_running = []
+        errors_running = []
+        if scan_numbers=='all':
+            for file in self.nixs_scans:
+                scan_info = self.scan_info(file)
+                energy_running.append(self.scans[scan_info[1]].energy)
+                signals_running.append(self.scans[scan_info[1]].signals)
+                eloss_running.append(self.scans[scan_info[1]].eloss)
+                errors_running.append(self.scans[scan_info[1]].errors)
+            self.energy = np.array([sum(a)/len(a) for a in zip(*energy_running)])
+            self.signals = np.array([sum(a)/len(a) for a in zip(*signals_running)])
+            self.eloss = np.array([sum(a)/len(a) for a in zip(*eloss_running)])
+            self.errors = np.array([sum(a)/len(a) for a in zip(*errors_running)])
+        elif type(scan_numbers) is list:
+            scan_numbers[:] = [x - 1 for x in scan_numbers] #scan 1 will be the 0th item in the list
+            chosen_scans = []
+            for number in scan_numbers:
+                scan_info = self.scan_info(self.nixs_scans[number])
+                chosen_scans.append(scan_info[1])
+            print("{} {}".format("Averaging scan numbers: ", chosen_scans))
+            for scan in chosen_scans:
+                energy_running.append(self.scans[scan_info[1]].energy)
+                signals_running.append(self.scans[scan_info[1]].signals)
+                eloss_running.append(self.scans[scan_info[1]].eloss)
+                errors_running.append(self.scans[scan_info[1]].errors)
+            self.energy = np.array([sum(a)/len(a) for a in zip(*energy_running)])
+            self.signals = np.array([sum(a)/len(a) for a in zip(*signals_running)])
+            self.eloss = np.array([sum(a)/len(a) for a in zip(*eloss_running)])
+            self.errors = np.array([sum(a)/len(a) for a in zip(*errors_running)])
+        else:
+            print("scan_numbers must be blank, 'all' or a list of scan numbers e.g.[1,3,5]")
+            sys.exit()
+
+    def get_resolutions(self,scan_numbers):
+        """Internal function to get the average resolution of each analyzer and
+        average to give a self.resolution over the 19 analyzers. Returns a Dictionary
+        of resolutions the mean and each analyser"""
+        eloss_running_elastic = []
+        signals_running_elastic = []
+        if scan_numbers=='all':
+            chosen_scans = []
+            for number in range(len(self.elastic_scans)):
+                scan_info = self.scan_info(self.elastic_scans[number])
+                chosen_scans.append(scan_info[3])
+        elif type(scan_numbers) is list:
+            scan_numbers[:] = [x - 1 for x in scan_numbers] #scan 1 will be the 0th item in the list
+            chosen_scans = []
+            for number in scan_numbers:
+                scan_info = self.scan_info(self.elastic_scans[number])
+                chosen_scans.append(scan_info[3])
+        else:
+            print('scan numbers must be a list of the scans with correct length')
+            return
+        #populate lists with eloss and signals and then find the average over the whole range
+        for file in chosen_scans:
+            scan_info = self.scan_info(file)
+            eloss_running_elastic.append(self.scans[scan_info[1]].eloss)
+            signals_running_elastic.append(self.scans[scan_info[1]].signals)
+        self.eloss_avg = np.array([sum(a)/len(a) for a in zip(*eloss_running_elastic)])
+        self.signals_avg = np.array([sum(a)/len(a) for a in zip(*signals_running_elastic)])
+        #take these average values and find the average FWHM for each analyzer and then find the total average
+        for file in chosen_scans:
+            resolution = []
+            skipped = []
+            for analyzer in range(19):
+                try:
+                    resolution.append(xrs_utilities.fwhm(self.eloss_avg, self.signals_avg[:,analyzer])[0])
+                    self.resolution['Analyzer%s'%analyzer] = resolution[analyzer]
+                except:
+                    skipped.append(analyzer+1)
+                    continue
+        if len(skipped) > 1:
+            print("{} {}".format("Skipped resolution for analyzer/s: ", list(set(skipped))))
+        self.resolution['Resolution'] = round(np.mean(resolution),3)
+
+    ################################################################################
+    # Begin the reading
+    ################################################################################
+    def load_experiment(self,dir,nixs_name='NIXS',wide_name='wide',elastic_name='elastic',scan_numbers='all',H5=False,H5path=None,sample_name=None):
+        """Function to load scan data from a typical APS 20ID Non-Resonant inelastic
+        X-ray scattering experiment. With data in the form of elastic.0001, allign.0001
+        and NIXS.0001. Function reteurns the averaged energy loss, signals, errors, E0
+        and 2theta angles for the scans in the chosen directory."""
+
+        #make sure the user inputs are all lower case for easy reading
+        self.nixs_name = str.lower(nixs_name)
+        self.wide_name = str.lower(wide_name)
+        self.elastic_name = str.lower(elastic_name)
+
+        #check dir location
+        if not self.isValidDir(dir):
+            print("{} {}".format(">> >> WARNING: ", "IO Error - check the directory name you have given"))
+            sys.exit()
+        else:
+            pass
+
+        #sort the directory so that scans are in order, determine number of scans
+        #open list to be filled with the elastic/nixs scan names
+        # number_of_scans = len(glob.glob(dir+'/'+self.nixs_name+'*'))-1 #removed because not called?!
+        self.elastic_scans = []
+        self.nixs_scans = []
+        self.wide_scans = []
+        #self.keys = {"eloss":np.array, "energy":np.array, "signals":np.array, "errors":np.array,"E0":np.float, "tth":np.array} #,"resolution":array }
+
+        #split scans into NIXS and elastic and begin instance of XRStools scan class for each scan
+        for file in self.sort_dir(dir):
+                scan_info = self.scan_info(file)
+                scan = xrs_scans.Scan()
+
+                if scan_info[2]=='elastic':
+                    self.elastic_scans.append(file)
+                    self.scans[scan_info[1]] = scan #self.scans {} in class _init_
+                    self.scans[scan_info[1]].scan_type = scan_info[2]
+                    self.scans[scan_info[1]].scan_number = scan_info[0]
+
+                if scan_info[2]=='nixs':
+                    self.nixs_scans.append(file)
+                    self.scans[scan_info[1]] = scan #self.scans {} in class _init_
+                    self.scans[scan_info[1]].scan_type = scan_info[2]
+                    self.scans[scan_info[1]].scan_number = scan_info[0]
+
+                if scan_info[2]=='wide':
+                    self.wide_scans.append(file)
+                    self.scans[scan_info[1]] = scan #self.scans {} in class _init_
+                    self.scans[scan_info[1]].scan_type = scan_info[2]
+                    self.scans[scan_info[1]].scan_number = scan_info[0]
+
+                else:
+                    continue
+
+        #read elastic scans first to calculate cenom
+        # reading all the elastics in the file to improve E0 accuracy and get a
+        # good grasp on the scan resolution
+        for file in self.elastic_scans:
+            scan_info = self.scan_info(file)
+            print("{} {}".format("Reading elastic scan: ", file))
+            self.readscan_20ID(dir + '/' + file)
+
+        print('I always read all the Elastic scans to improve Resolution and E0 Accuracy\n >> Type <class>.resolution to see the analyzer resolutions.')
+
+        #Read NIXS scans - if there isn't a corresponing elastic scan, subtract the
+        #running average cenoms and tell the user.
+        for file in self.nixs_scans:
+            scan_info = self.scan_info(file)
+            corresponding_elastic = dir+'/'+ self.elastic_name + str.lower(scan_info[3]).split(self.nixs_name)[1]
+            valid_elastic = os.path.isfile(corresponding_elastic)
+            if valid_elastic:
+                print("{} {}".format("Reading NIXS scan: ", file))
+            else:
+                print("{} {} {}".format(">> >> WARNING:", scan_info[1],"has no corresponding elastic - finding eloss by average elastic values!"))
+            self.readscan_20ID(dir + '/' + file, valid_elastic)
+
+        for file in self.wide_scans:
+            scan_info = self.scan_info(file)
+            print("{} {}".format("Reading wide scan named: ", file))
+            self.readscan_20ID(dir + '/' + file)
+
+        #call function to calculate the average values over the scans - all by default
+        self.average_scans(scan_numbers)
+        self.get_resolutions(scan_numbers)
+
+        #if the user asks, call function to write all info to H5 file
+        if H5:
+            if H5path==None:
+                H5path = dir
+            elif H5path:
+                if os.path.isdir(H5path):
+                    H5path = H5path
+                else:
+                    print('H5 path directory does not exist!')
+
+            if  not sample_name:
+                self.sample_name = '20ID_APS_data.H5'
+                H5name = self.sample_name
+            elif sample_name:
+                self.sample_name = sample_name
+                H5name = self.sample_name
+            else:
+                print('H5 sample name was not accepted')
+
+            saveloc = H5path+'/'+H5name
+
+            if os.path.isfile(saveloc):
+                H5file = h5py.File(saveloc, "a")
+            else:
+                H5file = h5py.File(saveloc, "w")
+
+            self.write_H5scanData(dir,H5file,H5name)
+            print("{} {}".format("Wrote scan data to H5 file: ", saveloc))
+
+        #let the user know the program has finished
+        print('Finished Reading!')

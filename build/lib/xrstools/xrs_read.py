@@ -2121,10 +2121,10 @@ class read_lerix:
             print("{} {}".format("Reading NIXS scan: ", file))
             self.readscan_20ID(exp_dir + '/' + file)
         #average the data over the chosen scans
-        self.energy   = np.array([self.scans[self.scan_info(i)[1]].energy  for i in chosen_scans]).mean(axis=0)
-        self.signals  = np.array([self.scans[self.scan_info(i)[1]].signals for i in chosen_scans]).mean(axis=0)
-        self.eloss    = np.array([self.scans[self.scan_info(i)[1]].eloss   for i in chosen_scans]).mean(axis=0)
-        self.errors   = np.array([self.scans[self.scan_info(i)[1]].errors  for i in chosen_scans]).mean(axis=0)
+        self.energy = np.array([self.scans[self.scan_info(i)[1]].energy for i in chosen_scans]).mean(axis=0)
+        self.signals = np.array([self.scans[self.scan_info(i)[1]].signals for i in chosen_scans]).mean(axis=0)
+        self.eloss = np.array([self.scans[self.scan_info(i)[1]].eloss for i in chosen_scans]).mean(axis=0)
+        self.errors = np.array([self.scans[self.scan_info(i)[1]].errors for i in chosen_scans]).mean(axis=0)
 
     def load_wides(self,exp_dir=None,scans='all',analyzers='all'):
         """Blah Blah"""
