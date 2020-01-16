@@ -24,18 +24,23 @@ Step 0 - Install conda -- [miniconda comes with less bulk](https://conda.io/en/l
 Step 1 - Install git and clone the XRStools repository:
 
     conda install git
+
     git clone git@github.com:LJRH/XRStools.git
+
     git checkout LERIX-working #this step for APS LERIX support
 
 Step 2 - Change directory to the cloned XRStools repo and create a new conda virtual environment called "xrstools":
 
     cd <...>/XRStools/
+
     conda create -n xrstools python=2.7 --file requirements.txt
 
 Step 3 - Install other required libraries including praxes's version of pymca (newer versions don't work yet):
 
     conda activate xrstools
+
     conda install -yc praxes pymca
+
     conda install -c conda-forge silx
 
 Step 4 - Intitiate XRStools (this might generate errors, ignore these.)
@@ -45,6 +50,7 @@ Step 4 - Intitiate XRStools (this might generate errors, ignore these.)
 Step 5 - Open iPython and check that you are able to load important modules:
 
     ipython
+    
     from XRStools import xrs_read xrs_utilities xrs_extraction
 
 With PIP
