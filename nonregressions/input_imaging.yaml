@@ -1,0 +1,108 @@
+help:
+#  superR_scal_deltaXimages
+#    create_rois
+#    "load_scans"
+
+create_rois:
+    active : 0
+    expdata :  "/data/id20/inhouse/data/run3_15/run6_ihr/hydra" 
+    scans   : [372]                  
+    roiaddress : "oggetto_imaging.hdf5:/ROI_F"
+    
+create_rois:
+    active : 0
+    expdata :  "/data/id20/inhouse/data/run3_15/run6_ihr/hydra" 
+    scans   : [273]                  
+    roiaddress : "demo_imaging.hdf5:/ROI_D"
+
+loadscan_2Dimages :
+     active : 0
+     roiaddress :  "demo_imaging.hdf5:/ROI_B_FIT8"                               # the same given in create_rois
+     expdata    :   '/data/id20/inhouse/data/run3_15/run6_ihr/hydra'        # this points to a spec file
+     scan_interval    :  [322,423]
+     # scan_interval    :  [372,373]
+     signaladdress : "images"                                               # Target group for writing Relative
+                                                                            #  to nameofroigroup/2Dimages (and in the same file)!!!!
+     sumto1D  : 0
+
+
+superR_scal_deltaXimages :
+  active : 0
+  sample_address : "demo_imaging.hdf5:ROI_B_FIT8/images/scans/"
+  delta_address  : "demo_imaging.hdf5:ROI_B_FIT8/scanXX/scans/Scan273/"
+  target_address         : "scalprods.hdf5:scal_prods/"
+  orig_delta_address  : "demo_imaging.hdf5:ROI_B/foil_scanXX/scans/Scan273/"
+
+  nbin           : 5                                # defaults to 1
+  # scan_interval    :  [322,423]
+  scan_interval    :  [322,354]
+  ## roi_keys       :  [60, 64, 35, 69, 34, 24, 5, 6, 71, 70, 39, 58, 56, 33]
+
+
+
+loadscan_2Dimages :
+     active : 0
+     roiaddress :  "demo.hdf5:/ROI_B_FIT8"                               # the same given in create_rois
+     expdata    :   '/data/id20/inhouse/data/run3_15/run6_ihr/hydra'        # this points to a spec file
+     scan_interval    :  [276,315]
+     signaladdress : "imagesalter"                                               # Target group for writing Relative
+                                                                            #  to nameofroigroup/2Dimages (and in the same file)!!!!
+     sumto1D  : 0
+
+loadscan_2Dimages :
+     active : 0
+     roiaddress :  "demo.hdf5:/ROI_B_FIT8"                               # the same given in create_rois
+     expdata    :   '/data/id20/inhouse/data/run3_15/run6_ihr/hydra'        # this points to a spec file
+     scan_interval    :  [273,274]
+     # scan_interval    :  [372,375]
+     signaladdress : "diracs"                                               # Target group for writing Relative
+                                                                            #  to nameofroigroup/2Dimages (and in the same file)!!!!
+     sumto1D  : 0
+     energycolumn : 'stx'
+
+
+loadscan_2Dimages :
+     active : 0
+     roiaddress :  "test_imaging.hdf5:/ROI_A"                               # the same given in create_rois
+     expdata    :   '/data/id20/inhouse/data/run3_15/run6_ihr/hydra'        # this points to a spec file
+     # scan_interval    :  [273,274]
+     scan_interval    :  [372,423]
+     signaladdress : "imagesd"                                               # Target group for writing Relative
+                                                                            #  to nameofroigroup/2Dimages (and in the same file)!!!!
+     sumto1D  : 1
+     energycolumn : 'sty'
+
+
+volume_from_2Dimages :
+     active : 0
+     imagesaddress :  "test_imaging.hdf5:/ROI_A/imagesd"  # where the data have been extracted
+     scan_interval    :  [372,423]                    # optional : can be shorter
+     # roi_n            : 0           # OPTIONAL. if not given, the first non empty found roi. Starts from 0
+     volumeaddress : "volume_file.hdf5:/volume/data2"  # OPTIONAL. the target destination for volume. if not given mayavi is launched on the fly.
+
+view_Volume_myavi:
+    active : 1
+    # volumeaddress : "volume_file.hdf5:/volume/data2"  # the target destination for volume. 
+    volumeaddress : "/scisoft/users/mirone/Volume.h5:/Volume_allgoods_15iters_beta1.0em8"
+
+loadscan_2Dimages :
+     active : 0
+     roiaddress :  "demo_imaging.hdf5:/ROI_B"                               # the same given in create_rois
+     expdata    :   '/data/id20/inhouse/data/run3_15/run6_ihr/hydra'        # this points to a spec file
+     scan_interval    :  [270,271]
+     signaladdress : "foil_scanY"                                               # Target group for writing Relative
+                                                                               #  to nameofroigroup/2Dimages (and in the same file)!!!!
+     sumto1D  : 0
+
+loadscan_2Dimages :
+     active : 0
+     roiaddress :  "demo_imaging.hdf5:/ROI_B"   # "demo_imaging.hdf5:/ROI_A"                               # the same given in create_rois
+     expdata    :   '/data/id20/inhouse/data/run3_15/run6_ihr/hydra'        # this points to a spec file
+     scan_interval    :  [273,274]
+     signaladdress : "foil_scanXX"                                               # Target group for writing Relative
+                                                                                #  to nameofroigroup/2Dimages (and in the same file)!!!!
+
+     monitorcolumn  :  "nessuno"
+     sumto1D  : 0
+     energycolumn : 'stx'
+     

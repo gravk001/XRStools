@@ -1,0 +1,11 @@
+numpy
+h5py
+mpi4py
+PyYAML
+six
+fabio
+matplotlib
+scipy
+numexpr
+pymca
+silx>=0.9

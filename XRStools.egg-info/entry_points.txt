@@ -1,0 +1,6 @@
+[console_scripts]
+XRS_raman_extraction = XRStools.ramanWidget.MainWindow:main
+XRS_roiNmaSelection = XRStools.roiNmaSelectionGui.roiNmaSelectionWidget:main
+XRS_swissknife = XRStools.XRS_swissknife:main
+XRS_wizard = XRStools.WIZARD.XRS_wizard:main
+

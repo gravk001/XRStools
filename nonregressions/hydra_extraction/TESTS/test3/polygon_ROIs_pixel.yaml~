@@ -1,0 +1,22 @@
+help:
+  "Hydra_extraction"
+
+Hydra_extraction :
+  active : 1
+
+  data :
+    path : '/data/id20/inhouse/data/run3_16/run4_es431/'
+
+  rois :
+    scan_number     : 30
+    roi_type        : poly
+
+  scans :
+    method          : 1
+    scan_numbers    : [30, 31, 32, 33]
+    scan_types      : [elastic, long, edge1, edge2]
+    include_elastic : True
+
+  output :
+    format    : 'hdf5'
+    file_name : '/home/christoph/Documents/scratch/SiO2_stishovite_pixel_by_pixel.h5'

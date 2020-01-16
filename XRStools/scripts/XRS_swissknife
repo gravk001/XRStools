@@ -1,0 +1,5 @@
+#!python
+if __name__ == '__main__':
+    import XRStools as XRStools
+    import XRStools.XRS_swissknife
+    XRStools.XRS_swissknife.main()

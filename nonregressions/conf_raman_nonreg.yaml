@@ -1,0 +1,64 @@
+selected_scans :
+    elastic : [611, 615, 619, 623]
+    ok0 : [628]
+    ok1 : [612, 616, 620, 624]
+    ok2 : [613, 617, 621, 625]
+    ok3 : [614, 618, 622, 626]
+selected_subsets :
+    lowq : [1.0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59]
+    mediumq : [1.0, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
+    highq : [1.0, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71]
+selected_acquisition :
+    method : sum
+    refscan : 611
+    include_elastic : True
+    output_prefix : non_reg_output_gui_raman
+selected_experiment :
+    specfile_name : /data/id20/inhouse/data/run5_17/run7_ihr/hydra
+    roifile_address : sp_roi.h5:/spectral_roi_from_selector/
+selected_edges :
+     formula : [['H2O', '1.0']]
+     edges : {'O': ['K']}
+plots :
+    lowq   :
+        hfcore_shift : -5.0
+        pea_center : 7.526853e+01
+        pea_width : 6.523245e+01
+        pea_shape : 1.119493e+00
+        pea_height : 1.755123e+09
+        lin_back0 : 3.382474e-14
+        lin_back1 : 8.366045e+05
+        hf_factor : 1.990498e+09
+        ICR :   [-6.556967e+01,7.814317e+02]
+        range1 :   [1.000000e+02,5.000000e+02]
+        range2 :   [5.500000e+02,5.940000e+02]
+        Output :   [4.570000e+02,5.770000e+02]
+        Norm :   [5.160000e+02,5.530000e+02]
+    mediumq   :
+        hfcore_shift : -5.0
+        pea_center : 9.391416e+01
+        pea_width : 1.632100e+02
+        pea_shape : 2.607944e+00
+        pea_height : 2.924899e+09
+        lin_back0 : 7.168805e-16
+        lin_back1 : 1.286811e+07
+        hf_factor : 2.263246e+09
+        ICR :   [-6.556967e+01,7.814317e+02]
+        range1 :   [1.000000e+02,5.000000e+02]
+        range2 :   [5.500000e+02,5.940000e+02]
+        Output :   [4.570000e+02,5.770000e+02]
+        Norm :   [5.160000e+02,5.530000e+02]
+    highq   :
+        hfcore_shift : -5.0
+        pea_center : 3.422024e+02
+        pea_width : 2.487023e+02
+        pea_shape : 1.559654e+01
+        pea_height : 3.424977e+09
+        lin_back0 : 1.361906e-08
+        lin_back1 : 1.958734e+08
+        hf_factor : 4.059763e+09
+        ICR :   [-6.556967e+01,7.814317e+02]
+        range1 :   [1.000000e+02,5.000000e+02]
+        range2 :   [5.500000e+02,5.940000e+02]
+        Output :   [4.570000e+02,5.770000e+02]
+        Norm :   [5.160000e+02,5.530000e+02]

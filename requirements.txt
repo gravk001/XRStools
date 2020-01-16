@@ -1,0 +1,14 @@
+numpy
+mpi4py
+#PyMca5 >=5.1
+h5py
+PyYAML
+cython
+fabio
+scipy
+matplotlib
+numexpr
+pandas #added for read_lerix support
+#git+https://github.com/silx-kit/silx.git/master
+six
+#sklearn

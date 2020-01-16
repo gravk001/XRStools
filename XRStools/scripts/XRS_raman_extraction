@@ -1,0 +1,5 @@
+#!python
+if __name__ == '__main__':
+    import XRStools as XRStools
+    from  XRStools.ramanWidget.MainWindow import main 
+    main()

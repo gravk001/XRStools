@@ -1,0 +1,7 @@
+#!python
+if __name__ == '__main__':
+    import XRStools as XRStools
+    import XRStools.WIZARD.XRS_wizard as XRS_wizard
+    XRS_wizard.version = XRStools.version
+    XRS_wizard.Wizard.version = XRStools.version
+    XRStools.WIZARD.XRS_wizard.main()

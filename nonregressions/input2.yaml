@@ -1,0 +1,76 @@
+help:
+   "load_scans"
+
+create_rois:
+    active : 1
+    expdata :  "/scisoft/users/mirone/WORKS/Christoph/for_alessandro/hydra" 
+    scans   : [623]                  
+    roiaddress : "test.hdf5:/ROI_C"
+
+load_scans :
+    active : 0
+    roiaddress :  "test.hdf5:/ROI_A"  
+    expdata    :  "/scisoft/users/mirone/WORKS/Christoph/for_alessandro/hydra"  
+    elastic_scans    : [623]
+    fine_scans       : [625,629,633,637,641]
+    n_loop           : 1
+    long_scan        : 624
+    order : [0,1,2,3,4,5]
+    signaladdress : "loaded_datas"  
+
+
+    rvd : -41              # mean tth angle of HL module (default is 0.0)
+    rvu : 85               # mean tth angle of HR module (default is 0.0)
+    rvb : 121.8            # mean tth angle of HB module (default is 0.0)
+    rhl : 41.0             # mean tth angle of VD module (default is 0.0)
+    rhr : 41.0             # mean tth angle of VU module (default is 0.0)
+    rhb : 121.8            # mean tth angle of VB module (default is 0.0)
+    #
+
+
+HFspectrum :
+    active : 0
+    dataadress : "test.hdf5:/ROI_A/loaded_datas"   # where load_scans wrote data
+    formulas   :  ['O']     # list of strings of chemical sum formulas of which the sample is made up
+    concentrations : [1.0]  # list of concentrations of how the different chemical formulas are mixed (sum should be 1)
+    correctasym    : [[0.0,0.0,0.0]]  #  single value or list of scaling values for the HR-correction to 
+                                      # the 1s, 2s, and 2p shells. one value per element in the list of formulas
+    hfspectrum_address : "HF_O" # Target group for writing Relative to dataadress (and in the same file)!!!!
+
+
+Extraction :
+    active : 0
+
+    dataadress   : "test.hdf5:/ROI_A/loaded_datas"   # where load_scans wrote data
+    hfspectrum_address    : "test.hdf5:/ROI_A/loaded_datas/HF_O"
+    # prenormrange : [ 5 , .inf ]		
+
+    analyzerAverage :
+        active : 1
+        which : [0,11  , 36,59   ]
+        errorweighing  : False
+
+    removeLinearAv :
+        active  : 1
+        region1 :  [520.0,532.0]   
+        region2 :  None 
+        ewindow : 100 
+        scale : 1
+
+    removePearsonAv:
+        active  : 0
+        region1 :  [520.0,532.0]   
+        region2 :  None  
+        guess :
+            Peak_position : 600.0
+            FWHM          :  10
+            Shape         : "Lorentzian" 
+            Peak_intensity: 100.0
+            linear_slope  : 1
+            linear_background : 0
+            scaling_factor : 1
+            
+    view : True
+   
+
+    target :   "myextraction"

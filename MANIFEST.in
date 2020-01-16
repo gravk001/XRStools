@@ -1,0 +1,4 @@
+recursive-include XRStools *.h *.c *.cu   *cpp *.cc *.hpp
+recursive-include doc *
+recursive-include data *
+include MANIFEST.in
