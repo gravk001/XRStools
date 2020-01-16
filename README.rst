@@ -21,6 +21,7 @@ Conda installation is buggy but works but definitely works on Ubuntu (my main dr
 
 Step 0 - Install conda -- [miniconda comes with less bulk](https://conda.io/en/latest/miniconda.html)
 Step 1 - Install git and clone the XRStools repository:
+
 ```shell
     conda install git
     git clone git@github.com:LJRH/XRStools.git
@@ -28,24 +29,32 @@ Step 1 - Install git and clone the XRStools repository:
 ```
 
 Step 2 - Change directory to the cloned XRStools repo and create a new conda virtual environment called "xrstools":
+
 ```shell
     cd <...>/XRStools/
     conda create -n xrstools python=2.7 --file requirements.txt
 ```
+
 Step 3 - Install other required libraries including praxes's version of pymca (newer versions don't work yet):
+
 ```shell
     conda activate xrstools
     conda install -yc praxes pymca
     conda install -yc conda-forge silx
 ```
+
 Step 4 - Intitiate XRStools (this might generate errors, ignore these.)
+
 ```shell
     python setup.py install [--user]
 ```
+
 Step 5 - Open iPython and check that you are able to load important modules:
+
 ```shell
     ipython
 ```
+
 ```python
     from XRStools import xrs_read xrs_utilities xrs_extraction
 ```
