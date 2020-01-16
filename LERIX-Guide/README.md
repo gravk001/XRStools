@@ -97,20 +97,28 @@ Dictionary of 'read_lerix' functions
 Variable      | Type   |  Description
 ------------- | ------ | -------------
 exp_dir       | String | Unix path to location of directory containing nrixs, elastic and wide scans.
-energy_column | string | default='energy', a part of the header name of the ASCII column holding the energy data.
-monitorcolumn | string | default= "__ enc", a part of the header name of the ASCII column holding the monitor (I0) data. (Note M.B reccomends using the encoded channel.)
-NIXS_name     | string | default= "nixs", name of the files containing nixs data.
-elastic_name  | string | default= "elastic", name of the files containing elastic data.
-wide_name  | string | default= "wide", name of the files containing wide data.
+energy_column | string | `default='energy'`, a part of the header name of the ASCII column holding the energy data.
+monitorcolumn | string | `default= "__ enc"`, a part of the header name of the ASCII column holding the monitor (I0) data. (Note M.B reccomends using the encoded channel.)
+NIXS_name     | string | `default= "nixs"`, name of the files containing nixs data.
+elastic_name  | string | `default= "elastic"`, name of the files containing elastic data.
+wide_name  | string |`default= "wide"`, name of the files containing wide data.
 
 ## read_lerix.load_elastics(self,exp_dir=None,scans='all',analyzers='all')
 Module to load the `elastic_scans` and analyse them to produce the average E0 and FWHM for each analyzer/crystal pair. Rejects scans that do not meet 500 counts per seconda or have more than 5000 cps, as this is the range of linearity of the detectors. Loads all the elastic scans in the experiment directory by default.
 
 Variable      | Type   |  Description
 ------------- | ------ | -------------
-exp_dir       | String | default=None; typically the elastic scans are in the main directory, can be changed to load elastic scans from another directory.
+exp_dir       | String | `default=None`; typically the elastic scans are in the main directory, can be changed to load elastic scans from another directory.
 scans         | String/List | default='all'; It is possible to load a list of scans e.g. [1,2,5] where 1 is scan .0001.
-analyzers     | String/List | default='all'; Usually imports all the elastic scans, this is important because they are typically collected with different filters to protect the detectors. However a list of elastic scans to use can be given e.g. [1,2,5]
+analyzers     | String/List | `default='all'`; Usually imports all the elastic scans, this is important because they are typically collected with different filters to protect the detectors. However a list of elastic scans to use can be given e.g. [1,2,5]
+
+## read_lerix.update_cenom(self, analyzers="all")
+Updates the `cenom_dict` for a set of selected analyzer crystals e.g. `[0,2,18]`. Before performing Compton subtraction, this should be run with "all" otherwise the subtraction will produce an error.
+
+Variable      | Type   |  Description
+------------- | ------ | -------------
+analyzers     | String/list | `default='all'`; Chosen analyzers could be a list e.g. `[0,2,18]`.
+
 
 ## read_lerix.load_nixs(self,exp_dir=None,scans='all',analyzers='all')
 Module to load the `nixs_scans` into XRStools.
@@ -130,9 +138,35 @@ exp_dir       | String | `default=None`; typically the NIXS scans are in the mai
 scans         | String/List | `default='all'`; It is possible to load a list of scans e.g. [1,2,5] where 1 is scan .0001.
 analyzers     | String/List | `default='all'`; It is possible to load a list of scans e.g. [1,2,5] where 1 is scan .0001.
 
-## read_lerix.join_nixs_wide(self,scaling='auto'):
+## read_lerix.join_nixs_wide(self,scaling='auto')
 Joins together the loaded nixs_scans and wide_scans so that the compton (below edge) AND the nixs scans become one. This is important for compton subtraction.  TO DO: works but is ugly and can be shortened with a sensible loop.
 
 Variable      | Type   |  Description
 ------------- | ------ | -------------
 scaling       | String/Float | `default='auto'`; scales wide to nixs data can be `auto`, `none` or a `Float`. If a float is given the Wide part of the data is multiplied by the float in order to avoid 'gaps' in intensity at the join between the wide and nixs data.
+
+## read_lerix.scan_info(self, f):
+Gets the scan number, name, type and file extention for a filename or path. The scan assumes typical format e.g. elastic.0001, nixs.0001
+returns:
+[0] -> scan number (e.g. 0001)
+[1] -> scan name (e.g. nixs0001)
+[2] -> scan_type (e.g. nixs)
+[3] -> file name (e.g. nixs.0001)"""
+
+Variable      | Type   |  Description
+------------- | ------ | -------------
+f             | String | Filename or path to a scan, returns useful information.
+
+## read_lerix.save_H5(self,H5name='20ID_APS_data.H5')
+Saves all the loaded data as a H5 file. Works but could do with some refinement, e.g. saving the background subtracted data as well.
+
+Variable      | Type   |  Description
+------------- | ------ | -------------
+H5name        | String | `default='20ID_APS_data.H5'`; Automatically saves the H5 file in the `self.path` location and appends the H5name as the filename.
+
+## read_lerix.plot_data(self,analyzer=False)
+Plots a GUI with radio-buttons able to show the data for each analyzer, can be a quick tool for choosing the best scans/analysers to use - but is not very well developed and uses pyqt=4.
+
+Variable      | Type   |  Description
+------------- | ------ | -------------
+Analyzer      | String | `default='False'`; Tool to plot each analyzer individually, choose analyzer as 'Analyzer01' etc.
