@@ -1,6 +1,6 @@
 numpy
 mpi4py
-#PyMca5 >=5.1
+#PyMca5 =5.1
 h5py
 PyYAML
 cython
