@@ -76,6 +76,7 @@ perform a system wide installation.
 Documentation
 -------------
 
+Documentation & an example for [using XRStools with APS LERIX can be found here](https://github.com/LJRH/XRStools/tree/LERIX-working/LERIX-Guide).
 Documentation can be build using this command and Sphinx (installed on your computer)::
 
     python setup.py build build_doc
