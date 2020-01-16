@@ -1,4 +1,4 @@
-XRStools
+XRStools (with APS LERIX support)
 ===========================================
 
 Main development website: https://gitlab.esrf.fr/mirone/XRStools
@@ -20,6 +20,7 @@ With Conda (recommended)
 Conda installation is buggy but works but definitely works on Ubuntu (my main driver) and has been tested on Windows/MacOS, but is still development code (BEWARE). Tested with conda version: 4.7.12
 
 Step 0 - Install conda -- [miniconda comes with less bulk](https://conda.io/en/latest/miniconda.html)
+
 Step 1 - Install git and clone the XRStools repository:
 
 ```shell
