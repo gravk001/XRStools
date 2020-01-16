@@ -3250,7 +3250,7 @@ def get_scans_pw(id20read_object,scannumbers):
 class read_lerix:
     def __init__(self,exp_dir,elastic_name='elastic',nixs_name='nixs',wide_name='wide',energycolumn='energy',monitorcolumn='__enc'):
         self.scans         = {} # was a dictionary before
-        self.path          = os.path.abspath(os.path.split(exp_dir)[0] + '/')
+        self.path          = os.path.abspath(os.path.split(exp_dir)[0])
         self.monicolumn    = monitorcolumn
         self.encolumn      = energycolumn
         self.nixs_name, self.nixs_scans       = nixs_name, []
@@ -3521,13 +3521,13 @@ class read_lerix:
         if not os.path.isdir(dir):
             print('Check the directory you have supplied')
             return False
-        elif not os.path.isfile(dir+'/'+self.elastic_name+'.0001'):
+        elif not os.path.isfile(os.path.join(dir, self.elastic_name+'.0001')):
             print("The directory you supplied does not have a elastic.0001 file!!! \n If your elastic scan has a different name, please specify as: 'elastic_name'")
             return False
-        elif not os.path.isfile(dir+'/'+self.nixs_name+'.0001'):
+        elif not os.path.isfile(os.path.join(dir, self.nixs_name+'.0001')):
             print("The directory you supplied does not have a NIXS.0001 file!!! \n If your raman scan has a different name, please specify as: 'NIXS_name'")
             return False
-        elif not os.path.isfile(dir+'/'+self.wide_name+'.0001'):
+        elif not os.path.isfile(os.path.join(dir, self.wide_name+'.0001')):
             print("No wide scans found. Continuing...")
             return True
         else:

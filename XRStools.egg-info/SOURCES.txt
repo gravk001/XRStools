@@ -39,9 +39,7 @@ XRStools/xrs_calctools.py
 XRStools/xrs_extraction.py
 XRStools/xrs_fileIO.py
 XRStools/xrs_imaging.py
-XRStools/xrs_lerixs.py
 XRStools/xrs_prediction.py
-XRStools/xrs_read.old.py
 XRStools/xrs_read.py
 XRStools/xrs_resolution.py
 XRStools/xrs_rois.py
