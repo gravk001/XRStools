@@ -1,0 +1,38 @@
+\tocdepth@munge 
+\contentsline {section}{\numberline {}Contents}{1}{section*.1}% 
+\tocdepth@restore 
+\contentsline {section}{\numberline {}Introduction}{2}{section*.2}% 
+\contentsline {section}{\numberline {}Installation}{2}{section*.3}% 
+\contentsline {section}{\numberline {}Planning}{2}{section*.4}% 
+\contentsline {subsection}{\numberline {}using an input file}{2}{section*.5}% 
+\contentsline {subsubsection}{\numberline {}Detector}{3}{section*.6}% 
+\contentsline {subsubsection}{\numberline {}Analyzer}{3}{section*.7}% 
+\contentsline {subsubsection}{\numberline {}Sample}{4}{section*.8}% 
+\contentsline {subsubsection}{\numberline {}Polarization}{4}{section*.9}% 
+\contentsline {subsubsection}{\numberline {}X-ray beam}{4}{section*.10}% 
+\contentsline {subsubsection}{\numberline {}Output}{4}{section*.11}% 
+\contentsline {subsubsection}{\numberline {}Outlook}{4}{section*.12}% 
+\contentsline {subsection}{\numberline {}using the command line}{5}{section*.13}% 
+\contentsline {section}{\numberline {}Getting started with the command line}{5}{section*.14}% 
+\contentsline {section}{\numberline {}Performing}{5}{section*.15}% 
+\contentsline {subsection}{\numberline {}Sample alignment}{5}{section*.16}% 
+\contentsline {subsection}{\numberline {}raw data, quick and dirty}{6}{section*.17}% 
+\contentsline {subsubsection}{\numberline {}starting up}{6}{section*.18}% 
+\contentsline {subsubsection}{\numberline {}selecting the ROIs}{7}{section*.19}% 
+\contentsline {paragraph}{\numberline {}Zoom ROIs}{7}{section*.20}% 
+\contentsline {paragraph}{\numberline {}Line ROIs}{7}{section*.21}% 
+\contentsline {paragraph}{\numberline {}Polygon ROIs}{8}{section*.22}% 
+\contentsline {paragraph}{\numberline {}Automatic ROIs}{8}{section*.23}% 
+\contentsline {paragraph}{\numberline {}Saving and loading ROIs from files}{8}{section*.24}% 
+\contentsline {subsubsection}{\numberline {}loading the data}{8}{section*.25}% 
+\contentsline {subsubsection}{\numberline {}plotting}{9}{section*.26}% 
+\contentsline {section}{\numberline {}a closer look}{9}{section*.27}% 
+\contentsline {section}{\numberline {}Analysis}{10}{section*.28}% 
+\contentsline {subsection}{\numberline {}raw data}{10}{section*.29}% 
+\contentsline {subsection}{\numberline {}the theory module}{10}{section*.30}% 
+\contentsline {subsection}{\numberline {}background subtraction}{10}{section*.31}% 
+\contentsline {section}{\numberline {}Imaging}{10}{section*.32}% 
+\contentsline {section}{\numberline {}outlook}{11}{section*.33}% 
+\appendix 
+\contentsline {section}{\numberline {}\texttt {xrs\_prediction} template}{11}{section*.34}% 
+\contentsline {section}{\numberline {}References}{12}{section*.35}% 

@@ -1,0 +1,30 @@
+\BOOKMARK [1][-]{section*.1}{Contents}{}% 1
+\BOOKMARK [1][-]{section*.2}{Introduction}{}% 2
+\BOOKMARK [1][-]{section*.3}{Installation}{}% 3
+\BOOKMARK [1][-]{section*.4}{Planning}{}% 4
+\BOOKMARK [2][-]{section*.5}{using an input file}{section*.4}% 5
+\BOOKMARK [3][-]{section*.6}{Detector}{section*.5}% 6
+\BOOKMARK [3][-]{section*.7}{Analyzer}{section*.5}% 7
+\BOOKMARK [3][-]{section*.8}{Sample}{section*.5}% 8
+\BOOKMARK [3][-]{section*.9}{Polarization}{section*.5}% 9
+\BOOKMARK [3][-]{section*.10}{X-ray beam}{section*.5}% 10
+\BOOKMARK [3][-]{section*.11}{Output}{section*.5}% 11
+\BOOKMARK [3][-]{section*.12}{Outlook}{section*.5}% 12
+\BOOKMARK [2][-]{section*.13}{using the command line}{section*.4}% 13
+\BOOKMARK [1][-]{section*.14}{Getting started with the command line}{}% 14
+\BOOKMARK [1][-]{section*.15}{Performing}{}% 15
+\BOOKMARK [2][-]{section*.16}{Sample alignment}{section*.15}% 16
+\BOOKMARK [2][-]{section*.17}{raw data, quick and dirty}{section*.15}% 17
+\BOOKMARK [3][-]{section*.18}{starting up}{section*.17}% 18
+\BOOKMARK [3][-]{section*.19}{selecting the ROIs}{section*.17}% 19
+\BOOKMARK [3][-]{section*.25}{loading the data}{section*.17}% 20
+\BOOKMARK [3][-]{section*.26}{plotting}{section*.17}% 21
+\BOOKMARK [1][-]{section*.27}{a closer look}{}% 22
+\BOOKMARK [1][-]{section*.28}{Analysis}{}% 23
+\BOOKMARK [2][-]{section*.29}{raw data}{section*.28}% 24
+\BOOKMARK [2][-]{section*.30}{the theory module}{section*.28}% 25
+\BOOKMARK [2][-]{section*.31}{background subtraction}{section*.28}% 26
+\BOOKMARK [1][-]{section*.32}{Imaging}{}% 27
+\BOOKMARK [1][-]{section*.33}{outlook}{}% 28
+\BOOKMARK [1][-]{section*.34}{xrs\137prediction template}{}% 29
+\BOOKMARK [1][-]{section*.35}{References}{}% 30
