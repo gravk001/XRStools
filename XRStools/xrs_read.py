@@ -3675,14 +3675,12 @@ class read_lerix:
         X-ray scattering experiment. With data in the form of elastic.0001, allign.0001
         and NIXS.0001. Function reteurns the averaged energy loss, signals, errors, E0
         and 2theta angles for the scans in the chosen directory."""
-        scann = []
         if exp_dir is None:
             exp_dir = self.path
         if scans is 'all':
             chosen_scans = self.elastic_scans
         elif isinstance(scans,list):
-            scann[:] = [x - 1 for x in scans] #scan 1 will be the 0th item in the list
-            chosen_scans = [self.nixs_scans[i] for i in scann]
+            chosen_scans = [self.elastic_scans[i] for i in scans]
         else:
             print("scans must be list of scan numbers (e.g. [1,2,3]) or all")
         for file in chosen_scans:
@@ -3693,14 +3691,12 @@ class read_lerix:
 
     def load_nixs(self,exp_dir=None,scans='all',analyzers='all'):
         """Blah Blah"""
-        scann = []
         if exp_dir is None:
             exp_dir = self.path
         if scans is 'all':
             chosen_scans = self.nixs_scans
         elif isinstance(scans,list):
-            scann[:] = [x - 1 for x in scans] #scan 1 will be the 0th item in the list
-            chosen_scans = [self.nixs_scans[i] for i in scann]
+            chosen_scans = [self.nixs_scans[i] for i in scans]
         else:
             print("scans must be list of scan numbers (e.g. [1,2,3]) or all")
         for file in chosen_scans:
@@ -3715,14 +3711,12 @@ class read_lerix:
 
     def load_wides(self,exp_dir=None,scans='all',analyzers='all',join=False):
         """Blah Blah"""
-        scann = []
         if exp_dir is None:
             exp_dir = self.path
         if scans is 'all':
             chosen_scans = self.wide_scans
         elif isinstance(scans,list):
-            scann[:] = [x - 1 for x in scans] #scan 1 will be the 0th item in the list
-            chosen_scans = [self.nixs_scans[i] for i in scann]
+            chosen_scans = [self.wide_scans[i] for i in scans]
         else:
             print("scans must be list of scan numbers (e.g. [1,2,3]) or all")
         for file in chosen_scans:
