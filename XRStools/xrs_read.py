@@ -3493,17 +3493,12 @@ class read_lerix:
     def sort_dir(self, path=None):
         """Returns a list of directory contents after filtering out scans without
         the correct format or size e.g. 'elastic.0001, nixs.0001 '"""
-        dir_scans = []
         if not path: # allows sort_dir() to be called without a path.
             path = self.path
         # regular expression search for *.[0-9][0-9][0-9][0-9] in path if is a file (therfore not dir)
         res = [f for f in os.listdir(path) if (re.search(r".[0-9]{4}",f)) and (os.path.isfile(os.path.join(path,file)))]
         # search results for files inside size limits then select those which meet nixs_name elastic_name etc and sort into alphanum order.
-        for file in res:
-            if not (os.stat(os.path.join(path,file)).st_size > 7000)*(os.stat(os.path.join(path,file)).st_size < 1E5):
-                sorted_dir = sorted([f for f in res if any(iter([self.nixs_name,self.elastic_name,self.wide_name]))])
-            else:
-                print('file:\n',file,'\nfalls outside of file size limits and is being ignored. (xrs_read L3493)')
+        sorted_dir = sorted([file for file in res if os.path.splitext(file)[0] in [graphite.elastic_name,graphite.nixs_name,graphite.wide_name]])
         return sorted_dir
 
     def isValidDir(self,dir):
