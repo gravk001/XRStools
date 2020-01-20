@@ -3248,18 +3248,19 @@ def get_scans_pw(id20read_object,scannumbers):
     return pw_matrices_norm
 
 class read_lerix:
-    def __init__(self,exp_dir,elastic_name='elastic',nixs_name='nixs',wide_name='wide',energycolumn='energy',monitorcolumn='__enc'):
+    def __init__(self,exp_dir,elastic_name='elastic',nixs_name='nixs',wide_name='wide',energycolumn=25,monitorcolumn=4,ancolumns=range(6,25)):
         self.scans         = {} # was a dictionary before
         self.path          = os.path.abspath(os.path.split(exp_dir)[0])
         self.monicolumn    = monitorcolumn
         self.encolumn      = energycolumn
+        self.ancolumns     = ancolumns
         self.nixs_name, self.nixs_scans       = nixs_name, []
         self.wide_name, self.wide_scans       = wide_name, []
         self.elastic_name, self.elastic_scans = elastic_name, []
         #split scans into NIXS and elastic and begin instance of XRStools scan class for each scan
         if not self.isValidDir(self.path):
             raise Exception('IOError! No such directory, please check directory.')
-        for file in self.sort_dir(self.path):
+        for file in self.sort_dir():
                 scan_info = self.scan_info(file)
                 if scan_info[2]=='elastic':
                     self.elastic_scans.append(file)
@@ -3489,29 +3490,15 @@ class read_lerix:
         scan_name = scan_type + '%04d' %scan_number
         return(scan_number, scan_name, scan_type, f)
 
-    def sort_dir(self, dir):
+    def sort_dir(self, path=None):
         """Returns a list of directory contents after filtering out scans without
         the correct format or size e.g. 'elastic.0001, nixs.0001 '"""
-        dir_scans = []
-        for file in os.listdir(dir):
-            file_lc = str.lower(file)
-            fn,fext = os.path.splitext(file_lc)
-            if not file_lc.startswith('.'):
-                    if fext.lstrip('.').isdigit():
-                        if not os.stat(dir + '/' + file).st_size > 7000:
-                            print("{} {}".format(">> >> Warning!! skipped empty scan (<7KB): ", file))
-                            continue
-                        elif not os.stat(dir + '/' + file).st_size < MAX_FILESIZE:
-                            print("{} {}".format(">> >> Warning!! skipped huge scan (>100MB): ", file))
-                            continue
-                        else:
-                            if fn==self.nixs_name:
-                                dir_scans.append(file)
-                            elif fn==self.elastic_name:
-                                dir_scans.append(file)
-                            elif fn==self.wide_name:
-                                dir_scans.append(file)
-        sorted_dir = sorted(dir_scans, key=lambda x: os.path.splitext(x)[1])
+        if not path: # allows sort_dir() to be called without a path.
+            path = self.path
+        # regular expression search for *.[0-9][0-9][0-9][0-9] in path if is a file (therfore not dir)
+        res = [f for f in os.listdir(path) if (re.search(r".[0-9]{4}",f)) and (os.path.isfile(os.path.join(path,file)))]
+        # search results for files inside size limits then select those which meet nixs_name elastic_name etc and sort into alphanum order.
+        sorted_dir = sorted([file for file in res if os.path.splitext(file)[0] in [graphite.elastic_name,graphite.nixs_name,graphite.wide_name]])
         return sorted_dir
 
     def isValidDir(self,dir):
@@ -3618,16 +3605,12 @@ class read_lerix:
             dat = [list(map(list,zip(*dat)))[i][::-1] for i in range(len(dat[1]))]
         names = self.get_col_headers(self.strip_headers(headers)) #returns a list of names in the order found in the data file.
         data = pd.DataFrame(np.array(dat).T,columns = np.array(names).T, dtype='float64') #returns a pandas array with the data arranged into labelled columns
-        for column in sorted(data.columns): #sort by name so that analyzers are in correct (numerical) order
-            if not column.rfind('i0') == -1:
-                tmp_monitor = np.array(data[column].values)
-            if not column.rfind('__enc') == -1:
-                tmp_energy = np.array(data[column].values)
-            if not column.rfind('qixs') == -1:
-                qixs_list.append(column)
-        tmp_signals = np.array(data[qixs_list].values)
-        tmp_errors = np.sqrt(np.absolute(tmp_signals))
-        scan_attrs = self.pull_id20attrs(self.strip_headers(headers)) #get scan_attrs
+        data = np.delete(data.values,np.where(np.diff(data.values[:,self.encolumn]) < 0),axis=0) # Energy values must be strictly increasing!
+        tmp_monitor = data[:,self.monicolumn]
+        tmp_energy  = data[:,self.encolumn]
+        tmp_signals = data[:,self.ancolumns]
+        tmp_errors  = np.sqrt(np.absolute(tmp_signals))
+        scan_attrs  = self.pull_id20attrs(self.strip_headers(headers)) #get scan_attrs
         if scan_info[2]=='elastic':
             for analyzer in sorted(self.key.keys()): #The analyzer channels in the scan ASCII
                 # check counts are high-enough, using XIA filters avoids broadening FWHM
