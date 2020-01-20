@@ -3260,7 +3260,7 @@ class read_lerix:
         #split scans into NIXS and elastic and begin instance of XRStools scan class for each scan
         if not self.isValidDir(self.path):
             raise Exception('IOError! No such directory, please check directory.')
-        for file in self.sort_dir(self.path):
+        for file in self.sort_dir():
                 scan_info = self.scan_info(file)
                 if scan_info[2]=='elastic':
                     self.elastic_scans.append(file)
@@ -3490,29 +3490,20 @@ class read_lerix:
         scan_name = scan_type + '%04d' %scan_number
         return(scan_number, scan_name, scan_type, f)
 
-    def sort_dir(self, dir):
+    def sort_dir(self, path=None):
         """Returns a list of directory contents after filtering out scans without
         the correct format or size e.g. 'elastic.0001, nixs.0001 '"""
         dir_scans = []
-        for file in os.listdir(dir):
-            file_lc = str.lower(file)
-            fn,fext = os.path.splitext(file_lc)
-            if not file_lc.startswith('.'):
-                    if fext.lstrip('.').isdigit():
-                        if not os.stat(dir + '/' + file).st_size > 7000:
-                            print("{} {}".format(">> >> Warning!! skipped empty scan (<7KB): ", file))
-                            continue
-                        elif not os.stat(dir + '/' + file).st_size < MAX_FILESIZE:
-                            print("{} {}".format(">> >> Warning!! skipped huge scan (>100MB): ", file))
-                            continue
-                        else:
-                            if fn==self.nixs_name:
-                                dir_scans.append(file)
-                            elif fn==self.elastic_name:
-                                dir_scans.append(file)
-                            elif fn==self.wide_name:
-                                dir_scans.append(file)
-        sorted_dir = sorted(dir_scans, key=lambda x: os.path.splitext(x)[1])
+        if not path: # allows sort_dir() to be called without a path.
+            path = self.path
+        # regular expression search for *.[0-9][0-9][0-9][0-9] in path if is a file (therfore not dir)
+        res = [f for f in os.listdir(path) if (re.search(r".[0-9]{4}",f)) and (os.path.isfile(os.path.join(path,file)))]
+        # search results for files inside size limits then select those which meet nixs_name elastic_name etc and sort into alphanum order.
+        for file in res:
+            if not (os.stat(os.path.join(path,file)).st_size > 7000)*(os.stat(os.path.join(path,file)).st_size < 1E5):
+                sorted_dir = sorted([f for f in res if any(iter([self.nixs_name,self.elastic_name,self.wide_name]))])
+            else:
+                print('file:\n',file,'\nfalls outside of file size limits and is being ignored. (xrs_read L3493)')
         return sorted_dir
 
     def isValidDir(self,dir):
