@@ -1698,7 +1698,7 @@ class read_lerix:
         self.signals       = []
         self.errors        = []
         self.is_checked    = [] #inserted later to save a list of the chosen analyzers after using .plot_data() save function
-        self.tth           = []
+        self.tth           = np.array(range(9,180,9)) #the angles (in degrees) of the 19 crystal analysers in the LERIX array
         self.resolution    = {}
         self.E0            = []
         self.cenom         = []
@@ -2056,7 +2056,6 @@ class read_lerix:
         elif scan_info[2]=='nixs' or scan_info[2]=='wide':
             #create empty array with shape energy.v.signals
             eloss = np.zeros(tmp_signals.shape)
-            self.tth = list(range(9,180,9)) #assign tth to self
             try:
                 e_zero = self.E0 * 1e3 # convert e0 back to eV to perform subtraction
                 tmp_eloss = np.subtract(tmp_energy,e_zero)
@@ -2121,10 +2120,10 @@ class read_lerix:
             print("{} {}".format("Reading NIXS scan: ", file))
             self.readscan_20ID(exp_dir + '/' + file)
         #average the data over the chosen scans
-        self.energy = np.array([self.scans[self.scan_info(i)[1]].energy for i in chosen_scans]).mean(axis=0)
-        self.signals = np.array([self.scans[self.scan_info(i)[1]].signals for i in chosen_scans]).mean(axis=0)
-        self.eloss = np.array([self.scans[self.scan_info(i)[1]].eloss for i in chosen_scans]).mean(axis=0)
-        self.errors = np.array([self.scans[self.scan_info(i)[1]].errors for i in chosen_scans]).mean(axis=0)
+        self.energy   = np.array([self.scans[self.scan_info(i)[1]].energy  for i in chosen_scans]).mean(axis=0)
+        self.signals  = np.array([self.scans[self.scan_info(i)[1]].signals for i in chosen_scans]).mean(axis=0)
+        self.eloss    = np.array([self.scans[self.scan_info(i)[1]].eloss   for i in chosen_scans]).mean(axis=0)
+        self.errors   = np.array([self.scans[self.scan_info(i)[1]].errors  for i in chosen_scans]).mean(axis=0)
 
     def load_wides(self,exp_dir=None,scans='all',analyzers='all'):
         """Blah Blah"""

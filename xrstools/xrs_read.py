@@ -1698,7 +1698,7 @@ class read_lerix:
         self.signals       = []
         self.errors        = []
         self.is_checked    = [] #inserted later to save a list of the chosen analyzers after using .plot_data() save function
-        self.tth           = []
+        self.tth           = np.array(range(9,180,9)) #the angles (in degrees) of the 19 crystal analysers in the LERIX array
         self.resolution    = {}
         self.E0            = []
         self.cenom         = []
@@ -2056,7 +2056,6 @@ class read_lerix:
         elif scan_info[2]=='nixs' or scan_info[2]=='wide':
             #create empty array with shape energy.v.signals
             eloss = np.zeros(tmp_signals.shape)
-            self.tth = list(range(9,180,9)) #assign tth to self
             try:
                 e_zero = self.E0 * 1e3 # convert e0 back to eV to perform subtraction
                 tmp_eloss = np.subtract(tmp_energy,e_zero)
