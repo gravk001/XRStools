@@ -3719,7 +3719,7 @@ class read_lerix:
             chosen_scans = self.wide_scans
         elif isinstance(scans,list):
             scann[:] = [x - 1 for x in scans] #scan 1 will be the 0th item in the list
-            chosen_scans = [self.nixs_scans[i] for i in scann]
+            chosen_scans = [self.wide_scans[i] for i in scann]
         else:
             print("scans must be list of scan numbers (e.g. [1,2,3]) or all")
         for file in chosen_scans:
